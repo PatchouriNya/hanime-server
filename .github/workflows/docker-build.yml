@@ -13,7 +13,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Set lowercase repository owner
-      run: echo "REPO_OWNER_LOWER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      run: echo "REPO_OWNER_LOWER=patchourinya" >> $GITHUB_ENV
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
