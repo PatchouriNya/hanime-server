@@ -10,11 +10,16 @@ jobs:
     
     permissions:
       contents: read
-      packages: write  # 确保有写入权限
+      packages: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
+
+    - name: Set repository name to lowercase
+      run: |
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        echo "REPO_LOWER=$REPO_LOWER" >> $GITHUB_ENV
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -34,9 +39,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository }}:latest
-        # 这里会变成 ghcr.io/patchourinya/hanime-server:latest
-        # 注意：github.repository 会自动转为小写
+        tags: ghcr.io/${{ env.REPO_LOWER }}:latest
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
