@@ -1,4 +1,4 @@
-FROM node:18-alpine as frontend-build
+FROM node:18-alpine AS frontend-build
 WORKDIR /app/frontend
 
 RUN npm config set registry https://registry.npmmirror.com
