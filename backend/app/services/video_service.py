@@ -9,6 +9,7 @@ from app.utils.chinese_converter import to_simplified, convert_dict, convert_lis
 import re
 import json
 import asyncio
+from datetime import datetime
 
 
 class VideoService:
@@ -342,6 +343,8 @@ class VideoService:
             cover_url = video_elem.get('poster', '') if video_elem else ''
 
             stream_urls_list = self._extract_stream_urls(video_elem)
+            if not stream_urls_list:
+                stream_urls_list = self._extract_stream_urls_from_js(page_content)
             default_video_url = stream_urls_list[0].url if stream_urls_list else ""
 
             video_studio = self._extract_studio_info(soup)
@@ -388,6 +391,13 @@ class VideoService:
             basic_related_videos = self._extract_related_videos_based(soup)
             detailed_related_videos = self._extract_related_videos_detailed(soup)
 
+            upload_date_value = None
+            if upload_date_str:
+                try:
+                    upload_date_value = datetime.strptime(upload_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    upload_date_value = None
+
             video_detail = VideoDetail(
                 video_id=video_id,
                 title=video_title,
@@ -397,7 +407,7 @@ class VideoService:
                 default_video_url=default_video_url,
                 stream_urls=stream_urls_list,
                 view_count=self._parse_views(views_str),
-                upload_date=upload_date_str,
+                upload_date=upload_date_value,
                 studio=video_studio,
                 video_type=video_type,
                 tags=tags,
@@ -656,6 +666,37 @@ class VideoService:
                     quality=size,
                     url=source_url
                 ))
+        return stream_urls_list
+
+    def _extract_stream_urls_from_js(self, page_content: str) -> List[VideoStreamUrl]:
+        """从JavaScript中提取视频流URL"""
+        stream_urls_list = []
+        
+        patterns = [
+            r'hls_url["\']?\s*:\s*["\']([^"\']+)["\']',
+            r'mp4_url["\']?\s*:\s*["\']([^"\']+)["\']',
+            r'source["\']?\s*:\s*["\']([^"\']+\.(?:mp4|m3u8))["\']',
+            r'video_url["\']?\s*:\s*["\']([^"\']+)["\']',
+            r'play_url["\']?\s*:\s*["\']([^"\']+)["\']',
+            r'"url"\s*:\s*"([^"]+\.(?:mp4|m3u8))"',
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, page_content)
+            for url in matches:
+                if url and url not in [s.url for s in stream_urls_list]:
+                    if '.m3u8' in url.lower():
+                        quality = 'HLS'
+                    elif '.mp4' in url.lower():
+                        quality = 'MP4'
+                    else:
+                        quality = 'unknown'
+                    stream_urls_list.append(
+                        VideoStreamUrl(
+                            quality=quality,
+                            url=url
+                        ))
+
         return stream_urls_list
 
     def _extract_studio_info(self, soup: BeautifulSoup) -> VideoStudio:

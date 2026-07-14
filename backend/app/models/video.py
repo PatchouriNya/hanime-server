@@ -54,7 +54,7 @@ class VideoDetail(VideoPreview):
     """视频详情模型"""
     description: Optional[str] = ""
     subtitle: Optional[str] = ""
-    upload_date: Optional[datetime] = ""
+    upload_date: Optional[datetime] = None
     video_type: Optional[VideoType] = None
     default_video_url: Optional[str] = ""
     stream_urls: List[VideoStreamUrl] = []
