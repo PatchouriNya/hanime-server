@@ -48,39 +48,47 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
 
 以下是对原项目的主要更新和修复：
 
-1. **修复页面404问题**: 
+1. **大幅优化内存占用**: 
+   - 使用 Alpine 基础镜像替代 Ubuntu，镜像体积大幅减小
+   - 完全移除 DrissionPage（依赖 Chromium），改用 BeautifulSoup + lxml 进行页面解析
+   - 使用 zhconv 替代 opencc，解决 Alpine 兼容性问题
+   - 内存占用从 >1GB 降至约 65MB，适合 NAS 等资源受限设备
+
+2. **移除 CF Bypass 依赖**:
+   - 重写 cloudflare_bypass.py，支持代理直连模式
+   - 不再需要额外的 CF 绕过服务容器
+   - 简化部署配置，只需一个容器即可运行
+
+3. **修复页面404问题**: 
    - 修改 nginx.conf，将 `server_name localhost` 改为 `_` 并添加 `default_server`
    - 删除 Dockerfile 中默认站点配置
    - 修改 start.sh，使用直接运行 nginx 命令代替 `service nginx start`
 
-2. **修复 Cloudflare 绕过问题**:
-   - 重写 cloudflare_bypass.py，添加降级机制（bypass服务不可用时自动使用代理直连）
-   - 移除自定义 `Accept-Encoding` 头，避免压缩数据未解压问题
-   - 使用 httpx 代理模式替代 DrissionPage
+4. **修复页面内容解析问题**:
+   - 更新 video_service.py 中的视频解析选择器，适配新的页面结构
+   - 使用 BeautifulSoup 替代 DrissionPage 进行 HTML 解析
+   - 修复分类列表中 videos 字段为空的问题
 
-3. **修复页面内容为空问题**:
-   - 更新 video_service.py 中的视频解析选择器，适配新的页面结构（`video-item-container`）
-
-4. **新增用户账户功能**:
+5. **新增用户账户功能**:
    - 创建收藏系统（喜欢的影片）
    - 创建稍后观看列表
    - 创建播放清单功能
    - 创建观看历史记录
    - 使用 SQLite 数据库持久化存储
 
-5. **新增设置页面**:
+6. **新增设置页面**:
    - 代理设置（运行时生效）
    - 代理测试功能（验证代理是否可用）
    - 数据导入/导出功能
    - 数据清空功能
 
-6. **优化部署配置**:
+7. **优化部署配置**:
    - 添加 GitHub Actions 自动构建多平台镜像（amd64 + arm64）
    - 创建 NAS 专用 docker-compose.nas.yml
    - 添加 .gitignore 和 .dockerignore 配置
    - 修复 ARM64 架构适配问题
 
-7. **修复后端启动问题**:
+8. **修复后端启动问题**:
    - 修复 UserService 初始化时事件循环未启动导致的 RuntimeError
    - 将数据库初始化移到 FastAPI lifespan 事件中
 
@@ -226,22 +234,20 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
 - **视频服务**: 提供视频搜索、元数据解析和内容推荐
 - **用户服务**: 管理收藏、稍后观看、播放清单、观看历史
 - **数据缓存**: 优化性能和减少网络请求
-- **Cloudflare绕过**: 解决访问限制问题
+- **代理支持**: 内置代理支持，可通过代理直连目标网站
 - **Plyr播放器**: 提供流畅的视频播放体验
 
 ## <span id="-部署指南">🚀 部署指南</span>
 
 ### Docker Compose 一键部署（推荐）
 
-本项目支持通过 GitHub Actions 自动构建多平台镜像，可直接在 NAS 上一键部署。
+本项目支持通过 GitHub Actions 自动构建多平台镜像（amd64 + arm64），可直接在 NAS 上一键部署。
 
 #### 方式一：使用已构建的镜像（推荐）
 
 1. 创建 `docker-compose.yml` 文件：
 
 ```yaml
-version: '3.8'
-
 services:
   hanime-server:
     image: ghcr.io/patchourinya/hanime-server:latest
@@ -249,34 +255,33 @@ services:
     ports:
       - "7788:7788"
     volumes:
-      - ./data:/app/backend/data
-      - ./downloads:/app/backend/downloads
+      - /volume1/docker/hanime/data:/app/backend/data
+      - /volume1/docker/hanime/downloads:/app/backend/downloads
     environment:
       - TZ=Asia/Shanghai
       - USE_PROXY=false
       - PROXY_URL=
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7788/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 ```
 
 2. 运行容器：
 
 ```bash
+# 创建数据目录
+mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads
+
+# 启动容器
 docker-compose up -d
 ```
 
 3. 访问应用：
-   - 前端界面：http://localhost:7788
+   - 前端界面：http://你的NASIP:7788
 
 #### 方式二：使用项目自带的 docker-compose.nas.yml
 
 ```bash
-# 登录 ghcr.io（需要 GitHub Personal Access Token）
-echo "YOUR_GITHUB_TOKEN" | docker login ghcr.io -u 你的用户名 --password-stdin
+# 创建数据目录
+mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads
 
 # 拉取镜像并启动
 docker-compose -f docker-compose.nas.yml pull
@@ -285,12 +290,30 @@ docker-compose -f docker-compose.nas.yml up -d
 
 ### 代理配置
 
-在设置页面中配置代理：
+如果需要使用代理访问目标网站，可以通过以下方式配置：
+
+#### 方式一：环境变量配置（启动时）
+
+```yaml
+environment:
+  - USE_PROXY=true
+  - PROXY_URL=http://你的代理地址:端口
+```
+
+#### 方式二：设置页面配置（运行时）
 
 1. 进入设置页面
 2. 开启代理并填写代理地址（如 `http://192.168.1.xxx:7890`）
 3. 点击"保存设置"
 4. 点击"测试代理"验证代理是否生效
+
+### 内存优化
+
+本项目经过深度优化，内存占用极低：
+
+- **使用 Alpine 基础镜像**：镜像体积小，运行时资源消耗少
+- **移除 Chromium 依赖**：不再使用 DrissionPage，改用 BeautifulSoup 解析
+- **内存占用**：约 65MB（相比原项目 >1GB 大幅降低）
 
 ### NAS 部署指南
 
@@ -298,15 +321,16 @@ docker-compose -f docker-compose.nas.yml up -d
 
 #### 绿联 (UGreen) NAS 部署（以 4800Plus 为例）
 1. 在应用中心安装 Docker
-2. 创建部署目录：`mkdir -p /volume1/docker/hanime-server`
+2. 创建部署目录：`mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads`
 3. 创建或下载 docker-compose.nas.yml
-4. 登录 ghcr.io（需要 GitHub Personal Access Token）
-5. 运行 `docker-compose -f docker-compose.nas.yml up -d`
+4. 运行 `docker-compose -f docker-compose.nas.yml up -d`
+5. 访问：http://你的NASIP:7788
 
 #### 群晖 (Synology) NAS 部署
 1. 在套件中心安装Docker
 2. 在Docker应用中创建上述docker-compose.yml文件
 3. 映射下载目录到您的媒体文件夹
+4. 运行容器
 
 #### 威联通 (QNAP) NAS 部署
 1. 通过Container Station安装
