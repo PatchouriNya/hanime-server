@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   hanime-server:
-    image: ghcr.io/PatchouriNya/hanime-server:latest
+    image: ghcr.io/patchourinya/hanime-server:latest
     container_name: hanime-server
     ports:
       - "7788:7788"

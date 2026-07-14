@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: ghcr.io/PatchouriNya/hanime-server:latest
+    image: heisenyu/hanime-server:latest
     container_name: hanime-server
     restart: unless-stopped
     environment:

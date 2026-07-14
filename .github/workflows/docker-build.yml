@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -26,11 +26,11 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and push Docker image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/hanime-server:latest
+        tags: ghcr.io/${{ toLower(github.repository_owner) }}/hanime-server:latest
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max

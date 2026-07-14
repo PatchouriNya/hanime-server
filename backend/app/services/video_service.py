@@ -124,6 +124,7 @@ class VideoService:
             return []
 
         video_elements = videos_div.find_all('div', title=True)
+
         video_info_list = []
 
         for video_ele in video_elements[:10]:
