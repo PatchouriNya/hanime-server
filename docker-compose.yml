@@ -12,6 +12,8 @@ services:
     volumes:
       - ./data/downloads:/app/backend/downloads
       - ./data/db:/app/backend/db
+      # 如需下载到宿主机其他目录，取消注释以下行并修改路径：
+      # - /your/host/path:/data/downloads
     ports:
       - "7788:7788"
     deploy:

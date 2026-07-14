@@ -104,35 +104,55 @@ async def get_downloaded_file(video_id: str):
 async def get_cover(video_id: str):
     """
     获取本地封面图片
-    如果本地不存在，则实时获取视频详情并下载封面
+    优先从番剧目录查找，其次从全局封面目录查找
+    如果都不存在，则实时获取视频详情并下载封面
     """
     cover_filename = f"{video_id}.jpg"
+
+    # 1. 先在番剧目录中查找（遍历下载目录的子目录）
+    for series_dir in settings.DOWNLOAD_PATH.iterdir():
+        if series_dir.is_dir():
+            cover_path = series_dir / cover_filename
+            if cover_path.exists():
+                return FileResponse(path=cover_path, media_type='image/jpeg')
+
+    # 2. 在全局封面目录查找
     cover_path = settings.COVER_PATH / cover_filename
-    
-    # 如果本地封面不存在，尝试下载
-    if not cover_path.exists():
-        logger.info(f"本地封面不存在，尝试下载视频 {video_id} 的封面")
-        
-        # 获取视频详情
-        from app.services.video_service import VideoService
-        video_service = VideoService()
-        
-        try:
-            video_detail = await video_service.get_video_detail(video_id)
-            if video_detail and video_detail.cover_url:
-                # 下载封面
-                await download_manager.download_cover(video_id, video_detail.cover_url)
-                
-                # 再次检查是否下载成功
-                if not cover_path.exists():
-                    raise HTTPException(status_code=404, detail="封面下载失败")
-            else:
-                raise HTTPException(status_code=404, detail="无法获取视频信息")
-        except Exception as e:
-            logger.error(f"获取封面失败: {str(e)}")
-            raise HTTPException(status_code=404, detail=f"获取封面失败: {str(e)}")
-    
-    return FileResponse(
-        path=cover_path,
-        media_type='image/jpeg'
-    ) 
+    if cover_path.exists():
+        return FileResponse(path=cover_path, media_type='image/jpeg')
+
+    # 3. 本地不存在，尝试下载
+    logger.info(f"本地封面不存在，尝试下载视频 {video_id} 的封面")
+
+    from app.services.video_service import VideoService
+    video_service = VideoService()
+
+    try:
+        video_detail = await video_service.get_video_detail(video_id)
+        if video_detail and video_detail.cover_url:
+            # 查找该视频的番剧目录
+            series_name = download_manager._sanitize_filename(video_detail.title)
+            series_dir = settings.DOWNLOAD_PATH / series_name
+
+            # 下载封面
+            await download_manager.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id)
+
+            # 再次检查
+            if series_dir.exists():
+                cover_path = series_dir / cover_filename
+                if cover_path.exists():
+                    return FileResponse(path=cover_path, media_type='image/jpeg')
+
+            # 回退到全局封面目录
+            cover_path = settings.COVER_PATH / cover_filename
+            if cover_path.exists():
+                return FileResponse(path=cover_path, media_type='image/jpeg')
+
+            raise HTTPException(status_code=404, detail="封面下载失败")
+        else:
+            raise HTTPException(status_code=404, detail="无法获取视频信息")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取封面失败: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"获取封面失败: {str(e)}") 

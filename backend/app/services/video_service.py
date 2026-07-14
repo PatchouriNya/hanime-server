@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from app.models.video import *
+from app.models.video import CalendarDay, CalendarData
 from app.config import settings, logger
 from app.utils.cloudflare_bypass import cf_bypasser
 from app.utils.chinese_converter import to_simplified, convert_dict, convert_list
@@ -120,6 +121,13 @@ class VideoService:
         search_url = section_ele['href']
         search_suffix = search_url.split("?")[1] if search_url and "?" in search_url else ""
 
+        # 根据 section 类型补充 sort 参数
+        if search_suffix and "sort=" not in search_suffix:
+            if "最新" in display_name or "里番" in display_name or "裏番" in display_name:
+                search_suffix += "&sort=最新上市"
+            elif "排行" in display_name:
+                pass  # 排行已有 sort
+
         videos_div = section_ele.find_next_sibling('div')
         if not videos_div:
             return []
@@ -133,9 +141,10 @@ class VideoService:
             if video_info:
                 video_info_list.append(video_info)
 
+        # search_suffix 保留繁体原文，不转简体
         section_videos.append({
             "title": display_name,
-            "search_suffix": to_simplified(search_suffix),
+            "search_suffix": search_suffix,
             "videos": video_info_list
         })
 
@@ -283,7 +292,7 @@ class VideoService:
             video_link = item.find('a', class_=lambda x: x and 'video-link' in x)
             if not video_link:
                 video_link = item.find_parent('a')
-            
+
             href = video_link.get('href', '') if video_link else ''
             rel_video_id = self._extract_video_id(href)
             if not rel_video_id:
@@ -292,7 +301,7 @@ class VideoService:
             title_elem = item.find('div', class_=lambda x: x and 'home-rows-videos-title' in x)
             if not title_elem:
                 title_elem = item.find('div', class_='title')
-            
+
             rel_title = title_elem.get_text(strip=True) if title_elem else ''
 
             img_elem = item.find('img')
@@ -306,6 +315,30 @@ class VideoService:
 
         except Exception as e:
             logger.exception(f"解析相关视频项错误: {str(e)}")
+            return None
+
+    def _extract_search_result_video(self, link_tag: Tag) -> Optional[VideoPreview]:
+        """从搜索结果页的 <a> 标签提取视频信息"""
+        try:
+            href = link_tag.get('href', '')
+            video_id = self._extract_video_id(href)
+            if not video_id:
+                return None
+
+            title_elem = link_tag.find('div', class_=lambda x: x and 'home-rows-videos-title' in x)
+            video_title = title_elem.get_text(strip=True) if title_elem else ''
+
+            img_elem = link_tag.find('img')
+            cover_url = img_elem.get('src', '') if img_elem else ''
+
+            return VideoPreview(
+                video_id=video_id,
+                cover_url=cover_url,
+                title=video_title,
+            )
+
+        except Exception as e:
+            logger.error(f"提取搜索结果视频错误: {str(e)}")
             return None
 
     def _parse_views(self, views_text: str) -> int:
@@ -754,6 +787,36 @@ class VideoService:
 
         return series_videos
 
+    async def get_calendar_data(self) -> CalendarData:
+        """获取日历/新番列表数据 - 通过搜索 API 构建各类型最新番剧"""
+        try:
+            genres = ["裏番", "泡麵番", "Motion Anime", "3DCG", "2.5D", "2D動畫", "AI生成", "MMD", "Cosplay"]
+            calendar_data = CalendarData()
+
+            for genre in genres:
+                try:
+                    search_result = await self.search_videos(
+                        query=None, genre=genre, tags=None, broad=None,
+                        sort="最新上市", year=None, month=None, page=1
+                    )
+                    # 取前10个视频
+                    videos = search_result.detailed_videos[:10] if search_result.detailed_videos else []
+                    day_data = CalendarDay(
+                        day_of_week=to_simplified(genre),
+                        date=to_simplified(genre),
+                        videos=videos
+                    )
+                    calendar_data.days.append(day_data)
+                except Exception as e:
+                    logger.warning(f"获取 {genre} 新番数据失败: {str(e)}")
+                    calendar_data.days.append(CalendarDay(day_of_week=to_simplified(genre), date=to_simplified(genre), videos=[]))
+
+            return calendar_data
+
+        except Exception as e:
+            logger.exception(f"获取日历数据错误: {str(e)}")
+            return CalendarData(error=str(e))
+
     async def get_search_combination(self) -> SearchCombination:
         """获取搜索组合"""
         try:
@@ -862,30 +925,41 @@ class VideoService:
                 if total_pages > page:
                     has_next = True
 
-            detailed_video_list = []
-            video_elements = soup.select('#home-rows-wrapper div[title]')
-
-            if video_elements:
-                for i in range(0, len(video_elements), 2):
-                    video_ele = video_elements[i]
-                    video_info = self._extract_detailed_video_info(video_ele)
-                    if video_info:
-                        detailed_video_list.append(video_info)
-
+            # 搜索结果页视频提取 - 使用多种选择器兼容不同页面结构
             basic_video_list = []
-            video_elements = soup.select('#home-rows-wrapper [class*="video-item-container"]')
 
-            if video_elements:
-                for video_ele in video_elements:
-                    video_info = self._extract_based_video_info(video_ele)
+            # 方式1: 搜索结果页标准结构 <a href="/watch?v=xxx"> + div.home-rows-videos-div
+            wrapper = soup.find('div', id='home-rows-wrapper')
+            if wrapper:
+                video_links = wrapper.find_all('a', href=lambda x: x and '/watch?v=' in str(x))
+                for link in video_links:
+                    video_info = self._extract_search_result_video(link)
                     if video_info:
                         basic_video_list.append(video_info)
+
+            # 方式2: 首页风格的 div[title] 结构（兼容旧版）
+            if not basic_video_list:
+                video_elements = soup.select('#home-rows-wrapper div[title]')
+                if video_elements:
+                    for video_ele in video_elements:
+                        video_info = self._extract_detailed_video_info(video_ele)
+                        if video_info:
+                            basic_video_list.append(video_info)
+
+            # 方式3: video-item-container 结构（兼容旧版）
+            if not basic_video_list:
+                video_elements = soup.select('#home-rows-wrapper [class*="video-item-container"]')
+                if video_elements:
+                    for video_ele in video_elements:
+                        video_info = self._extract_based_video_info(video_ele)
+                        if video_info:
+                            basic_video_list.append(video_info)
 
             return SearchResults(
                 total_pages=total_pages,
                 page=page,
-                basic_videos=basic_video_list,
-                detailed_videos=detailed_video_list,
+                basic_videos=[],
+                detailed_videos=basic_video_list,
                 has_next=has_next
             )
 

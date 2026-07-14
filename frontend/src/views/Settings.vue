@@ -8,6 +8,44 @@
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
+            <span>下载设置</span>
+          </div>
+        </template>
+        <el-form :model="downloadForm" label-width="120px">
+          <el-form-item label="下载目录">
+            <div class="download-dir-row">
+              <el-input
+                v-model="downloadForm.downloadPath"
+                placeholder="输入绝对路径，Docker环境: /app/downloads，本地: D:\Downloads"
+              >
+                <template #append>
+                  <el-button @click="openDownloadDir" title="打开目录">
+                    <el-icon><FolderOpened /></el-icon>
+                  </el-button>
+                </template>
+              </el-input>
+            </div>
+          </el-form-item>
+        </el-form>
+        <div class="card-footer">
+          <el-button type="primary" @click="saveDownloadDir">保存设置</el-button>
+          <el-button @click="openDownloadDir">
+            <el-icon><FolderOpened /></el-icon> 打开目录
+          </el-button>
+        </div>
+        <div class="download-dir-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span>每部番剧将自动创建以番剧名命名的文件夹，视频和封面保存在同一文件夹内</span>
+        </div>
+        <div class="download-dir-hint docker-hint">
+          <el-icon><Warning /></el-icon>
+          <span>Docker 环境下仅支持 Linux 格式路径，且只能访问容器内或已挂载的目录。如需保存到宿主机，请在 docker-compose.yml 中添加卷挂载（如 - /your/host/path:/data/downloads），然后设置路径为 /data/downloads</span>
+        </div>
+      </el-card>
+
+      <el-card class="settings-card">
+        <template #header>
+          <div class="card-header">
             <span>代理设置</span>
           </div>
         </template>
@@ -106,7 +144,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { AccountApi } from '../api/account';
 import request from '../utils/request';
-import { Delete, Download, Upload, Connection, CircleCheck, CircleClose } from '@element-plus/icons-vue';
+import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
 interface ProxySettings {
@@ -129,6 +167,10 @@ const showClearDialog = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const testingProxy = ref(false);
 const proxyTestResult = ref<ProxyTestResult | null>(null);
+
+const downloadForm = reactive({
+  downloadPath: ''
+});
 
 const loadSettings = async () => {
   try {
@@ -294,7 +336,57 @@ const handleFileSelect = async (event: Event) => {
   target.value = '';
 };
 
-onMounted(loadSettings);
+onMounted(() => {
+  loadSettings();
+  loadDownloadDir();
+});
+
+const loadDownloadDir = async () => {
+  try {
+    const response = await request.get('/settings/download-dir');
+    downloadForm.downloadPath = response.data.download_path;
+  } catch (error) {
+    console.error('加载下载目录设置失败:', error);
+  }
+};
+
+const selectDownloadDir = () => {
+  // 不再需要 - 直接在输入框编辑
+};
+
+const openDownloadDir = async () => {
+  try {
+    const response = await request.post('/settings/open-dir');
+    if (response.data.success) {
+      ElMessage.success(`目录路径: ${response.data.path}`);
+    } else {
+      ElMessage.warning(response.data.message || '无法打开目录，请手动访问: ' + downloadForm.downloadPath);
+    }
+  } catch (error) {
+    ElMessage.info('下载目录: ' + downloadForm.downloadPath);
+  }
+};
+
+const saveDownloadDir = async () => {
+  if (!downloadForm.downloadPath.trim()) {
+    ElMessage.warning('请输入下载目录路径');
+    return;
+  }
+  try {
+    const response = await request.put('/settings/download-dir', {
+      download_path: downloadForm.downloadPath.trim()
+    });
+    if (response.data.success) {
+      ElMessage.success('下载目录已更新');
+      downloadForm.downloadPath = response.data.download_path;
+    } else {
+      ElMessage.error(response.data.message || '更新失败');
+    }
+  } catch (error) {
+    console.error('保存下载目录失败:', error);
+    ElMessage.error('保存下载目录失败');
+  }
+};
 </script>
 
 <style scoped>
@@ -349,6 +441,28 @@ onMounted(loadSettings);
 
 .hidden-input {
   display: none;
+}
+
+.download-dir-row {
+  width: 100%;
+}
+
+.download-dir-hint {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background-color: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.download-dir-hint.docker-hint {
+  background-color: rgba(230, 162, 60, 0.1);
+  color: #e6a23c;
+  margin-top: 8px;
 }
 
 .proxy-test-result {

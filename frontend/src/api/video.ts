@@ -1,5 +1,5 @@
 import request from '../utils/request.ts';
-import { HomeData, VideoDetail, VideoComment, CommentReply, SearchResults, BannerVideo, SearchCombination } from '../types/video';
+import { HomeData, VideoDetail, VideoComment, CommentReply, SearchResults, BannerVideo, SearchCombination, CalendarData } from '../types/video';
 
 // 搜索参数接口
 interface SearchParams {
@@ -44,6 +44,38 @@ export const VideoApi = {
         daily_rank_videos: [],
         monthly_rank_videos: [],
         error: '获取首页数据失败'
+      };
+    }
+  },
+
+  /**
+   * 刷新首页缓存并获取新数据
+   */
+  refreshHomeData: async (): Promise<HomeData> => {
+    try {
+      // 先清除后端缓存
+      await request.post('/settings/clear-cache/home');
+      // 再获取新数据
+      const response = await request.get<HomeData>(`/videos/home`);
+      return response.data;
+    } catch (error) {
+      console.error('刷新首页数据失败:', error);
+      const emptyBanner: BannerVideo = {
+        video_id: '',
+        title: '',
+        cover_url: ''
+      };
+      return {
+        banners: emptyBanner,
+        latest_videos: [],
+        new_arrivals_videos: [],
+        new_uploads_videos: [],
+        popular_videos: [],
+        ai_generated_videos: [],
+        bubble_tea_videos: [],
+        daily_rank_videos: [],
+        monthly_rank_videos: [],
+        error: '刷新首页数据失败'
       };
     }
   },
@@ -130,6 +162,19 @@ export const VideoApi = {
         basic_videos: [],
         detailed_videos: []
       };
+    }
+  },
+
+  /**
+   * 获取日历/新番列表数据
+   */
+  getCalendarData: async (): Promise<CalendarData> => {
+    try {
+      const response = await request.get<CalendarData>('/videos/calendar');
+      return response.data;
+    } catch (error) {
+      console.error('获取日历数据失败:', error);
+      return { days: [], error: '获取日历数据失败' };
     }
   },
 

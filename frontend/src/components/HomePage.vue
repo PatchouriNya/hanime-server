@@ -1,10 +1,26 @@
 <template>
   <div class="page-container">
     <!-- Banner区域 -->
-    <banner-slider :banner="homeData.banners"/>
+    <banner-slider :banner="homeData.banners" :is-refreshing="isRefreshing" @refresh="handleRefresh"/>
+
+    <!-- 骨架屏 - 加载中 -->
+    <template v-if="isLoading">
+      <div class="skeleton-section" v-for="i in 3" :key="'sk-'+i">
+        <div class="skeleton-header">
+          <el-skeleton-item variant="text" style="width: 120px; height: 22px;" />
+          <el-skeleton-item variant="text" style="width: 70px; height: 28px;" />
+        </div>
+        <div class="skeleton-cards">
+          <div class="skeleton-card" v-for="j in 6" :key="'skc-'+j">
+            <el-skeleton-item variant="image" style="width: 100%; height: 0; padding-top: 142%;" />
+            <el-skeleton-item variant="text" style="margin-top: 8px; width: 80%;" />
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- 视频区块通用组件 -->
-    <template v-for="(section, index) in homeData.latest_videos" :key="`latest-${index}`">
+    <template v-if="!isLoading" v-for="(section, index) in homeData.latest_videos" :key="`latest-${index}`">
       <video-section
         :title="section.title"
         :search-suffix="section.search_suffix"
@@ -17,7 +33,7 @@
     </template>
 
     <!-- 其他视频分类 -->
-    <template v-for="(section, key) in filteredVideoSections" :key="key">
+    <template v-if="!isLoading" v-for="(section, key) in filteredVideoSections" :key="key">
       <video-section 
         v-if="section[0]?.videos?.length"
         :title="section[0].title" 
@@ -35,12 +51,13 @@
 </template>
 
 <script lang="ts">
-import {computed, defineComponent, onMounted, ref} from 'vue';
+import {computed, defineComponent, onMounted, onUnmounted, ref} from 'vue';
 import {useRouter} from 'vue-router';
 import {VideoApi} from '../api/video';
 import {HomeData} from '../types/video';
 import BannerSlider from '../components/BannerSlider.vue';
 import VideoSection from '../components/VideoSection.vue';
+import {mitt} from '../utils/mitt';
 
 export default defineComponent({
   name: 'HomePage',
@@ -50,6 +67,8 @@ export default defineComponent({
   },
   setup() {
     const router = useRouter();
+    const isRefreshing = ref(false);
+    const isLoading = ref(true);
     const homeData = ref<HomeData>({
       banners: {
         video_id: '',
@@ -77,7 +96,22 @@ export default defineComponent({
     }));
 
     const fetchHomeData = async () => {
-      homeData.value = await VideoApi.getHomeData();
+      isLoading.value = true;
+      try {
+        homeData.value = await VideoApi.getHomeData();
+      } finally {
+        isLoading.value = false;
+      }
+    };
+
+    const handleRefresh = async () => {
+      if (isRefreshing.value) return;
+      isRefreshing.value = true;
+      try {
+        homeData.value = await VideoApi.refreshHomeData();
+      } finally {
+        isRefreshing.value = false;
+      }
     };
 
     const handleVideoClick = (videoId: string) => {
@@ -85,17 +119,46 @@ export default defineComponent({
     };
 
     const handleViewMore = (searchSuffix: string) => {
-      if (searchSuffix) {
-        router.push(`/search?${searchSuffix}`);
+      if (!searchSuffix) return;
+      // 解析 search_suffix 为搜索页面可识别的 query 参数
+      const params = new URLSearchParams(searchSuffix);
+      const query: Record<string, any> = {};
+      const tags: string[] = [];
+
+      params.forEach((value, key) => {
+        if (key === 'tags[]' || key === 'tags') {
+          tags.push(value);
+        } else {
+          query[key] = value;
+        }
+      });
+
+      if (tags.length > 0) {
+        query.tags = tags;
       }
+
+      router.push({ path: '/search', query });
     };
 
+    // 监听来自 AppHeader 的刷新事件
+    const onRefreshFromHeader = () => {
+      handleRefresh();
+    };
+    mitt.on('refresh-home', onRefreshFromHeader);
+
     onMounted(fetchHomeData);
+
+    onUnmounted(() => {
+      mitt.off('refresh-home', onRefreshFromHeader);
+    });
 
     return {
       homeData,
       filteredVideoSections,
       fetchHomeData,
+      handleRefresh,
+      isRefreshing,
+      isLoading,
       handleVideoClick,
       handleViewMore,
     };
@@ -113,16 +176,49 @@ export default defineComponent({
   color: #fff;
 }
 
+/* 骨架屏样式 */
+.skeleton-section {
+  margin-bottom: 20px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.skeleton-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.skeleton-cards {
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.skeleton-card {
+  flex: 0 0 160px;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .page-container {
     padding: 8px;
+  }
+  .skeleton-card {
+    flex: 0 0 140px;
   }
 }
 
 @media (max-width: 480px) {
   .page-container {
     padding: 5px;
+  }
+  .skeleton-card {
+    flex: 0 0 120px;
   }
 }
 </style> 

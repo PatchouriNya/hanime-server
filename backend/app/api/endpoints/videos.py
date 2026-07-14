@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from app.models.video import *
+from app.models.video import CalendarData
 from app.services.video_service import VideoService
 import httpx
 from app.config import settings
@@ -16,6 +17,13 @@ video_service = VideoService()
 async def get_home_page():
     """获取首页数据，包括头图和推荐视频"""
     return await video_service.get_home_data()
+
+
+@router.get("/calendar", response_model=CalendarData)
+@lru_cache(maxsize=1, ttl=3600)  # 缓存1小时
+async def get_calendar():
+    """获取日历/新番列表数据"""
+    return await video_service.get_calendar_data()
 
 
 @router.get("/search_combination", response_model=SearchCombination)

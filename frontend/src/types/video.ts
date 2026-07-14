@@ -119,4 +119,17 @@ export interface SearchCombination {
   video_types: string[];
   tags: Record<string, string[]>;
   sort: string[];
+}
+
+// 日历单日数据
+export interface CalendarDay {
+  day_of_week: string;
+  date: string;
+  videos: VideoPreview[];
+}
+
+// 日历数据
+export interface CalendarData {
+  days: CalendarDay[];
+  error?: string;
 } 

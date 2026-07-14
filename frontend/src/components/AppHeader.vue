@@ -30,6 +30,7 @@
 import { defineComponent, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { Menu, Back, Calendar, Search, Moon, Sunny } from '@element-plus/icons-vue';
+import { mitt } from '../utils/mitt';
 
 export default defineComponent({
   name: 'AppHeader',
@@ -63,7 +64,7 @@ export default defineComponent({
     const toggleSidebar = () => {
       emit('toggle-sidebar');
     };
-    
+
     const toggleTheme = () => {
       emit('toggle-theme');
     };
@@ -73,7 +74,10 @@ export default defineComponent({
     };
 
     const goToHome = () => {
-      if (route.path !== '/') {
+      if (route.path === '/') {
+        // 已在首页，触发刷新推荐
+        mitt.emit('refresh-home');
+      } else {
         router.push('/');
       }
     };

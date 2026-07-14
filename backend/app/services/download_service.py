@@ -3,6 +3,7 @@ import os
 import time
 import math
 import json
+import shutil
 from typing import Dict, Optional, List, Set, Any
 from fastapi import WebSocket
 from datetime import datetime
@@ -969,21 +970,28 @@ class DownloadManager:
             if not best_url:
                 return {"status": "error", "message": "未找到有效的下载链接"}
             
+            # 确定番剧系列名（目录名）：优先用主标题（系列名），副标题仅作为文件名的一部分
+            series_name = self._sanitize_filename(video_detail.title)
+            
             # 优先使用副标题作为文件名，如果没有副标题则使用标题
             if video_detail.subtitle:
                 filename = self._sanitize_filename(video_detail.subtitle)
             else:
                 filename = self._sanitize_filename(video_detail.title)
             
-            # 确保文件名唯一
-            filename = f"{video_id}_{filename}.mp4"
+            # 在下载目录下创建以番剧系列名命名的子目录
+            series_dir = settings.DOWNLOAD_PATH / series_name
+            series_dir.mkdir(parents=True, exist_ok=True)
             
+            # 确保文件名唯一（包含番剧目录的相对路径）
+            filename = f"{series_name}/{video_id}_{filename}.mp4"
+
             # 创建下载记录
             file_path = settings.DOWNLOAD_PATH / filename
             
-            # 预下载封面到本地（不阻塞主流程）
+            # 预下载封面到番剧目录（不阻塞主流程）
             # 如果下载失败也不影响视频下载，用户访问时会自动重试
-            asyncio.create_task(self.download_cover(video_id, video_detail.cover_url))
+            asyncio.create_task(self.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id))
             
             # 写入数据库（
             async with aiosqlite.connect(self.db_path) as conn:
@@ -1058,43 +1066,55 @@ class DownloadManager:
             
         return filename
 
-    async def download_cover(self, video_id: str, cover_url: str) -> bool:
+    async def download_cover(self, video_id: str, cover_url: str, series_dir=None, filename: str = None) -> bool:
         """
-        下载封面图片到本地
+        下载封面图片到番剧目录
         :param video_id: 视频ID
         :param cover_url: 封面URL
+        :param series_dir: 番剧系列目录路径
+        :param filename: 封面文件名（不含扩展名），默认使用 video_id
         :return: 是否下载成功
         """
         if not cover_url:
             return False
-            
+
         try:
-            # 创建封面文件名
-            cover_filename = f"{video_id}.jpg"
-            cover_path = settings.COVER_PATH / cover_filename
-            
+            # 封面保存到番剧目录中，以 video_id.jpg 命名
+            cover_name = filename or video_id
+            cover_filename = f"{cover_name}.jpg"
+
+            # 优先保存到番剧目录
+            if series_dir:
+                cover_path = series_dir / cover_filename
+            else:
+                # 如果没有指定番剧目录，保存到全局封面目录
+                os.makedirs(settings.COVER_PATH, exist_ok=True)
+                cover_path = settings.COVER_PATH / cover_filename
+
             # 如果封面已存在，跳过下载
             if cover_path.exists():
-                logger.info(f"封面已存在: {cover_filename}")
+                logger.info(f"封面已存在: {cover_path}")
                 return True
-            
+
+            # 确保目录存在
+            os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+
             # 下载封面
             logger.info(f"开始下载封面: {cover_url}")
             client = await self.get_http_client(cover_url)
-            
+
             async with client.stream("GET", cover_url, timeout=30.0) as response:
                 if response.status_code != 200:
                     logger.error(f"下载封面失败，状态码: {response.status_code}")
                     return False
-                
-                # 保存封面
+
                 async with aiofiles.open(cover_path, "wb") as f:
                     async for chunk in response.aiter_bytes(8192):
                         await f.write(chunk)
-            
-            logger.success(f"封面下载成功: {cover_filename}")
+
+            logger.success(f"封面下载成功: {cover_path}")
             return True
-            
+
         except Exception as e:
             logger.error(f"下载封面失败: {str(e)}")
             return False

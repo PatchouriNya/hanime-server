@@ -114,3 +114,16 @@ class SearchResults(BaseModel):
     basic_videos: List[VideoBase] = []
     detailed_videos: List[VideoPreview] = []
     has_next: bool = False
+
+
+class CalendarDay(BaseModel):
+    """日历单日数据模型"""
+    day_of_week: str = ""
+    date: str = ""
+    videos: List[VideoPreview] = []
+
+
+class CalendarData(BaseModel):
+    """日历数据模型"""
+    days: List[CalendarDay] = []
+    error: Optional[str] = None
