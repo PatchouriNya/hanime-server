@@ -95,10 +95,8 @@ export const DownloadApi = {
   createWebSocket: (onMessage: (data: DownloadProgress) => void): WebSocket => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const baseUrl = request.defaults.baseURL || '';
-    const baseUrlObj = new URL(baseUrl);
-    const wsPath = `${protocol}//${baseUrlObj.host || host}/api/downloads/ws`;
-    
+    const wsPath = `${protocol}//${host}/api/downloads/ws`;
+
     const ws = new WebSocket(wsPath);
     
     ws.onmessage = (event) => {

@@ -1,32 +1,13 @@
-# Git
-.git
-.gitignore
-
-# Dependencies
-node_modules
-
-# Build Output
-dist
-out
-
-# Logs
-logs
-*.log
-
-# Environment Variables
+.git/
+node_modules/
+dist/
+data/
+downloads/
+__pycache__/
+*.pyc
 .env
-.env.*
-!.env.example
-
-# IDEs
-.idea
-.vscode
-*.swp
-*.swo
-
-# Backend Specific
-backend/db/
-backend/downloads/
-
-*.sqlite
-*.ps1
+.env.local
+.gitignore
+.dockerignore
+README.md
+CHANGELOG*.md

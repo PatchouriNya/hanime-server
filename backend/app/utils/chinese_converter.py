@@ -1,9 +1,8 @@
 """
 简繁体中文转换工具
 """
-import opencc
+from zhconv import convert
 from typing import List, Dict, Any
-
 
 
 def to_simplified(text: str) -> str:
@@ -16,8 +15,7 @@ def to_simplified(text: str) -> str:
     Returns:
         转换后的简体中文文本
     """
-    converter = opencc.OpenCC('t2s.json')
-    return converter.convert(text)
+    return convert(text, 'zh-hans')
 
 
 def to_traditional(text: str) -> str:
@@ -30,8 +28,7 @@ def to_traditional(text: str) -> str:
     Returns:
         转换后的繁体中文文本
     """
-    converter = opencc.OpenCC('s2t.json')
-    return converter.convert(text)
+    return convert(text, 'zh-hant')
 
 
 def convert_dict(data: Dict[str, Any], to_simple: bool = True) -> Dict[str, Any]:
@@ -101,10 +98,3 @@ def convert_any(data: Any, to_simple: bool = True) -> Any:
         return convert_list(data, to_simple)
     else:
         return data
-
-
-if __name__ == '__main__':
-    text = "让我们说中文"
-    print(to_simplified(text))
-    print(to_traditional(text))
-    print(convert_dict({"key": f"{to_traditional(text)}"}))

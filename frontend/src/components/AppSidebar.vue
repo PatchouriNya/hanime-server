@@ -28,7 +28,7 @@
       
       <nav class="nav-menu">
         <div class="menu-title">我的清单</div>
-        <router-link to="/history" class="nav-item" @click="closeSidebar">
+        <router-link to="/watch-later" class="nav-item" @click="closeSidebar">
           <el-icon :size="20"><Timer /></el-icon> 稍后观看
         </router-link>
         <router-link to="/favorites" class="nav-item" @click="closeSidebar">

@@ -27,11 +27,62 @@
 
 Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于浏览和播放 hanime 视频资源。项目采用前后端分离架构，后端使用 FastAPI 提供 RESTful API 接口，前端使用 Vue.js 构建响应式用户界面，支持多平台访问。
 
-整个应用通过 Docker 容器化技术实现一键部署，大大简化了安装和使用流程。适合在NAS设备（如群晖、威联通等）上部署，可作为家庭媒体服务器使用，支持远程访问和视频管理。
+整个应用通过 Docker 容器化技术实现一键部署，大大简化了安装和使用流程。适合在NAS设备（如群晖、威联通、绿联等）上部署，可作为家庭媒体服务器使用，支持远程访问和视频管理。
 
 > **关于作者**: 作者并非Vue开发者，前端主要借助Cursor AI辅助工具进行开发，如有不足之处，敬请谅解。
 > 
 > **项目灵感**: 本项目的页面布局和功能设计参考了 [YenalyLiew/Han1meViewer](https://github.com/YenalyLiew/Han1meViewer) Android端应用。由于原项目已标记为不再维护，促使我开发了这个基于Web的替代版本，让更多设备都能方便使用。本项目支持直接下载视频到NAS存储设备，便于媒体库集中管理和随时观看。
+
+---
+
+## 🔗 项目说明
+
+本项目基于 [heisenyu/hanime-server](https://github.com/heisenyu/hanime-server) 进行维护和更新。
+
+- **原项目地址**: https://github.com/heisenyu/hanime-server
+- **本仓库地址**: https://github.com/PatchouriNya/hanime-server
+- **维护者联系邮箱**: 609206398@qq.com
+- **维护承诺**: 如果原作者停止维护，本仓库将继续提供更新和修复
+
+### ✅ 更新内容
+
+以下是对原项目的主要更新和修复：
+
+1. **修复页面404问题**: 
+   - 修改 nginx.conf，将 `server_name localhost` 改为 `_` 并添加 `default_server`
+   - 删除 Dockerfile 中默认站点配置
+   - 修改 start.sh，使用直接运行 nginx 命令代替 `service nginx start`
+
+2. **修复 Cloudflare 绕过问题**:
+   - 重写 cloudflare_bypass.py，添加降级机制（bypass服务不可用时自动使用代理直连）
+   - 移除自定义 `Accept-Encoding` 头，避免压缩数据未解压问题
+   - 使用 httpx 代理模式替代 DrissionPage
+
+3. **修复页面内容为空问题**:
+   - 更新 video_service.py 中的视频解析选择器，适配新的页面结构（`video-item-container`）
+
+4. **新增用户账户功能**:
+   - 创建收藏系统（喜欢的影片）
+   - 创建稍后观看列表
+   - 创建播放清单功能
+   - 创建观看历史记录
+   - 使用 SQLite 数据库持久化存储
+
+5. **新增设置页面**:
+   - 代理设置（运行时生效）
+   - 代理测试功能（验证代理是否可用）
+   - 数据导入/导出功能
+   - 数据清空功能
+
+6. **优化部署配置**:
+   - 添加 GitHub Actions 自动构建多平台镜像（amd64 + arm64）
+   - 创建 NAS 专用 docker-compose.nas.yml
+   - 添加 .gitignore 和 .dockerignore 配置
+   - 修复 ARM64 架构适配问题
+
+7. **修复后端启动问题**:
+   - 修复 UserService 初始化时事件循环未启动导致的 RuntimeError
+   - 将数据库初始化移到 FastAPI lifespan 事件中
 
 ---
 
@@ -60,14 +111,29 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
       <div style="font-size: 14px;">批量下载与管理</div>
     </div>
     <div style="text-align: center; width: 200px;">
-      <div style="font-size: 32px;">💬</div>
-      <div><b>视频评论</b></div>
-      <div style="font-size: 14px;">查看社区反馈</div>
+      <div style="font-size: 32px;">❤️</div>
+      <div><b>收藏管理</b></div>
+      <div style="font-size: 14px;">喜欢的影片收藏</div>
     </div>
     <div style="text-align: center; width: 200px;">
-      <div style="font-size: 32px;">🎮</div>
-      <div><b>视频播放</b></div>
-      <div style="font-size: 14px;">流畅播放体验</div>
+      <div style="font-size: 32px;">⏱️</div>
+      <div><b>稍后观看</b></div>
+      <div style="font-size: 14px;">视频收藏列表</div>
+    </div>
+    <div style="text-align: center; width: 200px;">
+      <div style="font-size: 32px;">📋</div>
+      <div><b>播放清单</b></div>
+      <div style="font-size: 14px;">自定义视频清单</div>
+    </div>
+    <div style="text-align: center; width: 200px;">
+      <div style="font-size: 32px;">📜</div>
+      <div><b>观看历史</b></div>
+      <div style="font-size: 14px;">记录观看进度</div>
+    </div>
+    <div style="text-align: center; width: 200px;">
+      <div style="font-size: 32px;">⚙️</div>
+      <div><b>设置页面</b></div>
+      <div style="font-size: 14px;">代理配置、数据管理</div>
     </div>
     <div style="text-align: center; width: 200px;">
       <div style="font-size: 32px;">📱</div>
@@ -135,6 +201,7 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
           <li>视频元数据服务</li>
           <li>Cloudflare 绕过实现</li>
           <li>LRU缓存优化</li>
+          <li>用户账户服务</li>
         </ul>
       </td>
       <td>
@@ -145,6 +212,7 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
           <li>Vue Router 路由管理</li>
           <li>Pinia 状态管理</li>
           <li>Plyr 视频播放器组件</li>
+          <li>Element Plus UI组件</li>
           <li>响应式布局设计</li>
         </ul>
       </td>
@@ -156,83 +224,84 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
 
 - **下载服务**: 管理视频下载队列、状态跟踪和错误处理
 - **视频服务**: 提供视频搜索、元数据解析和内容推荐
+- **用户服务**: 管理收藏、稍后观看、播放清单、观看历史
 - **数据缓存**: 优化性能和减少网络请求
 - **Cloudflare绕过**: 解决访问限制问题
 - **Plyr播放器**: 提供流畅的视频播放体验
 
-## 📝 开发计划
-
-> **当前状态**: 本项目已完成基础功能开发，包括视频浏览、搜索、播放、下载等核心功能，可以满足日常使用需求。
-
-TODO：
-
-- [ ] **新番列表**: 展示最新更新的内容
-- [ ] **设置页面**: 用户偏好设置与系统配置
-- [ ] **清单列表**: 包括稍后观看、喜欢的影片、播放清单等
-- [ ] **观看历史**: 记录和管理已观看内容
-
-> 随缘更新，有需要的话可以自行开发。欢迎提交Issue或PR！
-
 ## <span id="-部署指南">🚀 部署指南</span>
 
-### Docker 部署（推荐）
+### Docker Compose 一键部署（推荐）
 
-现在可以通过 Docker Compose 一键部署整个应用：
+本项目支持通过 GitHub Actions 自动构建多平台镜像，可直接在 NAS 上一键部署。
+
+#### 方式一：使用已构建的镜像（推荐）
 
 1. 创建 `docker-compose.yml` 文件：
 
 ```yaml
-version: '3'
+version: '3.8'
+
 services:
   hanime-server:
-    image: heisenyu/hanime-server:latest
-    environment:
-      - USE_PROXY=${USE_PROXY:-true}                  # 是否使用代理
-      - PROXY_URL=${PROXY_URL:-}                       # 代理地址
-      - USE_DOWNLOAD_PROXY=${USE_DOWNLOAD_PROXY:-false}  # 下载是否与使用代理
-      - CLOUDFLARE_BYPASS_SERVICE_URL=http://cf-bypass:8000
-    depends_on:
-      - cf-bypass
+    image: ghcr.io/PatchouriNya/hanime-server:latest
+    container_name: hanime-server
     ports:
       - "7788:7788"
     volumes:
+      - ./data:/app/backend/data
       - ./downloads:/app/backend/downloads
-      - ./db:/app/backend/db
-    restart: unless-stopped
-
-  cf-bypass:
-    image: ghcr.io/sarperavci/cloudflarebypassforscraping:latest
-    container_name: cf-bypass
-    restart: unless-stopped
     environment:
-      - WORKERS=1
-    deploy:
-      resources:
-        limits:
-           memory: 1G
-           cpus: '1.0'
-    shm_size: 1g
+      - TZ=Asia/Shanghai
+      - USE_PROXY=false
+      - PROXY_URL=
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7788/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 ```
 
-2. 代理设置说明：
-   - `USE_PROXY`: 设置为 `true` 表示元数据获取使用代理（国内网络必须开启）
-   - `PROXY_URL`: 代理服务器地址
-   - `USE_DOWNLOAD_PROXY`: 设置为 `true` 表示下载视频时使用代理，默认为 `false`（经测试，下载视频可以不走代理）
-
-3. 运行容器：
+2. 运行容器：
 
 ```bash
 docker-compose up -d
 ```
 
-4. 访问应用：
+3. 访问应用：
    - 前端界面：http://localhost:7788
 
-> 💡 **温馨提示**: 首次进入时，系统会自动进行 Cloudflare 5s 盾验证，耗时可能较长（5-10秒），请耐心等待。验证成功后，凭证会被缓存，后续访问将极其流畅。
+#### 方式二：使用项目自带的 docker-compose.nas.yml
+
+```bash
+# 登录 ghcr.io（需要 GitHub Personal Access Token）
+echo "YOUR_GITHUB_TOKEN" | docker login ghcr.io -u 你的用户名 --password-stdin
+
+# 拉取镜像并启动
+docker-compose -f docker-compose.nas.yml pull
+docker-compose -f docker-compose.nas.yml up -d
+```
+
+### 代理配置
+
+在设置页面中配置代理：
+
+1. 进入设置页面
+2. 开启代理并填写代理地址（如 `http://192.168.1.xxx:7890`）
+3. 点击"保存设置"
+4. 点击"测试代理"验证代理是否生效
 
 ### NAS 部署指南
 
 本项目适合在各类NAS系统上部署：
+
+#### 绿联 (UGreen) NAS 部署（以 4800Plus 为例）
+1. 在应用中心安装 Docker
+2. 创建部署目录：`mkdir -p /volume1/docker/hanime-server`
+3. 创建或下载 docker-compose.nas.yml
+4. 登录 ghcr.io（需要 GitHub Personal Access Token）
+5. 运行 `docker-compose -f docker-compose.nas.yml up -d`
 
 #### 群晖 (Synology) NAS 部署
 1. 在套件中心安装Docker
@@ -253,14 +322,14 @@ docker-compose up -d
 
 ```bash
 # 克隆仓库
-git clone https://github.com/heisenyu/hanime-server
+git clone https://github.com/你的用户名/hanime-server
 cd hanime-server
 
 # 构建镜像
-docker build -t hanime-server:custom .
+docker-compose build --no-cache
 
 # 运行容器
-docker run -d -p 7788:7788 -p 8000:8000 -v $(pwd)/downloads:/app/backend/downloads hanime-server:custom
+docker-compose up -d
 ```
 
 ### 手动部署
@@ -326,6 +395,15 @@ docker run -d -p 7788:7788 -p 8000:8000 -v $(pwd)/downloads:/app/backend/downloa
 - 提供修改说明（如有）
 - 不提供质量担保
 - 不承担用户使用风险
+
+---
+
+## 📧 联系方式
+
+- **维护者**: 本仓库维护者
+- **联系邮箱**: 609206398@qq.com
+
+如果原作者停止维护，本仓库将继续提供更新和修复。
 
 ---
 

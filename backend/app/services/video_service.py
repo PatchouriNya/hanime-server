@@ -1,4 +1,5 @@
-from DrissionPage.common import make_session_ele
+from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 from app.models.video import *
 from app.config import settings, logger
@@ -22,20 +23,17 @@ class VideoService:
             if not page_content:
                 return HomeData(error="Failed to fetch page content.")
 
-            page_ele = make_session_ele(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            # 获取头图数据
-            banner_data = self._extract_banner_data(page_ele)
+            banner_data = self._extract_banner_data(soup)
 
-            # 获取推荐视频数据
-            recommended_elem = page_ele.ele('xpath://div[@id="home-rows-wrapper"]')
+            recommended_elem = soup.find('div', id='home-rows-wrapper')
             if not recommended_elem:
                 return HomeData(
                     banners=banner_data,
                     error="无法获取推荐视频数据"
                 )
 
-            # 处理其他视频分类（结构相同）
             other_video_sections = [
                 {"name": "latest_videos", "display_name": "最新里番", "matcher": "裏番"},
                 {"name": "new_arrivals_videos", "display_name": "最新上市", "matcher": "最新上市"},
@@ -45,11 +43,8 @@ class VideoService:
                 {"name": "bubble_tea_videos", "display_name": "泡面番", "matcher": "泡麵番"},
             ]
 
-
-            # 创建HomeData对象
             home_data = HomeData(banners=banner_data)
 
-            # 处理其他视频分类
             for section in other_video_sections:
                 section_name = section["name"]
                 display_name = section["display_name"]
@@ -58,7 +53,6 @@ class VideoService:
                 section_data = self._extract_section_videos(recommended_elem, matcher, display_name)
                 setattr(home_data, section_name, section_data)
 
-            # 并发获取本日排行和本月排行数据
             try:
                 daily_result, monthly_result = await asyncio.gather(
                     self.search_videos(query=None, genre=None, tags=None, broad=None, sort="本日排行", year=None, month=None, page=1),
@@ -86,55 +80,56 @@ class VideoService:
             logger.exception(f"首页数据获取错误: {str(e)}")
             return HomeData(error=str(e))
 
-    def _extract_banner_data(self, page_ele) -> BannerVideo:
+    def _extract_banner_data(self, soup: BeautifulSoup) -> BannerVideo:
         """提取首页头图数据"""
-        banner_title_ele = page_ele.ele("xpath://div[@id='home-banner-wrapper']//h1")
-        banner_desc_ele = page_ele.ele("xpath://div[@id='home-banner-wrapper']//h4")
+        banner_wrapper = soup.find('div', id='home-banner-wrapper')
+        if not banner_wrapper:
+            return BannerVideo()
 
-        #  banner_img_ele 是 div[@id='home-banner-wrapper'] 上一个 兄弟 div 下的 img 标签
-        banner_img_ele = page_ele.ele("xpath://div[@id='home-banner-wrapper']//preceding-sibling::div//img")
+        banner_title_ele = banner_wrapper.find('h1')
+        banner_desc_ele = banner_wrapper.find('h4')
+        
+        prev_div = banner_wrapper.find_previous_sibling('div')
+        banner_img_ele = prev_div.find('img') if prev_div else None
 
-        image_url = banner_img_ele.attr("src") if banner_img_ele else ""
+        image_url = banner_img_ele.get('src', '') if banner_img_ele else ''
         video_id = self._extract_video_id_from_image(image_url)
 
         return BannerVideo(
             video_id=video_id,
             cover_url=image_url,
-            title=banner_title_ele.text.strip() if banner_title_ele else "",
-            description=banner_desc_ele.text.strip() if banner_desc_ele else ""
+            title=banner_title_ele.get_text(strip=True) if banner_title_ele else '',
+            description=banner_desc_ele.get_text(strip=True) if banner_desc_ele else ''
         )
 
-
-    def _extract_section_videos(self, recommended_elem, matcher, display_name) -> List[Dict[str, Any]]:
+    def _extract_section_videos(self, recommended_elem: Tag, matcher: str, display_name: str) -> List[Dict[str, Any]]:
         """提取特定分区的视频列表"""
         section_videos = []
 
-        # 获取分区标题元素 (根据 href =&? 中间的关键词匹配 )
-        # <a class="horizontal-row-title" style="text-decoration: none;" href="https://hanime1.me/search?genre=裏番&sort=最新上傳">
-        #     <h3>里番<div><span class="hidden-xs">查看</span>更多<span class="material-icons">arrow_forward_ios</span></div></h3>
-        # </a>
-
-        # section_ele = recommended_elem.ele(f"xpath:./a[contains(., '{matcher}')]")
-        section_ele = recommended_elem.ele(f"xpath:./a[substring-before(concat(substring-after(@href, '='), '&'), '&')='{matcher}']")
+        section_ele = None
+        for a in recommended_elem.find_all('a', href=True):
+            href = a['href']
+            if matcher in href:
+                section_ele = a
+                break
 
         if not section_ele:
             return []
 
-        search_url = section_ele.attr("href") if section_ele else ""
+        search_url = section_ele['href']
         search_suffix = search_url.split("?")[1] if search_url and "?" in search_url else ""
 
-        # 获取相邻的视频容器div
-        videos_div = section_ele.ele("xpath:./following-sibling::div")
+        videos_div = section_ele.find_next_sibling('div')
         if not videos_div:
             return []
 
-        # 获取所有含有title属性的div
-        video_elements = videos_div.eles("xpath:.//div[@title]")
+        video_elements = videos_div.find_all('div', title=True)
         video_info_list = []
 
         for video_ele in video_elements[:10]:
             video_info = self._extract_detailed_video_info(video_ele)
-            video_info_list.append(video_info)
+            if video_info:
+                video_info_list.append(video_info)
 
         section_videos.append({
             "title": display_name,
@@ -144,62 +139,51 @@ class VideoService:
 
         return section_videos
 
-    def _extract_detailed_video_info(self, video_ele) -> Optional[VideoPreview]:
+    def _extract_detailed_video_info(self, video_ele: Tag) -> Optional[VideoPreview]:
         """从单个 详细视频 元素中提取信息"""
         try:
-            # 获取视频标题
-            title_elem = video_ele.s_ele("xpath:.//*[contains(@class, 'title')]")
-            video_title = (title_elem.text.strip() if title_elem else None) or ""
+            title_elem = video_ele.find(class_=lambda x: x and 'title' in x)
+            video_title = title_elem.get_text(strip=True) if title_elem else ''
 
-            # 获取视频链接
-            overlay_ele = video_ele.ele("xpath:.//a[contains(@class, 'video-link')]")
-            video_url = overlay_ele.attr("href") if overlay_ele else ""
+            overlay_ele = video_ele.find('a', class_=lambda x: x and 'video-link' in x)
+            video_url = overlay_ele.get('href', '') if overlay_ele else ''
 
             video_id = self._extract_video_id_from_url(video_url)
 
-            # 如果没有视频ID则跳过
             if not video_id:
                 return None
 
-            # 获取封面图
-            img_ele = video_ele.ele("xpath:.//img[contains(@class, 'main-thumb')]")
-            img_url = img_ele.attr("src") if img_ele else ""
+            img_ele = video_ele.find('img', class_=lambda x: x and 'main-thumb' in x)
+            img_url = img_ele.get('src', '') if img_ele else ''
 
-            # 获取时长
-            duration_ele = video_ele.ele(
-                "xpath:.//div[contains(@class, 'duration')]")
-            duration_text = duration_ele.text.strip() if duration_ele else ""
+            duration_ele = video_ele.find('div', class_=lambda x: x and 'duration' in x)
+            duration_text = duration_ele.get_text(strip=True) if duration_ele else ''
 
-            # 获取点赞率和点赞人数
             like_rate = ""
             views_text = ""
 
-            # 尝试新版 stats-container
-            stats_container = video_ele.ele("xpath:.//div[contains(@class, 'stats-container')]")
+            stats_container = video_ele.find('div', class_=lambda x: x and 'stats-container' in x)
             if stats_container:
-
-                # 点赞率
-                like_item = stats_container.ele("xpath:.//div[contains(@class, 'stat-item')][1]")
-                if like_item:
-                    like_text = like_item.text.strip()
-                    # 匹配 "100%"
+                stat_items = stats_container.find_all('div', class_=lambda x: x and 'stat-item' in x)
+                
+                if len(stat_items) >= 1:
+                    like_text = stat_items[0].get_text(strip=True)
                     rate_match = re.search(r'(\d+%)', like_text)
                     if rate_match:
                         like_rate = rate_match.group(1)
 
-                # 观看次数
-                views_item = stats_container.ele("xpath:.//div[contains(@class, 'stat-item')][2]")
-                if views_item:
-                    views_text = views_item.text.strip()
+                if len(stat_items) >= 2:
+                    views_item = stat_items[1]
+                    views_text = views_item.get_text(strip=True)
 
-            # 获取发行商信息
             studio = {}
-            studio_ele = video_ele.ele("xpath:.//div[contains(@class, 'subtitle')]//a")
+            subtitle_div = video_ele.find('div', class_=lambda x: x and 'subtitle' in x)
+            studio_ele = subtitle_div.find('a') if subtitle_div else None
+            
             if studio_ele:
-                full_text = studio_ele.text.strip()
+                full_text = studio_ele.get_text(strip=True)
                 studio_name = full_text.split("•")[0].strip() if "•" in full_text else full_text
-                studio_url = studio_ele.attr("href") if studio_ele else ""
-                # 从URL中提取查询参数
+                studio_url = studio_ele.get('href', '')
                 studio_query = studio_url.split("?")[1] if studio_url and "?" in studio_url else ""
 
                 studio = VideoStudio(
@@ -214,7 +198,6 @@ class VideoService:
                 duration=duration_text,
                 view_count=self._parse_views(views_text),
                 like_rate=like_rate,
-                # like_count=like_count,
                 studio=studio
             )
 
@@ -224,42 +207,32 @@ class VideoService:
             logger.error(f"提取视频信息错误: {str(e)}")
             return None
 
-
-    def _extract_detailed_video_info_old(self, video_ele) -> Optional[VideoPreview]:
+    def _extract_detailed_video_info_old(self, video_ele: Tag) -> Optional[VideoPreview]:
         """老版本，但是系列视频用的是老版本的"""
         try:
-            # 获取视频标题
-            title_elem = video_ele.s_ele("xpath:.//*[contains(@class, 'card-mobile-title')]")
-            video_title = (title_elem.text.strip() if title_elem else None) or ""
+            title_elem = video_ele.find(class_=lambda x: x and 'card-mobile-title' in x)
+            video_title = title_elem.get_text(strip=True) if title_elem else ''
 
-            # 获取视频链接
-            overlay_ele = video_ele.ele("xpath:.//a[@class='overlay']")
-            video_url = overlay_ele.attr("href") if overlay_ele else ""
+            overlay_ele = video_ele.find('a', class_='overlay')
+            video_url = overlay_ele.get('href', '') if overlay_ele else ''
 
             video_id = self._extract_video_id_from_url(video_url)
 
-            # 如果没有视频ID则跳过
             if not video_id:
                 return None
 
-            # 获取封面图
-            img_ele = video_ele.ele("xpath:.//img[contains(@style, 'object-fit: cover')]")
-            img_url = img_ele.attr("src") if img_ele else ""
+            img_ele = video_ele.find('img', style=lambda x: x and 'object-fit: cover' in x)
+            img_url = img_ele.get('src', '') if img_ele else ''
 
-            # 获取时长
-            duration_ele = video_ele.ele(
-                "xpath:.//div[contains(@class, 'card-mobile-duration') and contains(text(), ':')]")
-            duration_text = duration_ele.text.strip() if duration_ele else ""
+            duration_ele = video_ele.find('div', class_=lambda x: x and 'card-mobile-duration' in x and ':' in str(x))
+            duration_text = duration_ele.get_text(strip=True) if duration_ele else ''
 
-            # 获取点赞率和点赞人数
             like_rate = ""
             like_count = 0
-            like_ele = video_ele.ele(
-                "xpath:.//div[contains(@class, 'card-mobile-duration') and contains(., 'thumb_up')]")
-
-            if like_ele:
-                like_text = like_ele.text.strip()
-                # 格式如: 99%&nbsp;(723)
+            like_ele = video_ele.find('div', class_=lambda x: x and 'card-mobile-duration' in x)
+            
+            if like_ele and 'thumb_up' in str(like_ele):
+                like_text = like_ele.get_text(strip=True)
                 rate_match = re.search(r'(\d+)%', like_text)
                 if rate_match:
                     like_rate = rate_match.group(1) + "%"
@@ -268,20 +241,16 @@ class VideoService:
                 if count_match:
                     like_count = int(count_match.group(1))
 
-            # 获取观看次数
             views_text = ""
-            views_ele = video_ele.ele(
-                "xpath:.//div[contains(@class, 'card-mobile-duration') and contains(text(), '次')]")
+            views_ele = video_ele.find('div', class_=lambda x: x and 'card-mobile-duration' in x and '次' in str(x))
             if views_ele:
-                views_text = views_ele.text.strip()
+                views_text = views_ele.get_text(strip=True)
 
-            # 获取发行商信息
             studio = {}
-            studio_ele = video_ele.ele("xpath:.//a[contains(@class, 'card-mobile-user')]")
+            studio_ele = video_ele.find('a', class_=lambda x: x and 'card-mobile-user' in x)
             if studio_ele:
-                studio_name = studio_ele.text.strip()
-                studio_url = studio_ele.attr("href") if studio_ele else ""
-                # 从URL中提取查询参数
+                studio_name = studio_ele.get_text(strip=True)
+                studio_url = studio_ele.get('href', '')
                 studio_query = studio_url.split("?")[1] if studio_url and "?" in studio_url else ""
 
                 studio = VideoStudio(
@@ -306,21 +275,26 @@ class VideoService:
             logger.error(f"提取视频信息错误: {str(e)}")
             return None
 
-    def _extract_based_video_info(self, item) -> Optional[VideoBase]:
+    def _extract_based_video_info(self, item: Tag) -> Optional[VideoBase]:
         """从单个 基础视频 元素中提取信息"""
         try:
-            parent_link = item.s_ele("xpath:./parent::a")
-            href = (parent_link.attr("href") if parent_link else None) or ""
+            video_link = item.find('a', class_=lambda x: x and 'video-link' in x)
+            if not video_link:
+                video_link = item.find_parent('a')
+            
+            href = video_link.get('href', '') if video_link else ''
             rel_video_id = self._extract_video_id(href)
-            # 跳过非视频链接
             if not rel_video_id:
                 return None
 
-            title_elem = item.s_ele("xpath:.//div[contains(@class, 'home-rows-videos-title')]")
-            rel_title = (title_elem.text.strip() if title_elem else None) or ""
+            title_elem = item.find('div', class_=lambda x: x and 'home-rows-videos-title' in x)
+            if not title_elem:
+                title_elem = item.find('div', class_='title')
+            
+            rel_title = title_elem.get_text(strip=True) if title_elem else ''
 
-            img_elem = item.s_ele("xpath:.//img")
-            rel_cover_url = (img_elem.attr("src") if img_elem else None) or ""
+            img_elem = item.find('img')
+            rel_cover_url = img_elem.get('src', '') if img_elem else ''
 
             return VideoBase(
                 video_id=rel_video_id,
@@ -332,27 +306,23 @@ class VideoService:
             logger.exception(f"解析相关视频项错误: {str(e)}")
             return None
 
-    # 转换 观看次数
     def _parse_views(self, views_text: str) -> int:
         """解析观看次数文本"""
         if not views_text: return 0
-        # Handle "萬" and "千"
         num_part = views_text
         multiplier = 1
         if "萬" in views_text:
             num_part = views_text.split("萬")[0]
             multiplier = 10000
-        elif "千" in views_text:  # Assuming "千" for thousands
+        elif "千" in views_text:
             num_part = views_text.split("千")[0]
             multiplier = 1000
 
         try:
-            # Remove non-numeric parts except decimal for parsing float first
             num_str = re.sub(r'[^\d.]', '', num_part)
             if not num_str: return 0
             return int(float(num_str) * multiplier)
         except ValueError:
-            # Fallback for simple integer parsing if float conversion fails or no multiplier
             views_str_digits = re.sub(r'[^\d]', '', views_text)
             try:
                 return int(views_str_digits) if views_str_digits else 0
@@ -365,26 +335,20 @@ class VideoService:
             video_url = f"{settings.HANIME_BASE_URL}/watch?v={video_id}"
             page_content = await self.cf_bypasser.get_request(video_url)
 
-            # with open('videoDetail.html', 'w', encoding='utf-8') as f:
-            #     f.write(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            page_ele = make_session_ele(page_content)
+            video_elem = soup.find('video', id='player')
+            cover_url = video_elem.get('poster', '') if video_elem else ''
 
-            # 获取封面和默认视频URL
-            video_elem = page_ele.s_ele('xpath://video[@id="player"]')
-            cover_url = (video_elem.attr("poster") if video_elem else None) or ""
-
-            # 使用辅助方法提取流媒体URL
             stream_urls_list = self._extract_stream_urls(video_elem)
             default_video_url = stream_urls_list[0].url if stream_urls_list else ""
 
-            # 使用辅助方法提取发行商信息
-            video_studio = self._extract_studio_info(page_ele)
+            video_studio = self._extract_studio_info(soup)
 
-            # 获取视频类型
-            video_type_ele = page_ele.s_ele('xpath://*[@id="video-artist-name"]/following-sibling::a')
-            video_type_name = video_type_ele.text.strip() if video_type_ele else ""
-            video_type_url = video_type_ele.attr("href") if video_type_ele else ""
+            video_type_ele = soup.find(id='video-artist-name')
+            video_type_ele = video_type_ele.find_next_sibling('a') if video_type_ele else None
+            video_type_name = video_type_ele.get_text(strip=True) if video_type_ele else ''
+            video_type_url = video_type_ele.get('href', '') if video_type_ele else ''
             video_type_query = video_type_url.split("?")[1] if video_type_url and "?" in video_type_url else ""
 
             video_type = VideoType(
@@ -392,44 +356,37 @@ class VideoService:
                 query=to_simplified(video_type_query)
             )
 
-            # 获取标题、描述等基本信息
-            video_title_ele = page_ele.s_ele("xpath://*[@id='shareBtn-title']")
-            video_title = (video_title_ele.text.strip() if video_title_ele else None) or ""
+            video_title_ele = soup.find(id='shareBtn-title')
+            video_title = video_title_ele.get_text(strip=True) if video_title_ele else ''
 
-            description_wrapper_elem = page_ele.s_ele(
-                'xpath://*[@id="player-div-wrapper"]//div[contains(@class,"video-description-panel")]')
+            description_wrapper_elem = soup.find('div', class_=lambda x: x and 'video-description-panel' in x)
 
-            # 视频观看信息
-            video_views_ele = description_wrapper_elem.s_ele('xpath:./div[1]')
+            video_views_ele = description_wrapper_elem.find('div') if description_wrapper_elem else None
 
-            # 正则匹配观看次数和上传日期
-            views_match = re.search(r'(\d+(?:\.\d+)?(?:萬|千)?)次\s+(\d{4}-\d{2}-\d{2})', video_views_ele.text.strip())
+            views_match = None
             views_str = ""
             upload_date_str = ""
+
+            if video_views_ele:
+                views_match = re.search(r'(\d+(?:\.\d+)?(?:萬|千)?)次\s+(\d{4}-\d{2}-\d{2})', video_views_ele.get_text(strip=True))
 
             if views_match:
                 views_str = views_match.group(1)
                 upload_date_str = views_match.group(2)
 
-            # 副标题
-            subtitle_ele = description_wrapper_elem.s_ele('xpath:./div[2]')
-            subtitle = subtitle_ele.text.strip() if subtitle_ele else ""
+            subtitle_ele = description_wrapper_elem.find_all('div')[1] if description_wrapper_elem and len(description_wrapper_elem.find_all('div')) > 1 else None
+            subtitle = subtitle_ele.get_text(strip=True) if subtitle_ele else ''
 
-            # 描述
-            description_ele = description_wrapper_elem.s_ele('xpath:./div[3]')
-            description = description_ele.text.strip() if description_ele else ""
+            description_ele = description_wrapper_elem.find_all('div')[2] if description_wrapper_elem and len(description_wrapper_elem.find_all('div')) > 2 else None
+            description = description_ele.get_text(strip=True) if description_ele else ''
 
-            # 使用辅助方法提取标签
-            tags = self._extract_tags(page_ele)
+            tags = self._extract_tags(soup)
 
-            # 使用辅助方法提取系列视频
-            series_videos = self._extract_series_videos(page_ele)
+            series_videos = self._extract_series_videos(soup)
 
-            # 使用辅助方法提取相关视频（两种类型）
-            basic_related_videos = self._extract_related_videos_based(page_ele)
-            detailed_related_videos = self._extract_related_videos_detailed(page_ele)
+            basic_related_videos = self._extract_related_videos_based(soup)
+            detailed_related_videos = self._extract_related_videos_detailed(soup)
 
-            # 创建VideoDetail对象
             video_detail = VideoDetail(
                 video_id=video_id,
                 title=video_title,
@@ -451,13 +408,9 @@ class VideoService:
             return video_detail
 
         except Exception as e:
-            # import traceback
-            # traceback.print_exc()
             logger.error(f"获取视频详情错误: {str(e)}")
-
             return VideoDetail(video_id=video_id, title="")
 
-    # 获取视频评论
     async def get_video_comments(self, video_id: str) -> List[VideoComment]:
         """获取视频播放评论"""
         try:
@@ -470,80 +423,74 @@ class VideoService:
             respond = await self.cf_bypasser.get_request(video_load_comment_url, params=params)
             page_content = json.loads(respond).get("comments", "")
 
-            # 在外层包一层 html
             page_content = f"<html>{page_content}</html>"
-            page_ele = make_session_ele(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            if page_ele is None:
+            if not soup:
                 logger.error("解析评论错误: 无法获取评论元素")
                 return []
 
-            # 获取视频评论
             video_comments = []
-            # 获取所有的评论元素
-            comment_elements = page_ele.eles('xpath://*[@id="comment-like-form-wrapper"]')
+            comment_elements = soup.find_all(id=lambda x: x and 'comment-like-form-wrapper' in str(x))
 
             for comment_elem in comment_elements:
                 try:
-                    # 获取评论ID（如果没有评论回复，则没有评论ID）
                     comment_id = ""
-                    # 找到 包含 data-commentid 属性的div
-                    load_replies_btn = comment_elem.ele("xpath:.//div[@data-commentid]")
+                    load_replies_btn = comment_elem.find('div', attrs={'data-commentid': True})
                     if load_replies_btn:
-                        comment_id = load_replies_btn.attr("data-commentid")
+                        comment_id = load_replies_btn.get('data-commentid', '')
 
-                    # 获取用户头像
-                    user_avatar_ele = comment_elem.ele("xpath:./preceding-sibling::a[1]//img")
-                    user_avatar = user_avatar_ele.attr("src") if user_avatar_ele else ""
+                    user_avatar_ele = comment_elem.find_previous_sibling('a')
+                    user_avatar_ele = user_avatar_ele.find('img') if user_avatar_ele else None
+                    user_avatar = user_avatar_ele.get('src', '') if user_avatar_ele else ''
 
-                    # 获取用户名和评论时间
-                    username_ele = comment_elem.ele("xpath:./preceding-sibling::div[1]//div[contains(@class, 'comment-index-text')][1]//a")
-                    username_time_text = username_ele.text if username_ele else ""
+                    username_ele = comment_elem.find_previous_sibling('div')
+                    if username_ele:
+                        username_ele = username_ele.find('div', class_=lambda x: x and 'comment-index-text' in x)
+                        username_ele = username_ele.find('a') if username_ele else None
 
-                    # 分割用户名和时间
+                    username_time_text = username_ele.get_text(strip=True) if username_ele else ""
+
                     username = ""
                     comment_time = ""
                     if username_time_text:
-                        # 使用正则表达式分离用户名和时间
                         match = re.match(r'(.+?)(?:\s+(\d+.+))?$', username_time_text)
                         if match:
                             username = match.group(1).strip()
-                            # 如果从正则获取，使用它；否则从span标签获取
                             comment_time = match.group(2).strip() if match.group(2) else ""
 
-                    # 如果上面的方法没提取到时间，尝试从span标签获取
-                    if not comment_time:
-                        time_ele = username_ele.ele("xpath:.//span")
-                        comment_time = time_ele.text.strip() if time_ele else ""
+                    if not comment_time and username_ele:
+                        time_ele = username_ele.find('span')
+                        comment_time = time_ele.get_text(strip=True) if time_ele else ""
 
-                    # 获取评论内容
-                    comment_content_ele = comment_elem.ele("xpath:./preceding-sibling::div[1]//div[contains(@class, 'comment-index-text')][2]")
-                    comment_content = comment_content_ele.text.strip() if comment_content_ele else ""
+                    comment_content_ele = comment_elem.find_previous_sibling('div')
+                    if comment_content_ele:
+                        comment_content_ele = comment_content_ele.find_all('div', class_=lambda x: x and 'comment-index-text' in x)
+                        comment_content_ele = comment_content_ele[1] if len(comment_content_ele) > 1 else None
 
-                    # 获取点赞数
+                    comment_content = comment_content_ele.get_text(strip=True) if comment_content_ele else ''
+
                     like_count = 0
-                    like_ele = comment_elem.ele("xpath:.//div[contains(., 'thumb_up')]//span[2]")
+                    like_ele = comment_elem.find('div', text=lambda x: x and 'thumb_up' in str(x))
                     if like_ele:
-                        like_text = like_ele.text.strip()
-                        try:
-                            like_count = int(re.search(r'\d+', like_text).group()) if re.search(r'\d+',
-                                                                                                like_text) else 0
-                        except:
-                            like_count = 0
+                        like_span = like_ele.find('span')
+                        if like_span:
+                            like_text = like_span.get_text(strip=True)
+                            try:
+                                like_count = int(re.search(r'\d+', like_text).group()) if re.search(r'\d+', like_text) else 0
+                            except:
+                                like_count = 0
 
-                    # 获取回复数
                     reply_count = 0
-                    reply_btn = comment_elem.ele("xpath:.//div[contains(@class, 'load-replies-btn')]")
+                    reply_btn = comment_elem.find('div', class_=lambda x: x and 'load-replies-btn' in x)
                     if reply_btn:
-                        reply_text = reply_btn.text.strip()
+                        reply_text = reply_btn.get_text(strip=True)
                         try:
-                            # 直接提取数字
                             digits = re.findall(r'\d+', reply_text)
                             reply_count = int(digits[0]) if digits else 0
                         except:
                             reply_count = 0
 
-                    # 使用VideoComment模型
                     comment = VideoComment(
                         comment_id=comment_id,
                         user_avatar=user_avatar,
@@ -563,7 +510,6 @@ class VideoService:
             logger.error(f"获取视频评论错误: {str(e)}")
             return []
 
-    # 获取视频评论的相关回复
     async def get_comment_replies(self, comment_id: str) -> List[CommentReply]:
         """获取视频评论的相关回复"""
         try:
@@ -574,84 +520,69 @@ class VideoService:
             respond = await self.cf_bypasser.get_request(video_load_comment_url, params=params)
             page_content = json.loads(respond).get("replies", "")
 
-            # 在外层包一层 html
             page_content = f"<html>{page_content}</html>"
-            page_ele = make_session_ele(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            if page_ele is None:
+            if not soup:
                 logger.error("解析评论回复错误: 无法获取评论元素")
                 return []
 
-            # 获取评论回复的根元素
             replies_list = []
-            reply_root = page_ele.ele(f'xpath://*[@id="reply-start-{comment_id}"]')
+            reply_root = soup.find(id=f'reply-start-{comment_id}')
 
             if not reply_root:
                 logger.error(f"未找到评论回复的根元素: reply-start-{comment_id}")
                 return []
 
-            # 解析所有回复
-            # 使用直接的子元素选择器，不依赖style属性
-            # 找到所有回复内容的div，每个回复由两个div组成，第一个包含内容，第二个包含点赞信息
-            all_divs = reply_root.eles('xpath:./div')
+            all_divs = reply_root.find_all('div', recursive=False)
 
-            # 每两个div构成一个回复（内容div + 点赞div）
             for i in range(0, len(all_divs), 2):
                 try:
                     if i + 1 >= len(all_divs):
-                        # 确保我们有足够的div来处理一个完整的回复
                         break
 
-                    content_div = all_divs[i]  # 内容div
-                    like_div = all_divs[i + 1]  # 点赞div
+                    content_div = all_divs[i]
+                    like_div = all_divs[i + 1]
 
-                    # 获取用户头像
-                    user_avatar_ele = content_div.ele("xpath:.//img[contains(@class, 'img-circle')]")
-                    user_avatar = user_avatar_ele.attr("src") if user_avatar_ele else ""
+                    user_avatar_ele = content_div.find('img', class_=lambda x: x and 'img-circle' in x)
+                    user_avatar = user_avatar_ele.get('src', '') if user_avatar_ele else ''
 
-                    # 获取用户名和回复时间
-                    user_info_div = content_div.ele("xpath:.//div[contains(@class, 'comment-index-text')][1]")
-                    user_info_ele = user_info_div.ele("xpath:.//a") if user_info_div else None
-                    username_time_text = user_info_ele.text if user_info_ele else ""
+                    user_info_div = content_div.find('div', class_=lambda x: x and 'comment-index-text' in x)
+                    user_info_ele = user_info_div.find('a') if user_info_div else None
+                    username_time_text = user_info_ele.get_text(strip=True) if user_info_ele else ""
 
-                    # 分割用户名和时间
                     username = ""
                     reply_time = ""
                     if username_time_text:
-                        # 使用正则表达式分离用户名和时间
                         match = re.match(r'(.+?)(?:\s+(\d+.+))?$', username_time_text)
                         if match:
                             username = match.group(1).strip()
                             reply_time = match.group(2).strip() if match.group(2) else ""
 
-                    # 如果上面的方法没提取到时间，尝试从span标签获取
                     if not reply_time and user_info_ele:
-                        time_ele = user_info_ele.ele("xpath:.//span")
-                        reply_time = time_ele.text.strip() if time_ele else ""
+                        time_ele = user_info_ele.find('span')
+                        reply_time = time_ele.get_text(strip=True) if time_ele else ""
 
-                    # 获取回复内容
-                    content_ele = content_div.ele("xpath:.//div[contains(@class, 'comment-index-text')][2]")
-                    reply_content = content_ele.text.strip() if content_ele else ""
+                    content_ele_list = content_div.find_all('div', class_=lambda x: x and 'comment-index-text' in x)
+                    content_ele = content_ele_list[1] if len(content_ele_list) > 1 else None
+                    reply_content = content_ele.get_text(strip=True) if content_ele else ''
 
-                    # 获取点赞数
                     like_count = 0
-                    # 第一个div中的第二个span通常包含点赞数
-                    like_span = like_div.ele("xpath:.//div[1]//span[2]")
+                    like_span = like_div.find('div')
                     if like_span:
-                        like_text = like_span.text.strip()
-                        # 检查是否有display:none属性
-                        display_style = like_span.attr("style")
-                        if display_style and "display:none" in display_style:
-                            like_count = 0
-                        else:
-                            try:
-                                like_count = int(like_text) if like_text else 0
-                            except:
-                                # 如果不能直接转换，尝试提取数字
-                                digits = re.findall(r'-?\d+', like_text)
-                                like_count = int(digits[0]) if digits else 0
+                        like_span = like_span.find('span')
+                        if like_span:
+                            like_text = like_span.get_text(strip=True)
+                            display_style = like_span.get('style', '')
+                            if display_style and "display:none" in display_style:
+                                like_count = 0
+                            else:
+                                try:
+                                    like_count = int(like_text) if like_text else 0
+                                except:
+                                    digits = re.findall(r'-?\d+', like_text)
+                                    like_count = int(digits[0]) if digits else 0
 
-                    # 使用CommentReply模型
                     reply = CommentReply(
                         user_avatar=user_avatar,
                         username=username,
@@ -680,32 +611,27 @@ class VideoService:
     def _extract_video_id_from_image(self, url: str) -> str:
         """从图片URL中提取视频ID"""
         if not url: return ""
-        # https://vdownload.hembed.com/image/thumbnail/105277h..1pg?secure=7B0ISpEJXmdy5cRMl0QQKA==,1749868212
-        # 提取 105277
         match = re.search(r'/image/thumbnail/(\d+)', url)
         return match.group(1) if match else ""
 
     def _extract_video_id_from_url(self, video_url: str) -> str:
-        """从视频URL中提取视频ID """
+        """从视频URL中提取视频ID"""
         if not video_url: return ""
-        # https://hanime1.me/watch?v=109795
-        # 提取 109795
         match = re.search(r'/watch\?v=([^&]+)', video_url)
         return match.group(1) if match else ""
 
-    # 辅助方法，提取标签信息
-    def _extract_tags(self, page_ele) -> List[VideoTag]:
+    def _extract_tags(self, soup: BeautifulSoup) -> List[VideoTag]:
         """提取视频标签信息"""
         tags = []
-        tag_elements = page_ele.eles("xpath://*[contains(@class, 'single-video-tag')]//a[contains(@href, 'tags')]")
+        tag_elements = soup.find_all('a', class_=lambda x: x and 'single-video-tag' in str(x), href=lambda x: x and 'tags' in str(x))
         for tag_elem in tag_elements:
-            tag_text = (tag_elem.text.strip() if tag_elem else None) or ""
+            tag_text = tag_elem.get_text(strip=True) if tag_elem else ""
             tag_name = re.sub(r'\s*\(\d+\)$', '', tag_text)
 
-            href = (tag_elem.attr("href") if tag_elem else None) or ""
+            href = tag_elem.get('href', '') if tag_elem else ""
             tag_search_query = href.split("?")[1] if href and "?" in href else ""
             tag_search_query = tag_search_query.replace("%5B%5D", "")
-            if tag_name:  # 确保名称非空
+            if tag_name:
                 tags.append(
                     VideoTag(
                         name=to_simplified(tag_name),
@@ -714,21 +640,16 @@ class VideoService:
                 )
         return tags
 
-    # 辅助方法，提取视频流URL
-    def _extract_stream_urls(self, video_elem) -> List[VideoStreamUrl]:
+    def _extract_stream_urls(self, video_elem: Tag) -> List[VideoStreamUrl]:
         """提取视频流URL信息"""
         stream_urls_list = []
-        # 获取所有的 source 元素
-        source_elements = video_elem.eles("xpath:.//source") if video_elem else []
+        source_elements = video_elem.find_all('source') if video_elem else []
         for source_ele in source_elements:
-            # 获取 src 属性
-            source_url = source_ele.attr("src")
+            source_url = source_ele.get('src', '')
             if not source_url:
                 continue
-            # 获取 size 属性 (分辨率)
-            size = source_ele.attr("size") + "p" if source_ele.attr("size") else "unknown"
+            size = source_ele.get('size', '') + "p" if source_ele.get('size') else "unknown"
 
-            # 创建 StreamUrl 对象
             stream_urls_list.append(
                 VideoStreamUrl(
                     quality=size,
@@ -736,16 +657,16 @@ class VideoService:
                 ))
         return stream_urls_list
 
-    # 辅助方法，提取工作室/发行商信息
-    def _extract_studio_info(self, page_ele) -> VideoStudio:
+    def _extract_studio_info(self, soup: BeautifulSoup) -> VideoStudio:
         """提取视频发行商信息"""
-        studio_img_ele = page_ele.s_ele('xpath://*[@id="video-user-avatar"]/following-sibling::img')
-        studio_name_ele = page_ele.s_ele('xpath://*[@id="video-artist-name"]')
+        studio_img_ele = soup.find(id='video-user-avatar')
+        studio_img_ele = studio_img_ele.find_next_sibling('img') if studio_img_ele else None
+        
+        studio_name_ele = soup.find(id='video-artist-name')
 
-        # 发行商信息
-        studio_icon_url = studio_img_ele.attr("src") if studio_img_ele else ""
-        studio_name = studio_name_ele.text.strip() if studio_name_ele else ""
-        studio_url = studio_name_ele.attr("href") if studio_name_ele else ""
+        studio_icon_url = studio_img_ele.get('src', '') if studio_img_ele else ''
+        studio_name = studio_name_ele.get_text(strip=True) if studio_name_ele else ''
+        studio_url = studio_name_ele.get('href', '') if studio_name_ele else ''
         studio_query = studio_url.split("?")[1] if studio_url and "?" in studio_url else ""
 
         return VideoStudio(
@@ -755,16 +676,10 @@ class VideoService:
             query=studio_query
         )
 
-    # 辅助方法，提取相关视频信息
-    def _extract_related_videos_based(self, page_ele) -> List[VideoBase]:
+    def _extract_related_videos_based(self, soup: BeautifulSoup) -> List[VideoBase]:
         """提取相关视频信息"""
         related_videos = []
-
-        # with open('related.html', 'w', encoding='utf-8') as f:
-        #     f.write(page_ele.html)
-
-        related_items = page_ele.eles(
-            'xpath://*[@id="related-tabcontent"]//*[contains(@class, "home-rows-videos-div")]')
+        related_items = soup.find_all('div', class_=lambda x: x and 'home-rows-videos-div' in str(x))
 
         for item in related_items:
             video_info = self._extract_based_video_info(item)
@@ -773,11 +688,10 @@ class VideoService:
 
         return related_videos
 
-    def _extract_related_videos_detailed(self, page_ele) -> List[VideoPreview]:
+    def _extract_related_videos_detailed(self, soup: BeautifulSoup) -> List[VideoPreview]:
         """提取相关视频信息"""
         related_videos = []
-        related_items = page_ele.eles(
-            'xpath://*[@id="related-tabcontent"]//div[contains(@class, "related-doujin-videos")]')
+        related_items = soup.find_all('div', class_=lambda x: x and 'related-doujin-videos' in str(x))
 
         for video_ele in related_items:
             video_info = self._extract_detailed_video_info(video_ele)
@@ -786,16 +700,13 @@ class VideoService:
 
         return related_videos
 
-    # 辅助方法，提取系列视频信息
-    def _extract_series_videos(self, page_ele) -> List[VideoPreview]:
+    def _extract_series_videos(self, soup: BeautifulSoup) -> List[VideoPreview]:
         """提取系列视频信息"""
         series_videos = []
-        series_items = page_ele.eles(
-            'xpath://*[@id="player-div-wrapper"]//*[@id="playlist-scroll"]//*[contains(@class, "multiple-link-wrapper")]')
+        series_items = soup.find_all('div', class_=lambda x: x and 'multiple-link-wrapper' in str(x))
 
         for video_ele in series_items:
             video_info = self._extract_detailed_video_info_old(video_ele)
-
             if video_info:
                 series_videos.append(video_info)
 
@@ -807,56 +718,35 @@ class VideoService:
             search_combination_url = f"{settings.HANIME_BASE_URL}/search"
             page_content = await self.cf_bypasser.get_request(search_combination_url)
 
-            # with open('searchDetail.html', 'w', encoding='utf-8') as f:
-            #     f.write(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            page_ele = make_session_ele(page_content)
+            video_types_eles = soup.select("#genre-modal .hentai-sort-options")
+            video_types = [ele.get_text(strip=True) for ele in video_types_eles]
 
-            # 获取影片类型
-            video_types_eles = page_ele.s_eles("xpath://div[@id='genre-modal']//div[@class='hentai-sort-options']")
-            video_types = []
-            for video_type_ele in video_types_eles:
-                video_type_name = video_type_ele.text.strip()
-                video_types.append(video_type_name)
-
-            # 获取标签类型
             tags_dict = {}
-
-            # 找到所有h5和label元素
-            all_elements = page_ele.s_eles(
-                "xpath://div[@id='tags']//div[@class='modal-body']//*[self::h5 or self::label]")
+            all_elements = soup.select("#tags .modal-body h5, #tags .modal-body label")
 
             current_category = None
             current_tags = []
 
-            # 遍历所有元素，按h5分组
             for element in all_elements:
-                tag_name = element.tag
+                tag_name = element.name
 
                 if tag_name == "h5":
-                    # 如果遇到新的h5，保存前一个分类的标签
                     if current_category and current_tags:
                         tags_dict[current_category] = current_tags
-
-                    # 开始新的分类
-                    current_category = element.text.strip()
+                    current_category = element.get_text(strip=True)
                     current_tags = []
                 elif tag_name == "label" and current_category:
-                    # 将标签添加到当前分类
-                    tag_text = element.text.strip()
+                    tag_text = element.get_text(strip=True)
                     if tag_text:
                         current_tags.append(tag_text)
 
-            # 添加最后一个分类
             if current_category and current_tags:
                 tags_dict[current_category] = current_tags
 
-            # 获取排序方式
-            sort_by_eles = page_ele.s_eles("xpath://div[@id='sort-modal']//div[@class='hentai-sort-options']")
-            sort_by_options = []
-            for sort_by_ele in sort_by_eles:
-                sort_by_name = sort_by_ele.text.strip()
-                sort_by_options.append(sort_by_name)
+            sort_by_eles = soup.select("#sort-modal .hentai-sort-options")
+            sort_by_options = [ele.get_text(strip=True) for ele in sort_by_eles]
 
             return SearchCombination(
                 video_types=convert_list(video_types),
@@ -878,50 +768,30 @@ class VideoService:
                             month: Optional[int],
                             page: int
                             ) -> SearchResults:
-        """搜索视频
-
-        Args:
-            query: 搜索关键词
-            genre: 视频类型过滤
-            tags: 标签过滤
-            broad: 宽泛搜索
-            sort: 排序方式
-            year: 年份
-            month: 月份
-            page: 页码
-
-        Returns:
-            SearchResults: 搜索结果
-        """
+        """搜索视频"""
         try:
             search_url = f"{settings.HANIME_BASE_URL}/search"
 
-            # 构建搜索参数
             params = {}
 
-            # 添加查询关键词
             if query:
                 params["query"] = query
 
-            # 添加视频类型
             if genre:
                 params["genre"] = genre
 
-            # 添加标签过滤
             if tags and len(tags) > 0:
                 for i, tag in enumerate(tags):
                     params[f"tags[{i}]"] = tag
 
-            # 添加排序方式
             if sort:
                 params["sort"] = sort
 
-            # 添加页码
             if page > 1:
                 params["page"] = str(page)
 
             if broad:
-                params["broad"] = "on"  # 宽泛搜索
+                params["broad"] = "on"
 
             if year:
                 params["year"] = year
@@ -929,38 +799,31 @@ class VideoService:
             if month:
                 params["month"] = month
 
-            # 发送请求
             page_content = await self.cf_bypasser.get_request(search_url, params=params)
-
-            # with open('searchDetail.html', 'w', encoding='utf-8') as f:
-            #     f.write(page_content)
 
             if not page_content:
                 logger.error("搜索视频失败: 无法获取页面内容")
                 return SearchResults()
 
-            page_ele = make_session_ele(page_content)
+            soup = BeautifulSoup(page_content, 'lxml')
 
-            # 提取视频总数
-            pages_ele = page_ele.s_ele("xpath://ul[@class='pagination']")
+            pages_ele = soup.find('ul', class_='pagination')
             total_pages = 0
-            # 检查是否有下一页
             has_next = False
 
             if pages_ele:
-                # 获取倒数第二个li元素
-                last_page_li = pages_ele.eles("xpath:.//li")[-2]
-                total_pages = int(last_page_li.text.strip()) if last_page_li.text.strip().isdigit() else 0
+                li_elements = pages_ele.find_all('li')
+                if len(li_elements) >= 2:
+                    last_page_li = li_elements[-2]
+                    total_pages = int(last_page_li.get_text(strip=True)) if last_page_li.get_text(strip=True).isdigit() else 0
 
                 if total_pages > page:
                     has_next = True
 
             detailed_video_list = []
-            # 获取所有含有title属性的div
-            video_elements = page_ele.eles('xpath://*[@id="home-rows-wrapper"]//div[@title]')
+            video_elements = soup.select('#home-rows-wrapper div[title]')
 
             if video_elements:
-                # 每隔一个取一个（取第1、3、5...个）
                 for i in range(0, len(video_elements), 2):
                     video_ele = video_elements[i]
                     video_info = self._extract_detailed_video_info(video_ele)
@@ -968,9 +831,7 @@ class VideoService:
                         detailed_video_list.append(video_info)
 
             basic_video_list = []
-            # 提取基本视频信息（可能是另一种布局）
-            video_elements = page_ele.eles(
-                'xpath://*[@id="home-rows-wrapper"]//*[contains(@class, "home-rows-videos-div")]')
+            video_elements = soup.select('#home-rows-wrapper [class*="video-item-container"]')
 
             if video_elements:
                 for video_ele in video_elements:
@@ -978,7 +839,6 @@ class VideoService:
                     if video_info:
                         basic_video_list.append(video_info)
 
-            # 创建搜索结果
             return SearchResults(
                 total_pages=total_pages,
                 page=page,

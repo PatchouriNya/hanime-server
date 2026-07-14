@@ -10,6 +10,7 @@ import time
 from app.api.routes import api_router
 from app.config import settings, logger
 from app.utils.cloudflare_bypass import cf_bypasser
+from app.services.user_service import user_service
 
 
 def log_proxy_status():
@@ -40,6 +41,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"启动 {settings.APP_NAME} 服务")
 
     log_proxy_status()
+
+    await user_service.initialize()
+    logger.info("用户数据库初始化完成")
 
     yield
 

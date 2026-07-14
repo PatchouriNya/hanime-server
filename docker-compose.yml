@@ -1,29 +1,24 @@
 services:
   app:
-    image: heisenyu/hanime-server:latest
+    build: .
+    image: ghcr.io/PatchouriNya/hanime-server:latest
     container_name: hanime-server
     restart: unless-stopped
-    depends_on:
-      - cf-bypass
     environment:
       - USE_PROXY=${USE_PROXY:-false}
       - PROXY_URL=${PROXY_URL:-}
-      - CLOUDFLARE_BYPASS_SERVICE_URL=http://cf-bypass:8000
+      - PYTHONOPTIMIZE=2
+      - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - ./data/downloads:/app/backend/downloads
       - ./data/db:/app/backend/db
     ports:
       - "7788:7788"
-
-  cf-bypass:
-    image: ghcr.io/sarperavci/cloudflarebypassforscraping:latest
-    container_name: cf-bypass
-    restart: unless-stopped
-    environment:
-      - WORKERS=1
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: '1.0'
-    shm_size: 1g
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'

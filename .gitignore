@@ -1,32 +1,18 @@
-# General
-.DS_Store
-Thumbs.db
+node_modules/
+dist/
+*.log
+.env
+.env.local
+data/
+downloads/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
 .idea/
 .vscode/
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Dependencies
-node_modules/
-.pnpm-store
-
-# Build
-dist/
-build/
-*.local
-
-# Environment Variables
-.env
-.env.*
-!.env.example
-
-# Backend Specific
-backend/db/
-backend/downloads/
-
-*.sqlite
-*.ps1
+*.swp
+*.swo
+.DS_Store

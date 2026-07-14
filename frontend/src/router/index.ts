@@ -32,6 +32,31 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('../views/Downloads.vue')
     },
     {
+        path: '/favorites',
+        name: 'Favorites',
+        component: () => import('../views/Favorites.vue')
+    },
+    {
+        path: '/watch-later',
+        name: 'WatchLater',
+        component: () => import('../views/WatchLater.vue')
+    },
+    {
+        path: '/playlists',
+        name: 'Playlists',
+        component: () => import('../views/Playlists.vue')
+    },
+    {
+        path: '/history',
+        name: 'WatchHistory',
+        component: () => import('../views/WatchHistory.vue')
+    },
+    {
+        path: '/settings',
+        name: 'Settings',
+        component: () => import('../views/Settings.vue')
+    },
+    {
         path: '/:pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('../views/NotFound.vue')

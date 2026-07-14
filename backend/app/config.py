@@ -47,7 +47,7 @@ class Settings(BaseModel):
     USER_AGENT: str = os.getenv("USER_AGENT","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
     # 代理设置
-    USE_PROXY: bool = os.getenv("USE_PROXY", "True").lower() in ("true", "1", "t")
+    USE_PROXY: bool = os.getenv("USE_PROXY", "False").lower() in ("true", "1", "t")
     PROXY_URL: Optional[str] = os.getenv("PROXY_URL")
 
     # 视频下载专用代理设置
@@ -64,6 +64,15 @@ class Settings(BaseModel):
 
 
 settings = Settings()
+
+# 代理配置验证：当USE_PROXY=true但PROXY_URL为空时，自动禁用代理
+if settings.USE_PROXY and not settings.PROXY_URL:
+    logger.warning("USE_PROXY=true 但 PROXY_URL 未配置，自动禁用代理")
+    settings.USE_PROXY = False
+
+if settings.USE_DOWNLOAD_PROXY and not settings.DOWNLOAD_PROXY_URL:
+    logger.warning("USE_DOWNLOAD_PROXY=true 但 DOWNLOAD_PROXY_URL 未配置，自动禁用下载代理")
+    settings.USE_DOWNLOAD_PROXY = False
 
 # 打印下载目录信息
 logger.info(f"下载目录: {settings.DOWNLOAD_PATH}")
