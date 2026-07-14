@@ -30,7 +30,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ toLower(github.repository_owner) }}/hanime-server:latest
+        tags: ghcr.io/${{ toLowercase(github.repository_owner) }}/hanime-server:latest
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
