@@ -10,6 +10,10 @@ RUN npx vite build && rm -rf node_modules .git
 
 FROM python:3.10-alpine
 
+LABEL org.opencontainers.image.source=https://github.com/PatchouriNya/hanime-server
+LABEL org.opencontainers.image.description="Hanime Server - A self-hosted anime video server"
+LABEL org.opencontainers.image.licenses=MIT
+
 ENV TZ=Asia/Shanghai \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

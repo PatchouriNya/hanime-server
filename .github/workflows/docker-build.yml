@@ -7,13 +7,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write  # 确保有写入权限
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
-
-    - name: Set lowercase repository owner
-      run: echo "REPO_OWNER_LOWER=patchourinya" >> $GITHUB_ENV
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -33,7 +34,9 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ env.REPO_OWNER_LOWER }}/hanime-server:latest
+        tags: ghcr.io/${{ github.repository }}:latest
+        # 这里会变成 ghcr.io/patchourinya/hanime-server:latest
+        # 注意：github.repository 会自动转为小写
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
