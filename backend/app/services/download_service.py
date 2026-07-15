@@ -77,7 +77,8 @@ class DownloadManager:
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("""
             CREATE TABLE IF NOT EXISTS downloads (
-                video_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                video_id TEXT NOT NULL,
                 filename TEXT NOT NULL,
                 title TEXT,
                 cover_url TEXT,
@@ -89,23 +90,40 @@ class DownloadManager:
                 completed_at TIMESTAMP,
                 error_message TEXT,
                 retry_count INTEGER DEFAULT 0,
-                max_retries INTEGER DEFAULT 3
+                max_retries INTEGER DEFAULT 3,
+                PRIMARY KEY (username, video_id)
             )
             """)
+            
+            # 迁移：为旧表添加可能缺失的列
+            migrations = [
+                ("username", "TEXT NOT NULL DEFAULT 'admin'"),
+                ("title", "TEXT"),
+                ("cover_url", "TEXT"),
+            ]
+            for col_name, col_type in migrations:
+                try:
+                    await conn.execute(f"ALTER TABLE downloads ADD COLUMN {col_name} {col_type}")
+                except:
+                    pass  # 列已存在则忽略
+            
             await conn.commit()
     
-    async def get_download_history(self) -> List[Dict[str, Any]]:
+    async def get_download_history(self, username: str) -> List[Dict[str, Any]]:
         """获取下载历史"""
+        await self.init_db()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM downloads ORDER BY created_at DESC"
+                "SELECT * FROM downloads WHERE username = ? ORDER BY created_at DESC",
+                (username,)
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 
     async def load_downloads(self):
         """从数据库加载下载历史"""
+        await self.init_db()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -201,6 +219,7 @@ class DownloadManager:
 
     async def update_db(self, video_id: str, **kwargs):
         """更新数据库中的下载记录"""
+        await self.init_db()
         set_clause = ", ".join(f"{k} = ?" for k in kwargs.keys())
         values = list(kwargs.values())
         async with aiosqlite.connect(self.db_path) as db:
@@ -764,6 +783,7 @@ class DownloadManager:
 
     async def retry_download(self, video_id: str):
         """重试下载"""
+        await self.init_db()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -872,22 +892,24 @@ class DownloadManager:
         
         return False
 
-    async def check_existing_download(self, video_id: str) -> Optional[Dict[str, Any]]:
+    async def check_existing_download(self, video_id: str, username: str) -> Optional[Dict[str, Any]]:
         """检查是否存在相同的下载"""
+        await self.init_db()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM downloads WHERE video_id = ?",
-                (video_id,)
+                "SELECT * FROM downloads WHERE username = ? AND video_id = ?",
+                (username, video_id)
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
                     return dict(row)
         return None
 
-    async def delete_download(self, video_id: str) -> bool:
+    async def delete_download(self, video_id: str, username: str) -> bool:
         """删除下载记录和文件"""
         try:
+            await self.init_db()
             # 先检查下载是否处于活跃状态，如果是，先尝试取消
             if video_id in self.active_downloads and self.active_downloads[video_id].status in ['downloading', 'paused', 'pending']:
                 logger.info(f"删除前自动取消下载: {video_id}")
@@ -898,8 +920,8 @@ class DownloadManager:
             async with aiosqlite.connect(self.db_path) as db:
                 # 获取文件名
                 async with db.execute(
-                    "SELECT filename, status FROM downloads WHERE video_id = ?",
-                    (video_id,)
+                    "SELECT filename, status FROM downloads WHERE username = ? AND video_id = ?",
+                    (username, video_id)
                 ) as cursor:
                     row = await cursor.fetchone()
                     if not row:
@@ -919,7 +941,7 @@ class DownloadManager:
                         # 继续删除数据库记录，即使文件删除失败
                 
                 # 删除数据库记录
-                await db.execute("DELETE FROM downloads WHERE video_id = ?", (video_id,))
+                await db.execute("DELETE FROM downloads WHERE username = ? AND video_id = ?", (username, video_id))
                 await db.commit()
                 logger.info(f"从数据库删除下载记录: {video_id}")
 
@@ -940,14 +962,15 @@ class DownloadManager:
             logger.error(f"删除下载失败: {str(e)}")
             return False
 
-    async def start_download(self, video_id: str, force: bool = False):
+    async def start_download(self, video_id: str, username: str, force: bool = False):
         """
         启动下载
         :param video_id: 视频ID
+        :param username: 用户名
         :param force: 是否强制重新下载已存在的视频
         """
         # 先检查是否有相同ID的下载记录
-        existing_download = await self.check_existing_download(video_id)
+        existing_download = await self.check_existing_download(video_id, username)
         
         if existing_download and not force:
                 return {
@@ -957,7 +980,7 @@ class DownloadManager:
                 }
         elif existing_download and force:
             # 删除现有下载
-            await self.delete_download(video_id)
+            await self.delete_download(video_id, username)
             
         try:
             # 获取视频详情
@@ -996,8 +1019,9 @@ class DownloadManager:
             # 写入数据库（
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute(
-                    "INSERT OR REPLACE INTO downloads (video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
+                        username,
                         video_id, 
                         video_detail.title, 
                         filename, 

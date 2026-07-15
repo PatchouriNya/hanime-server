@@ -16,12 +16,13 @@
 
     <div class="horizontal-scroll">
       <video-card
-          v-for="video in videos"
+          v-for="(video, index) in videos"
           :key="video.video_id"
           :video="video"
           :thumbnail-class="thumbnailClass"
           :custom-class="'horizontal-item ' + itemClass"
           :single-line-title="thumbnailClass === 'landscape'"
+          :style="{ animationDelay: `${index * 50}ms` }"
           @click="(videoId) => $emit('video-click', videoId)"
       />
     </div>

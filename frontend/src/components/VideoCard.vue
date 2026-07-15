@@ -4,13 +4,22 @@
     :class="customClass"
     @click="$emit('click', video.video_id)"
   >
-    <div class="video-thumbnail" :class="thumbnailClass">
+    <div class="video-thumbnail" :class="[thumbnailClass, { 'blur-cover': shouldBlur && blurMode === 'blur', 'hide-cover': shouldBlur && blurMode === 'hide' }]">
       <img
         :src="video.cover_url"
         :alt="video.title"
         loading="lazy"
         referrerpolicy="no-referrer"
+        :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
       />
+      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
+        <el-icon :size="32" class="blur-icon"><View /></el-icon>
+        <span class="blur-text">已屏蔽</span>
+      </div>
+      <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
+        <el-icon :size="48" class="hide-icon"><Hide /></el-icon>
+        <span class="hide-text">图片已隐藏</span>
+      </div>
       <div v-if="isVideoPreview(video)" class="video-duration">{{ video.duration }}</div>
       <div v-if="isVideoPreview(video) && video.view_count" class="video-views-badge">
         <el-icon><View /></el-icon> {{ formatViewCount(video.view_count) }}
@@ -23,7 +32,7 @@
         <span v-if="video.like_count" class="like-count">({{ video.like_count }})</span>
       </div>
       <div class="play-overlay">
-        <el-icon v-if="showPlayIcon" :size="48"><VideoPlay /></el-icon>
+        <el-icon v-if="showPlayIcon && !(shouldBlur && blurMode === 'hide')" :size="48"><VideoPlay /></el-icon>
       </div>
     </div>
     <div class="video-info">
@@ -38,13 +47,15 @@
 <script lang="ts">
 import {defineComponent, PropType} from 'vue';
 import {VideoBase, VideoPreview} from '../types/video';
-import { View, VideoPlay } from '@element-plus/icons-vue';
+import { View, VideoPlay, Hide } from '@element-plus/icons-vue';
+import { useContentSettings } from '../composables/useContentSettings';
 
 export default defineComponent({
   name: 'VideoCard',
   components: {
     View,
-    VideoPlay
+    VideoPlay,
+    Hide
   },
   props: {
     video: {
@@ -74,12 +85,12 @@ export default defineComponent({
   },
   emits: ['click'],
   setup() {
-    // 类型守卫：检查是否为VideoPreview类型
+    const { shouldBlur, mode } = useContentSettings();
+
     const isVideoPreview = (video: VideoBase | VideoPreview): video is VideoPreview => {
       return 'duration' in video || 'view_count' in video || 'like_rate' in video || 'studio' in video;
     };
 
-    // 格式化观看次数
     const formatViewCount = (count: number): string => {
       if (!count) return '0';
       if (count >= 10000) {
@@ -92,7 +103,9 @@ export default defineComponent({
 
     return {
       isVideoPreview,
-      formatViewCount
+      formatViewCount,
+      shouldBlur,
+      blurMode: mode
     };
   }
 });
@@ -101,13 +114,25 @@ export default defineComponent({
 <style scoped>
 .video-card {
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   background-color: var(--bg-secondary-color);
+  animation: cardFadeInUp 0.5s ease-out forwards;
+}
+
+@keyframes cardFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .video-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 }
 
 .video-thumbnail.landscape {
@@ -131,11 +156,80 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.5s;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .video-card:hover .video-thumbnail img {
-  transform: scale(1.05);
+  transform: scale(1.1);
+}
+
+.video-thumbnail img.blurred {
+  filter: blur(20px) brightness(0.8);
+  transform: scale(1.1);
+}
+
+.blur-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px) saturate(180%);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  z-index: 3;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.blur-icon {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 8px;
+}
+
+.blur-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+.hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-secondary-color) 0%, var(--bg-color) 100%);
+  z-index: 3;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.hide-icon {
+  color: var(--text-secondary-color);
+  margin-bottom: 8px;
+}
+
+.hide-text {
+  color: var(--text-secondary-color);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .play-overlay {
@@ -144,21 +238,30 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: rgba(0, 0, 0, 0.4);
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(0px);
 }
 
 .play-overlay .el-icon {
   color: white;
-  opacity: 0.8;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .video-card:hover .play-overlay {
   opacity: 1;
+  backdrop-filter: blur(2px);
+}
+
+.video-card:hover .play-overlay .el-icon {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* 时长、点赞率和播放次数徽章的共同样式 */

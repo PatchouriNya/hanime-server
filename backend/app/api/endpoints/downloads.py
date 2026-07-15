@@ -4,6 +4,7 @@ from app.models.download import DownloadRequest, DownloadAction
 from typing import List, Dict, Any, Optional
 from app.config import settings, logger
 from fastapi.responses import FileResponse
+from app.utils.auth import get_current_user
 import os
 
 router = APIRouter()
@@ -38,22 +39,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @router.get("/history")
-async def get_download_history() -> List[Dict[str, Any]]:
+async def get_download_history(user: dict = Depends(get_current_user)) -> List[Dict[str, Any]]:
     """获取下载历史记录"""
-    return await download_manager.get_download_history()
+    return await download_manager.get_download_history(user["username"])
 
 
 @router.post("/start")
-async def start_download(download_request: DownloadRequest):
+async def start_download(download_request: DownloadRequest, user: dict = Depends(get_current_user)):
     """开始下载视频"""
     return await download_manager.start_download(
         download_request.video_id,
+        user["username"],
         download_request.force
     )
 
 
 @router.post("/action")
-async def handle_download_action(action: DownloadAction):
+async def handle_download_action(action: DownloadAction, user: dict = Depends(get_current_user)):
     """处理下载操作(暂停/继续/取消/重试/删除)"""
     video_id = action.video_id
     action_type = action.action.lower()
@@ -72,17 +74,17 @@ async def handle_download_action(action: DownloadAction):
         success = await download_manager.retry_download(video_id)
         result = {"status": "success" if success else "error", "message": "重试操作处理完成" if success else "操作失败"}
     elif action_type == "delete":
-        success = await download_manager.delete_download(video_id)
+        success = await download_manager.delete_download(video_id, user["username"])
         result = {"status": "success" if success else "error", "message": "删除操作处理完成" if success else "操作失败"}
     
     return result
 
 
 @router.get("/file/{video_id}")
-async def get_downloaded_file(video_id: str):
+async def get_downloaded_file(video_id: str, user: dict = Depends(get_current_user)):
     """获取已下载的文件"""
     # 检查视频是否存在且已下载完成
-    download_info = await download_manager.check_existing_download(video_id)
+    download_info = await download_manager.check_existing_download(video_id, user["username"])
     if not download_info:
         return {"status": "error", "message": "下载记录不存在"}
     

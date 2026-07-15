@@ -7,7 +7,10 @@
       <button v-if="showBackButton" class="back-button" @click="goBack">
         <el-icon :size="24"><Back /></el-icon>
       </button>
-      <h1 class="app-title" @click="goToHome">Han1meViewer</h1>
+      <div class="title-wrapper">
+        <h1 class="app-title" @click="goToHome">HanimeViewer</h1>
+        <span class="version-badge">v2.0.1</span>
+      </div>
     </div>
     <div class="header-right">
       <button class="theme-button" @click="toggleTheme">
@@ -22,6 +25,9 @@
       <button class="search-button" @click="goToSearch">
         <el-icon :size="24"><Search /></el-icon>
       </button>
+      <button class="changelog-button" @click="goToChangelog">
+        <el-icon :size="24"><Document /></el-icon>
+      </button>
     </div>
   </header>
 </template>
@@ -29,7 +35,7 @@
 <script lang="ts">
 import { defineComponent, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Menu, Back, Calendar, Search, Moon, Sunny } from '@element-plus/icons-vue';
+import { Menu, Back, Calendar, Search, Moon, Sunny, Document } from '@element-plus/icons-vue';
 import { mitt } from '../utils/mitt';
 
 export default defineComponent({
@@ -40,7 +46,8 @@ export default defineComponent({
     Calendar,
     Search,
     Moon,
-    Sunny
+    Sunny,
+    Document
   },
   props: {
     sidebarOpen: {
@@ -90,6 +97,10 @@ export default defineComponent({
       router.push('/search');
     };
 
+    const goToChangelog = () => {
+      router.push('/changelog');
+    };
+
     return {
       showBackButton,
       toggleSidebar,
@@ -97,7 +108,8 @@ export default defineComponent({
       goBack,
       goToHome,
       goToCalendar,
-      goToSearch
+      goToSearch,
+      goToChangelog
     };
   }
 });
@@ -123,7 +135,7 @@ export default defineComponent({
   gap: 12px;
 }
 
-.menu-button, .back-button, .calendar-button, .search-button, .theme-button {
+.menu-button, .back-button, .calendar-button, .search-button, .theme-button, .changelog-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,8 +148,15 @@ export default defineComponent({
   transition: background-color 0.2s;
 }
 
-.menu-button:hover, .back-button:hover, .calendar-button:hover, .search-button:hover, .theme-button:hover {
+.menu-button:hover, .back-button:hover, .calendar-button:hover, .search-button:hover, .theme-button:hover, .changelog-button:hover {
   background-color: var(--hover-bg-color);
+}
+
+.title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 
 .app-title {
@@ -145,8 +164,21 @@ export default defineComponent({
   font-size: 24px;
   font-weight: bold;
   color: var(--primary-color);
-  cursor: pointer;
-  margin-left: 5px;
+}
+
+.version-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  background-color: var(--primary-color);
+  color: white;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.title-wrapper:hover .version-badge {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.4);
 }
 
 .header-right {

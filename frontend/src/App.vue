@@ -3,11 +3,14 @@ import { ref, onMounted, watch } from 'vue';
 import AppHeader from "./components/AppHeader.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import './assets/styles/common.css';
+import './assets/styles/animations.css';
 import { useDownloadStore } from './stores/download';
+import { useRouter } from 'vue-router';
 
 const sidebarOpen = ref(false);
 const theme = ref(localStorage.getItem('theme') || 'dark');
 const downloadStore = useDownloadStore();
+const router = useRouter();
 
 // 切换侧边栏
 const toggleSidebar = () => {
@@ -24,6 +27,15 @@ const toggleTheme = () => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
   localStorage.setItem('theme', theme.value);
   setTheme();
+};
+
+// 登出
+const handleLogout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('tokenType');
+  localStorage.removeItem('username');
+  localStorage.removeItem('loginTime');
+  router.push('/login');
 };
 
 // 应用主题到 HTML 元素
@@ -52,8 +64,10 @@ onMounted(() => {
   }
   setTheme();
   
-  // 初始化下载存储和WebSocket连接
-  downloadStore.initializeDownloads();
+  // 仅已登录时初始化下载存储和WebSocket连接
+  if (localStorage.getItem('token')) {
+    downloadStore.initializeDownloads();
+  }
 });
 </script>
 
@@ -70,10 +84,13 @@ onMounted(() => {
       :is-open="sidebarOpen"
       @close="closeSidebar"
       @toggle-theme="toggleTheme"
+      @logout="handleLogout"
     />
     
     <main class="app-content">
-      <router-view/>
+      <transition name="page" mode="out-in">
+        <router-view :key="$route.fullPath" />
+      </transition>
     </main>
 
     <footer class="app-footer">
@@ -120,5 +137,41 @@ body {
 /* Element Plus 图标全局样式 */
 .el-icon {
   vertical-align: middle;
+}
+
+/* 路由切换动画 */
+.page-enter-active,
+.page-leave-active {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.page-enter-active {
+  transition-delay: 50ms;
+}
+
+/* 页面加载骨架屏 */
+.skeleton-loader {
+  background: linear-gradient(90deg, var(--bg-secondary-color) 25%, var(--hover-bg-color) 50%, var(--bg-secondary-color) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 </style>

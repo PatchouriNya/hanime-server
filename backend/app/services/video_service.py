@@ -153,8 +153,30 @@ class VideoService:
     def _extract_detailed_video_info(self, video_ele: Tag) -> Optional[VideoPreview]:
         """从单个 详细视频 元素中提取信息"""
         try:
-            title_elem = video_ele.find(class_=lambda x: x and 'title' in x)
-            video_title = title_elem.get_text(strip=True) if title_elem else ''
+            video_title = ""
+            
+            title_selectors = [
+                video_ele.find('div', class_=lambda x: x and 'home-rows-videos-title' in x),
+                video_ele.find('div', class_=lambda x: x and 'card-mobile-title' in x),
+                video_ele.find('div', class_=lambda x: x and 'title' in x and not 'thumbnail' in x and not 'duration' in x),
+                video_ele.find('span', class_=lambda x: x and 'title' in x),
+                video_ele.find('h3'),
+                video_ele.find('h4'),
+                video_ele.find('a', class_=lambda x: x and 'video-link' in x),
+                video_ele.find_parent('a'),
+            ]
+            
+            for title_elem in title_selectors:
+                if title_elem:
+                    text = title_elem.get_text(strip=True)
+                    if text and len(text) > 1:
+                        video_title = text
+                        break
+            
+            if not video_title:
+                img_elem = video_ele.find('img')
+                if img_elem:
+                    video_title = img_elem.get('alt', '') or img_elem.get('title', '')
 
             overlay_ele = video_ele.find('a', class_=lambda x: x and 'video-link' in x)
             video_url = overlay_ele.get('href', '') if overlay_ele else ''
@@ -298,11 +320,29 @@ class VideoService:
             if not rel_video_id:
                 return None
 
-            title_elem = item.find('div', class_=lambda x: x and 'home-rows-videos-title' in x)
-            if not title_elem:
-                title_elem = item.find('div', class_='title')
-
-            rel_title = title_elem.get_text(strip=True) if title_elem else ''
+            rel_title = ""
+            
+            title_selectors = [
+                item.find('div', class_=lambda x: x and 'home-rows-videos-title' in x),
+                item.find('div', class_=lambda x: x and 'card-mobile-title' in x),
+                item.find('div', class_='title'),
+                item.find('span', class_='title'),
+                item.find('h3'),
+                item.find('h4'),
+                video_link,
+            ]
+            
+            for title_elem in title_selectors:
+                if title_elem:
+                    text = title_elem.get_text(strip=True)
+                    if text and len(text) > 1:
+                        rel_title = text
+                        break
+            
+            if not rel_title:
+                img_elem = item.find('img')
+                if img_elem:
+                    rel_title = img_elem.get('alt', '') or img_elem.get('title', '')
 
             img_elem = item.find('img')
             rel_cover_url = img_elem.get('src', '') if img_elem else ''

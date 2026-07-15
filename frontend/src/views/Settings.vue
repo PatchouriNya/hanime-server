@@ -59,8 +59,9 @@
           <el-form-item label="代理地址" :disabled="!proxyForm.useProxy">
             <el-input
               v-model="proxyForm.proxyUrl"
-              placeholder="例如: http://localhost:7890"
+              placeholder="例如: localhost:7890"
               :disabled="!proxyForm.useProxy"
+              @blur="handleProxyUrlBlur"
             />
           </el-form-item>
         </el-form>
@@ -105,13 +106,43 @@
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
+            <span>内容屏蔽</span>
+          </div>
+        </template>
+        <el-form :model="contentForm" label-width="120px">
+          <el-form-item label="屏蔽敏感图片">
+            <el-switch
+              v-model="contentForm.enableBlur"
+              @change="handleBlurChange"
+            />
+          </el-form-item>
+          <el-form-item label="屏蔽方式" :disabled="!contentForm.enableBlur">
+            <el-select
+              v-model="contentForm.blurMode"
+              :disabled="!contentForm.enableBlur"
+              style="width: 100%;"
+            >
+              <el-option label="毛玻璃打码" value="blur" />
+              <el-option label="不显示图片" value="hide" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <div class="card-footer">
+          <el-button type="primary" @click="saveContentSettings">保存设置</el-button>
+        </div>
+      </el-card>
+
+      <el-card class="settings-card">
+        <template #header>
+          <div class="card-header">
             <span>关于</span>
           </div>
         </template>
         <div class="about-info">
-          <p><strong>版本:</strong> 1.0.0</p>
+          <p><strong>版本:</strong> v2.0.1</p>
           <p><strong>描述:</strong> Hanime视频聚合平台</p>
           <p><strong>功能:</strong> 视频浏览、收藏、下载、播放清单</p>
+          <p><strong>更新日志:</strong> <a href="/changelog" class="changelog-link">查看更新记录</a></p>
         </div>
       </el-card>
     </div>
@@ -146,6 +177,7 @@ import { AccountApi } from '../api/account';
 import request from '../utils/request';
 import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { useContentSettings } from '../composables/useContentSettings';
 
 interface ProxySettings {
   use_proxy: boolean;
@@ -161,6 +193,13 @@ interface ProxyTestResult {
 const proxyForm = reactive({
   useProxy: false,
   proxyUrl: ''
+});
+
+const { enableBlur: contentEnableBlur, blurMode: contentBlurMode, setEnableBlur, setBlurMode } = useContentSettings();
+
+const contentForm = reactive({
+  enableBlur: true,
+  blurMode: 'blur' as 'blur' | 'hide'
 });
 
 const showClearDialog = ref(false);
@@ -184,11 +223,33 @@ const loadSettings = async () => {
     proxyForm.useProxy = useProxy === 'true';
     proxyForm.proxyUrl = proxyUrl || '';
   }
+  
+  contentForm.enableBlur = contentEnableBlur.value;
+  contentForm.blurMode = contentBlurMode.value;
 };
 
 const handleProxyChange = () => {
   if (!proxyForm.useProxy) {
     proxyForm.proxyUrl = '';
+  }
+};
+
+const handleBlurChange = () => {
+  if (!contentForm.enableBlur) {
+    contentForm.blurMode = 'blur';
+  }
+};
+
+const saveContentSettings = () => {
+  setEnableBlur(contentForm.enableBlur);
+  setBlurMode(contentForm.blurMode);
+  ElMessage.success('设置已保存');
+};
+
+const handleProxyUrlBlur = () => {
+  if (!proxyForm.proxyUrl) return;
+  if (!proxyForm.proxyUrl.startsWith('http://') && !proxyForm.proxyUrl.startsWith('https://')) {
+    proxyForm.proxyUrl = 'http://' + proxyForm.proxyUrl;
   }
 };
 
@@ -437,6 +498,15 @@ const saveDownloadDir = async () => {
 
 .about-info p {
   margin: 8px 0;
+}
+
+.changelog-link {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.changelog-link:hover {
+  text-decoration: underline;
 }
 
 .hidden-input {

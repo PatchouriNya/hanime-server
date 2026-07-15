@@ -18,10 +18,17 @@
           v-if="coverUrl" 
           :src="coverUrl" 
           class="thumbnail" 
+          :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
           :alt="extractFilename(download.filename) || download.title"
           loading="lazy"
           referrerpolicy="no-referrer"
         />
+        <div v-if="coverUrl && shouldBlur && blurMode === 'blur'" class="blur-overlay">
+          <el-icon :size="24" class="blur-icon"><View /></el-icon>
+        </div>
+        <div v-if="coverUrl && shouldBlur && blurMode === 'hide'" class="hide-overlay">
+          <el-icon :size="32" class="hide-icon"><Hide /></el-icon>
+        </div>
         <div v-else class="thumbnail placeholder"></div>
       </div>
       
@@ -198,9 +205,10 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDownloadStore } from '../stores/download';
 import { DownloadApi } from '../api/download';
 import type { DownloadProgress } from '../types/download';
-import { VideoPause, VideoPlay, RefreshRight, Close, Delete, InfoFilled, More } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, RefreshRight, Close, Delete, InfoFilled, More, View, Hide } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { useContentSettings } from '../composables/useContentSettings';
 
 // 定义props
 interface Props {
@@ -215,6 +223,9 @@ const emit = defineEmits<{
 
 // 使用下载状态管理
 const downloadStore = useDownloadStore();
+
+// 使用内容设置
+const { shouldBlur, mode } = useContentSettings();
 
 // 是否显示详情
 const showDetails = ref(false);
@@ -609,6 +620,47 @@ watch(() => props.download.status, (newStatus) => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.thumbnail.blurred {
+  filter: blur(15px) brightness(0.8);
+  transform: scale(1.1);
+}
+
+.item-thumbnail .blur-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+.item-thumbnail .blur-icon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.item-thumbnail .hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-secondary-color) 0%, var(--bg-color) 100%);
+  z-index: 2;
+}
+
+.item-thumbnail .hide-icon {
+  color: var(--text-secondary-color);
 }
 
 .placeholder {

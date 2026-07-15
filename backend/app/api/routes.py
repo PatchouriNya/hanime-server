@@ -1,36 +1,47 @@
-from fastapi import APIRouter
-from app.api.endpoints import videos, downloads, accounts, settings
+from fastapi import APIRouter, Depends
+from app.api.endpoints import videos, downloads, accounts, settings, auth
 from app.services.download_service import download_manager
 from app.config import logger
+from app.utils.auth import get_current_user
 
 api_router = APIRouter()
 
-# 视频相关路由
+# 认证相关路由（不需要登录）
+api_router.include_router(
+    auth.router,
+    tags=["认证"]
+)
+
+# 视频相关路由（需要登录）
 api_router.include_router(
     videos.router,
     prefix="/videos",
-    tags=["视频"]
+    tags=["视频"],
+    dependencies=[Depends(get_current_user)]
 )
 
-# 下载相关路由
+# 下载相关路由（需要登录）
 api_router.include_router(
     downloads.router,
     prefix="/downloads",
-    tags=["下载"]
+    tags=["下载"],
+    dependencies=[Depends(get_current_user)]
 )
 
-# 用户账户相关路由
+# 用户账户相关路由（需要登录）
 api_router.include_router(
     accounts.router,
     prefix="/accounts/me",
-    tags=["用户账户"]
+    tags=["用户账户"],
+    dependencies=[Depends(get_current_user)]
 )
 
-# 设置相关路由
+# 设置相关路由（需要登录）
 api_router.include_router(
     settings.router,
     prefix="/settings",
-    tags=["设置"]
+    tags=["设置"],
+    dependencies=[Depends(get_current_user)]
 )
 
 @api_router.on_event("shutdown")

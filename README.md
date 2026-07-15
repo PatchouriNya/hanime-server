@@ -1,8 +1,8 @@
-# Han1me Server
+# Hanime Server
 
 <div align="center">
   <a href="https://github.com/heisenyu/hanime-server">
-    <img src="img/logo.png" alt="Han1me Server Logo" width="120" style="margin-bottom: 20px;"/>
+    <img src="img/logo.png" alt="Hanime Server Logo" width="120" style="margin-bottom: 20px;"/>
   </a>
   <br>
   
@@ -10,7 +10,7 @@
   [![Docker Pulls](https://img.shields.io/docker/pulls/heisenyu/hanime-server?color=339933)](https://hub.docker.com/r/heisenyu/hanime-server)
   [![Docker Image Size](https://img.shields.io/docker/image-size/heisenyu/hanime-server)](https://hub.docker.com/r/heisenyu/hanime-server)
 
-  <p>🎬 强大而简洁的Han1me视频浏览与下载解决方案</p>
+  <p>🎬 强大而简洁的Hanime视频浏览与下载解决方案</p>
 </div>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ## 📜 项目简介
 
-Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于浏览和播放 hanime 视频资源。项目采用前后端分离架构，后端使用 FastAPI 提供 RESTful API 接口，前端使用 Vue.js 构建响应式用户界面，支持多平台访问。
+Hanime Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于浏览和播放 hanime 视频资源。项目采用前后端分离架构，后端使用 FastAPI 提供 RESTful API 接口，前端使用 Vue.js 构建响应式用户界面，支持多平台访问。
 
 整个应用通过 Docker 容器化技术实现一键部署，大大简化了安装和使用流程。适合在NAS设备（如群晖、威联通、绿联等）上部署，可作为家庭媒体服务器使用，支持远程访问和视频管理。
 
@@ -142,6 +142,16 @@ Han1me Server 是一个基于 Python 和 Vue.js 开发的全栈应用，用于�
       <div style="font-size: 32px;">⚙️</div>
       <div><b>设置页面</b></div>
       <div style="font-size: 14px;">代理配置、数据管理</div>
+    </div>
+    <div style="text-align: center; width: 200px;">
+      <div style="font-size: 32px;">🔒</div>
+      <div><b>用户登录系统</b></div>
+      <div style="font-size: 14px;">JWT认证、路由保护</div>
+    </div>
+    <div style="text-align: center; width: 200px;">
+      <div style="font-size: 32px;">🔍</div>
+      <div><b>敏感图片屏蔽</b></div>
+      <div style="font-size: 14px;">毛玻璃打码模式</div>
     </div>
     <div style="text-align: center; width: 200px;">
       <div style="font-size: 32px;">📱</div>
@@ -276,6 +286,12 @@ docker-compose up -d
 
 3. 访问应用：
    - 前端界面：http://你的NASIP:7788
+
+4. **登录系统**（v2.0.0+）：
+   - 默认用户名：`admin`
+   - 默认密码：`666666`
+   - 暂不开放注册功能
+   - 未登录用户无法访问任何路由
 
 #### 方式二：使用项目自带的 docker-compose.nas.yml
 

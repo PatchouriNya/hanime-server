@@ -2,13 +2,22 @@
   <div class="banner-container">
     <div v-if="banner && banner.cover_url" class="banner-content">
       <div class="banner-image-container">
-        <img
-          :src="banner.cover_url"
-          :alt="banner.title"
-          class="banner-image"
-          loading="lazy"
+        <img 
+          :src="banner.cover_url" 
+          :alt="banner.title" 
+          class="banner-image" 
+          :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
+          loading="lazy" 
           referrerpolicy="no-referrer"
         />
+        <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
+          <el-icon :size="48" class="blur-icon"><View /></el-icon>
+          <span class="blur-text">已屏蔽</span>
+        </div>
+        <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
+          <el-icon :size="64" class="hide-icon"><Hide /></el-icon>
+          <span class="hide-text">图片已隐藏</span>
+        </div>
         <div class="banner-overlay"></div>
       </div>
       <div class="banner-info">
@@ -44,9 +53,15 @@
 import { defineComponent, PropType } from 'vue';
 import { BannerVideo } from '../types/video';
 import { useRouter } from 'vue-router';
+import { useContentSettings } from '../composables/useContentSettings';
+import { Hide, View } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'BannerSlider',
+  components: {
+    View,
+    Hide
+  },
   props: {
     banner: {
       type: Object as PropType<BannerVideo>,
@@ -60,13 +75,16 @@ export default defineComponent({
   emits: ['refresh'],
   setup() {
     const router = useRouter();
+    const { shouldBlur, mode } = useContentSettings();
 
     const handleBannerClick = (videoId: string) => {
       router.push(`/video/${videoId}`);
     };
 
     return {
-      handleBannerClick
+      handleBannerClick,
+      shouldBlur,
+      blurMode: mode
     };
   },
 });
@@ -100,6 +118,63 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.banner-image.blurred {
+  filter: blur(20px) brightness(0.8);
+  transform: scale(1.1);
+}
+
+.banner-image-container .blur-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px) saturate(180%);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  z-index: 3;
+}
+
+.banner-image-container .blur-icon {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 12px;
+}
+
+.banner-image-container .blur-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.banner-image-container .hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  z-index: 3;
+}
+
+.banner-image-container .hide-icon {
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 12px;
+}
+
+.banner-image-container .hide-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .banner-overlay {

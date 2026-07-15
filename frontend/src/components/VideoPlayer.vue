@@ -24,7 +24,15 @@
 
     <!-- 视频封面 -->
     <div v-else class="video-placeholder" @click="playVideo">
-      <img :src="coverUrl" :alt="title" referrerpolicy="no-referrer" loading="lazy"/>
+      <img :src="coverUrl" :alt="title" referrerpolicy="no-referrer" loading="lazy" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"/>
+      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
+        <el-icon :size="48" class="blur-icon"><View /></el-icon>
+        <span class="blur-text">已屏蔽</span>
+      </div>
+      <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
+        <el-icon :size="64" class="hide-icon"><Hide /></el-icon>
+        <span class="hide-text">图片已隐藏</span>
+      </div>
       <div class="play-button">
         <svg viewBox="0 0 24 24" width="60" height="60" fill="white">
           <path d="M8 5v14l11-7z"/>
@@ -44,12 +52,12 @@
 
 <script lang="ts">
 import {defineComponent, ref, onMounted, onUnmounted, nextTick, watch, computed} from 'vue';
-// import {VideoApi} from '../api/video';
 import {StreamUrl} from '../types/video';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
+import { useContentSettings } from '../composables/useContentSettings';
+import { View, Hide } from '@element-plus/icons-vue';
 
-// 扩展window接口，添加自定义属性
 declare global {
   interface Window {
     plyrResizeObservers?: ResizeObserver[];
@@ -58,6 +66,10 @@ declare global {
 
 export default defineComponent({
   name: 'VideoPlayer',
+  components: {
+    View,
+    Hide
+  },
   props: {
     streamUrls: {
       type: Array as () => StreamUrl[],
@@ -91,6 +103,8 @@ export default defineComponent({
     const plyrPlayer = ref<any>(null);
     const debugLogs = ref<string[]>([]);
     const isMobile = ref(false);
+    
+    const { shouldBlur, mode } = useContentSettings();
 
     // 检测是否为移动设备
     const checkMobileDevice = () => {
@@ -615,7 +629,9 @@ export default defineComponent({
       playVideo,
       handleVideoError,
       currentQuality,
-      reset
+      reset,
+      shouldBlur,
+      blurMode: mode
     };
   }
 });
@@ -662,6 +678,63 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.video-placeholder img.blurred {
+  filter: blur(20px) brightness(0.8);
+  transform: scale(1.1);
+}
+
+.video-placeholder .blur-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px) saturate(180%);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  z-index: 3;
+}
+
+.video-placeholder .blur-icon {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 8px;
+}
+
+.video-placeholder .blur-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.video-placeholder .hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  z-index: 3;
+}
+
+.video-placeholder .hide-icon {
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 12px;
+}
+
+.video-placeholder .hide-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .play-button {
