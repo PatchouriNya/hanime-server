@@ -338,10 +338,38 @@ export const useDownloadStore = defineStore('download', {
       } finally {
         this.isLoading = false;
       }
-      
+
       this.lastUpdated = Date.now();
     },
-    
+
+    /**
+     * 刷新下载列表（不检查是否已初始化）
+     */
+    async refreshDownloads() {
+      try {
+        const history = await DownloadApi.getDownloadHistory();
+        // 保留正在进行的下载的实时进度
+        history.forEach(item => {
+          const existing = this.downloads[item.video_id];
+          if (existing && existing.status === 'downloading' && existing.speed > 0) {
+            // 保留 WebSocket 推送的实时进度，不覆盖
+            return;
+          }
+          this.downloads[item.video_id] = item;
+        });
+        // 移除已不在历史中的条目
+        const historyIds = new Set(history.map(item => item.video_id));
+        for (const id of Object.keys(this.downloads)) {
+          if (!historyIds.has(id)) {
+            delete this.downloads[id];
+          }
+        }
+      } catch (error) {
+        console.error('刷新下载列表失败:', error);
+      }
+      this.lastUpdated = Date.now();
+    },
+
     /**
      * 建立WebSocket连接，接收实时下载进度更新
      */
@@ -401,9 +429,11 @@ export const useDownloadStore = defineStore('download', {
     async startDownload(videoId: string, force: boolean = false) {
       try {
         const result = await DownloadApi.startDownload(videoId, force);
-        
+
         if (result.status === 'success') {
           ElMessage.success('开始下载');
+          // 主动刷新下载列表，确保新下载项立即显示
+          this.refreshDownloads();
           return true;
         } else if (result.status === 'warning' && result.existing_download) {
           // 视频已经下载过，询问用户

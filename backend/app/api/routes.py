@@ -28,6 +28,13 @@ api_router.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
+# 封面图片路由（不需要 Bearer header 认证，通过 ?token=xxx 查询参数认证）
+api_router.include_router(
+    downloads.cover_router,
+    prefix="/downloads",
+    tags=["下载"]
+)
+
 # 用户账户相关路由（需要登录）
 api_router.include_router(
     accounts.router,

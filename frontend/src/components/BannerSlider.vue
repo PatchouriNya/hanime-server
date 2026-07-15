@@ -1,45 +1,75 @@
 <template>
-  <div class="banner-container">
-    <div v-if="banner && banner.cover_url" class="banner-content">
-      <div class="banner-image-container">
-        <img 
-          :src="banner.cover_url" 
-          :alt="banner.title" 
-          class="banner-image" 
-          :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
-          loading="lazy" 
-          referrerpolicy="no-referrer"
-        />
-        <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
-          <el-icon :size="48" class="blur-icon"><View /></el-icon>
-          <span class="blur-text">已屏蔽</span>
+  <div
+    class="banner-container"
+    @mouseenter="pauseAutoPlay"
+    @mouseleave="resumeAutoPlay"
+  >
+    <div v-if="banners && banners.length > 0" class="banner-content">
+      <!-- 轮播幻灯片 -->
+      <div class="banner-slides">
+        <div
+          v-for="(banner, index) in banners"
+          :key="banner.video_id"
+          class="banner-slide"
+          :class="{ 'active': currentIndex === index }"
+        >
+          <div class="banner-image-container">
+            <img
+              :src="banner.cover_url"
+              :alt="banner.title"
+              class="banner-image"
+              :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            />
+            <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
+            <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
+              <el-icon :size="64" class="hide-icon"><Hide /></el-icon>
+              <span class="hide-text">图片已隐藏</span>
+            </div>
+            <div class="banner-overlay"></div>
+          </div>
+          <div class="banner-info">
+            <div class="banner-text-content">
+              <h2 class="banner-title">{{ banner.title }}</h2>
+              <p v-if="banner.description" class="banner-description">{{ banner.description }}</p>
+            </div>
+            <div class="banner-actions">
+              <div class="arrow-button" @click.stop="handleBannerClick(banner.video_id)">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </div>
+              <div class="refresh-button" :class="{ spinning: isRefreshing }" @click.stop="$emit('refresh')" title="刷新推荐">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
-        <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
-          <el-icon :size="64" class="hide-icon"><Hide /></el-icon>
-          <span class="hide-text">图片已隐藏</span>
-        </div>
-        <div class="banner-overlay"></div>
       </div>
-      <div class="banner-info">
-        <div class="banner-text-content">
-          <h2 class="banner-title">{{ banner.title }}</h2>
-          <p v-if="banner.description" class="banner-description">{{ banner.description }}</p>
-        </div>
-        <div class="banner-actions">
-          <div class="arrow-button" @click.stop="handleBannerClick(banner.video_id)">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-          </div>
-          <div class="refresh-button" :class="{ spinning: isRefreshing }" @click.stop="$emit('refresh')" title="刷新推荐">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-          </div>
-        </div>
+
+      <!-- 左右导航箭头 -->
+      <button class="nav-arrow nav-arrow-left" @click.stop="prev" :aria-label="'上一个'">
+        <el-icon :size="28"><ArrowLeft /></el-icon>
+      </button>
+      <button class="nav-arrow nav-arrow-right" @click.stop="next" :aria-label="'下一个'">
+        <el-icon :size="28"><ArrowRight /></el-icon>
+      </button>
+
+      <!-- 圆点指示器 -->
+      <div class="dot-indicators" v-if="banners.length > 1">
+        <span
+          v-for="(_, index) in banners"
+          :key="index"
+          class="dot"
+          :class="{ 'active': currentIndex === index }"
+          @click.stop="goTo(index)"
+        ></span>
       </div>
     </div>
     <!-- 骨架屏 -->
@@ -50,22 +80,24 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from 'vue';
+import { defineComponent, PropType, ref, onMounted, onUnmounted, watch } from 'vue';
 import { BannerVideo } from '../types/video';
 import { useRouter } from 'vue-router';
 import { useContentSettings } from '../composables/useContentSettings';
-import { Hide, View } from '@element-plus/icons-vue';
+import { Hide, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'BannerSlider',
   components: {
-    View,
-    Hide
+    Hide,
+    ArrowLeft,
+    ArrowRight,
   },
   props: {
-    banner: {
-      type: Object as PropType<BannerVideo>,
+    banners: {
+      type: Array as PropType<BannerVideo[]>,
       required: true,
+      default: () => [],
     },
     isRefreshing: {
       type: Boolean,
@@ -73,18 +105,80 @@ export default defineComponent({
     },
   },
   emits: ['refresh'],
-  setup() {
+  setup(props) {
     const router = useRouter();
     const { shouldBlur, mode } = useContentSettings();
+
+    const currentIndex = ref(0);
+    let autoPlayTimer: ReturnType<typeof setInterval> | null = null;
+    const INTERVAL = 5000;
+
+    const startAutoPlay = () => {
+      stopAutoPlay();
+      if (props.banners.length > 1) {
+        autoPlayTimer = setInterval(() => {
+          currentIndex.value = (currentIndex.value + 1) % props.banners.length;
+        }, INTERVAL);
+      }
+    };
+
+    const stopAutoPlay = () => {
+      if (autoPlayTimer) {
+        clearInterval(autoPlayTimer);
+        autoPlayTimer = null;
+      }
+    };
+
+    const pauseAutoPlay = () => {
+      stopAutoPlay();
+    };
+
+    const resumeAutoPlay = () => {
+      startAutoPlay();
+    };
+
+    const prev = () => {
+      currentIndex.value = (currentIndex.value - 1 + props.banners.length) % props.banners.length;
+    };
+
+    const next = () => {
+      currentIndex.value = (currentIndex.value + 1) % props.banners.length;
+    };
+
+    const goTo = (index: number) => {
+      currentIndex.value = index;
+    };
 
     const handleBannerClick = (videoId: string) => {
       router.push(`/video/${videoId}`);
     };
 
+    // banners 变化时重置索引并重启自动播放
+    watch(() => props.banners, (newVal) => {
+      if (currentIndex.value >= newVal.length) {
+        currentIndex.value = 0;
+      }
+      startAutoPlay();
+    });
+
+    onMounted(() => {
+      startAutoPlay();
+    });
+
+    onUnmounted(() => {
+      stopAutoPlay();
+    });
+
     return {
+      currentIndex,
       handleBannerClick,
       shouldBlur,
-      blurMode: mode
+      blurMode: mode,
+      pauseAutoPlay,
+      resumeAutoPlay,
+      prev,
+      next,
+      goTo,
     };
   },
 });
@@ -103,8 +197,30 @@ export default defineComponent({
 .banner-content {
   position: relative;
   height: 380px;
-  transition: transform 0.3s;
-  background-color: #27272a;
+  background-color: var(--bg-secondary-color);
+}
+
+/* 轮播幻灯片容器 */
+.banner-slides {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.banner-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.6s ease-in-out;
+  z-index: 1;
+}
+
+.banner-slide.active {
+  opacity: 1;
+  z-index: 2;
 }
 
 .banner-image-container {
@@ -131,25 +247,7 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px) saturate(180%);
-  -webkit-backdrop-filter: blur(8px) saturate(180%);
   z-index: 3;
-}
-
-.banner-image-container .blur-icon {
-  color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 12px;
-}
-
-.banner-image-container .blur-text {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
-  font-weight: 500;
 }
 
 .banner-image-container .hide-overlay {
@@ -162,7 +260,7 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: linear-gradient(135deg, var(--bg-secondary-color) 0%, var(--bg-color) 100%);
   z-index: 3;
 }
 
@@ -311,12 +409,88 @@ export default defineComponent({
   to { transform: rotate(360deg); }
 }
 
+/* 导航箭头 */
+.nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+}
+
+.banner-container:hover .nav-arrow {
+  opacity: 1;
+}
+
+.nav-arrow:hover {
+  background: rgba(236, 72, 153, 0.7);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.nav-arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.nav-arrow-left {
+  left: 12px;
+}
+
+.nav-arrow-right {
+  right: 12px;
+}
+
+/* 圆点指示器 */
+.dot-indicators {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dot:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.dot.active {
+  background: #ec4899;
+  box-shadow: 0 0 6px rgba(236, 72, 153, 0.6);
+  transform: scale(1.2);
+}
+
 .banner-skeleton {
   width: 100%;
   height: 380px;
   border-radius: 8px;
   overflow: hidden;
-  background-color: #27272a;
+  background-color: var(--bg-secondary-color);
 }
 
 /* 响应式设计 */
@@ -362,6 +536,30 @@ export default defineComponent({
   .refresh-button svg {
     width: 20px;
     height: 20px;
+  }
+
+  .nav-arrow {
+    width: 36px;
+    height: 36px;
+  }
+
+  .nav-arrow-left {
+    left: 8px;
+  }
+
+  .nav-arrow-right {
+    right: 8px;
+  }
+
+  .dot-indicators {
+    bottom: 8px;
+    gap: 6px;
+    padding: 5px 10px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
   }
 
   .banner-skeleton {
@@ -413,8 +611,33 @@ export default defineComponent({
     height: 18px;
   }
 
+  .nav-arrow {
+    width: 32px;
+    height: 32px;
+    opacity: 0.7;
+  }
+
+  .nav-arrow-left {
+    left: 4px;
+  }
+
+  .nav-arrow-right {
+    right: 4px;
+  }
+
+  .dot-indicators {
+    bottom: 6px;
+    gap: 5px;
+    padding: 4px 8px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+  }
+
   .banner-skeleton {
     height: 200px;
   }
 }
-</style> 
+</style>

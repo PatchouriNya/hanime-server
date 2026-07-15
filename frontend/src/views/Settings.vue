@@ -64,6 +64,10 @@
               @blur="handleProxyUrlBlur"
             />
           </el-form-item>
+          <div class="proxy-hint">
+            <el-icon><InfoFilled /></el-icon>
+            <span>Docker 环境下如需代理宿主机本地服务，请使用 <code>host.docker.internal</code> 代替 <code>127.0.0.1</code>，例如：<code>http://host.docker.internal:7890</code></span>
+          </div>
         </el-form>
         <div class="card-footer">
           <el-button type="primary" @click="saveProxySettings">保存设置</el-button>
@@ -135,11 +139,48 @@
       <el-card class="settings-card">
         <template #header>
           <div class="card-header">
+            <span>账号安全</span>
+          </div>
+        </template>
+        <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="120px">
+          <el-form-item label="旧密码" prop="oldPassword">
+            <el-input
+              v-model="passwordForm.oldPassword"
+              type="password"
+              show-password
+              placeholder="请输入旧密码"
+            />
+          </el-form-item>
+          <el-form-item label="新密码" prop="newPassword">
+            <el-input
+              v-model="passwordForm.newPassword"
+              type="password"
+              show-password
+              placeholder="请输入新密码（至少6位）"
+            />
+          </el-form-item>
+          <el-form-item label="确认新密码" prop="confirmPassword">
+            <el-input
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              show-password
+              placeholder="请再次输入新密码"
+            />
+          </el-form-item>
+        </el-form>
+        <div class="card-footer">
+          <el-button type="primary" @click="handleChangePassword" :loading="changingPassword">保存密码</el-button>
+        </div>
+      </el-card>
+
+      <el-card class="settings-card">
+        <template #header>
+          <div class="card-header">
             <span>关于</span>
           </div>
         </template>
         <div class="about-info">
-          <p><strong>版本:</strong> v2.0.1</p>
+          <p><strong>版本:</strong> v2.1.3</p>
           <p><strong>描述:</strong> Hanime视频聚合平台</p>
           <p><strong>功能:</strong> 视频浏览、收藏、下载、播放清单</p>
           <p><strong>更新日志:</strong> <a href="/changelog" class="changelog-link">查看更新记录</a></p>
@@ -177,6 +218,7 @@ import { AccountApi } from '../api/account';
 import request from '../utils/request';
 import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import type { FormInstance, FormRules } from 'element-plus';
 import { useContentSettings } from '../composables/useContentSettings';
 
 interface ProxySettings {
@@ -210,6 +252,61 @@ const proxyTestResult = ref<ProxyTestResult | null>(null);
 const downloadForm = reactive({
   downloadPath: ''
 });
+
+// 修改密码表单
+const passwordFormRef = ref<FormInstance | null>(null);
+const changingPassword = ref(false);
+const passwordForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+
+const validateConfirmPassword = (_rule: any, value: string, callback: Function) => {
+  if (value !== passwordForm.newPassword) {
+    callback(new Error('两次输入的密码不一致'));
+  } else {
+    callback();
+  }
+};
+
+const passwordRules = reactive<FormRules>({
+  oldPassword: [
+    { required: true, message: '请输入旧密码', trigger: 'blur' }
+  ],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度至少6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    { validator: validateConfirmPassword, trigger: 'blur' }
+  ]
+});
+
+const handleChangePassword = async () => {
+  if (!passwordFormRef.value) return;
+  await passwordFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+    changingPassword.value = true;
+    try {
+      const result = await AccountApi.changePassword(passwordForm.oldPassword, passwordForm.newPassword);
+      if (result.success) {
+        ElMessage.success('密码修改成功');
+        passwordForm.oldPassword = '';
+        passwordForm.newPassword = '';
+        passwordForm.confirmPassword = '';
+        passwordFormRef.value?.resetFields();
+      } else {
+        ElMessage.error(result.message || '密码修改失败');
+      }
+    } catch (error: any) {
+      ElMessage.error(error?.response?.data?.message || '密码修改失败');
+    } finally {
+      changingPassword.value = false;
+    }
+  });
+};
 
 const loadSettings = async () => {
   try {
@@ -533,6 +630,27 @@ const saveDownloadDir = async () => {
   background-color: rgba(230, 162, 60, 0.1);
   color: #e6a23c;
   margin-top: 8px;
+}
+
+.proxy-hint {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background-color: rgba(64, 158, 255, 0.1);
+  color: var(--text-secondary-color);
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.6;
+}
+
+.proxy-hint code {
+  background-color: rgba(255, 255, 255, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 12px;
 }
 
 .proxy-test-result {

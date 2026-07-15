@@ -4,7 +4,7 @@ from app.models.download import DownloadRequest, DownloadAction
 from typing import List, Dict, Any, Optional
 from app.config import settings, logger
 from fastapi.responses import FileResponse
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, verify_token
 import os
 
 router = APIRouter()
@@ -102,13 +102,27 @@ async def get_downloaded_file(video_id: str, user: dict = Depends(get_current_us
     )
 
 
-@router.get("/cover/{video_id}")
-async def get_cover(video_id: str):
+cover_router = APIRouter()
+
+
+@cover_router.get("/cover/{video_id}")
+async def get_cover(video_id: str, token: Optional[str] = Query(None)):
     """
     获取本地封面图片
     优先从番剧目录查找，其次从全局封面目录查找
     如果都不存在，则实时获取视频详情并下载封面
+    支持通过 query 参数 ?token=xxx 进行认证（供 <img> 标签使用）
     """
+    if token:
+        try:
+            verify_token(token)
+        except HTTPException:
+            raise
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="缺少认证 token，请通过 ?token=xxx 参数提供",
+        )
     cover_filename = f"{video_id}.jpg"
 
     # 1. 先在番剧目录中查找（遍历下载目录的子目录）

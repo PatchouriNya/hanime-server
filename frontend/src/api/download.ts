@@ -85,7 +85,8 @@ export const DownloadApi = {
    * @param videoId 视频ID
    */
   getCoverUrl: (videoId: string): string => {
-    return `/api/downloads/cover/${videoId}`;
+    const token = localStorage.getItem('token');
+    return `/api/downloads/cover/${videoId}${token ? `?token=${token}` : ''}`;
   },
 
   /**

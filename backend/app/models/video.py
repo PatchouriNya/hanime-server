@@ -68,7 +68,7 @@ class VideoDetail(VideoPreview):
 
 class HomeData(BaseModel):
     """首页数据模型"""
-    banners: BannerVideo = None
+    banners: List[BannerVideo] = []
     latest_videos: List[Dict[str, Any]] = []
     new_arrivals_videos: List[Dict[str, Any]] = []
     new_uploads_videos: List[Dict[str, Any]] = []

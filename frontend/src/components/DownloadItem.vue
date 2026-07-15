@@ -23,9 +23,7 @@
           loading="lazy"
           referrerpolicy="no-referrer"
         />
-        <div v-if="coverUrl && shouldBlur && blurMode === 'blur'" class="blur-overlay">
-          <el-icon :size="24" class="blur-icon"><View /></el-icon>
-        </div>
+        <div v-if="coverUrl && shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
         <div v-if="coverUrl && shouldBlur && blurMode === 'hide'" class="hide-overlay">
           <el-icon :size="32" class="hide-icon"><Hide /></el-icon>
         </div>
@@ -225,7 +223,7 @@ const emit = defineEmits<{
 const downloadStore = useDownloadStore();
 
 // 使用内容设置
-const { shouldBlur, mode } = useContentSettings();
+const { shouldBlur, mode: blurMode } = useContentSettings();
 
 // 是否显示详情
 const showDetails = ref(false);
@@ -611,7 +609,7 @@ watch(() => props.download.status, (newStatus) => {
   height: 73px;
   border-radius: 6px;
   overflow: hidden;
-  background-color: #1a1a1a;
+  background-color: var(--bg-color);
   position: relative;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -633,17 +631,7 @@ watch(() => props.download.status, (newStatus) => {
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   z-index: 2;
-}
-
-.item-thumbnail .blur-icon {
-  color: rgba(255, 255, 255, 0.8);
 }
 
 .item-thumbnail .hide-overlay {
@@ -666,7 +654,7 @@ watch(() => props.download.status, (newStatus) => {
 .placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+  background: linear-gradient(135deg, var(--bg-secondary-color) 0%, var(--bg-color) 100%);
 }
 
 .item-info {

@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <!-- Banner区域 -->
-    <banner-slider :banner="homeData.banners" :is-refreshing="isRefreshing" @refresh="handleRefresh"/>
+    <banner-slider :banners="homeData.banners" :is-refreshing="isRefreshing" @refresh="handleRefresh"/>
 
     <!-- 骨架屏 - 加载中 -->
     <template v-if="isLoading">
@@ -70,11 +70,7 @@ export default defineComponent({
     const isRefreshing = ref(false);
     const isLoading = ref(true);
     const homeData = ref<HomeData>({
-      banners: {
-        video_id: '',
-        title: '',
-        cover_url: ''
-      },
+      banners: [],
       latest_videos: [],
       new_arrivals_videos: [],
       new_uploads_videos: [],
@@ -171,9 +167,9 @@ export default defineComponent({
   max-width: 1200px;
   margin: 0 auto;
   padding: 10px;
-  background-color: #18181b;
+  background-color: var(--bg-color);
   min-height: 100vh;
-  color: #fff;
+  color: var(--text-color);
 }
 
 /* 骨架屏样式 */

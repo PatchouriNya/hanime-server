@@ -57,10 +57,27 @@
             <el-button type="primary" :loading="isDownloading" @click="handleDownload">
               <el-icon><Download /></el-icon> 下载
             </el-button>
-            
+
             <!-- 如果有系列，则添加一个系列下载按钮 -->
             <el-button v-if="hasSeriesVideos" type="success" @click="openSeriesDialog">
               <el-icon><VideoCamera /></el-icon> 系列下载
+            </el-button>
+
+            <!-- 收藏按钮 -->
+            <el-button :type="isFavorited ? 'danger' : 'default'" @click="toggleFavorite">
+              <el-icon><component :is="isFavorited ? 'StarFilled' : 'Star'" /></el-icon>
+              {{ isFavorited ? '已收藏' : '收藏' }}
+            </el-button>
+
+            <!-- 稍后观看按钮 -->
+            <el-button :type="isWatchLaterActive ? 'warning' : 'default'" @click="toggleWatchLater">
+              <el-icon><Clock /></el-icon>
+              {{ isWatchLaterActive ? '已添加' : '稍后看' }}
+            </el-button>
+
+            <!-- 添加到播放列表按钮 -->
+            <el-button type="default" @click="openPlaylistDialog">
+              <el-icon><FolderAdd /></el-icon> 播放列表
             </el-button>
           </div>
         </div>
@@ -143,6 +160,47 @@
       </div>
     </div>
 
+    <!-- 添加到播放列表对话框 -->
+    <el-dialog
+      v-model="playlistDialogVisible"
+      title="添加到播放列表"
+      width="400px"
+      class="playlist-dialog"
+    >
+      <div class="playlist-dialog-content">
+        <!-- 新建播放列表 -->
+        <div class="create-playlist-row">
+          <el-input
+            v-model="newPlaylistName"
+            placeholder="输入新播放列表名称"
+            size="default"
+            @keyup.enter="createNewPlaylist"
+          >
+            <template #append>
+              <el-button @click="createNewPlaylist" :loading="isCreatingPlaylist">创建</el-button>
+            </template>
+          </el-input>
+        </div>
+
+        <!-- 播放列表选择 -->
+        <div class="playlist-list" v-if="playlists.length">
+          <div
+            v-for="playlist in playlists"
+            :key="playlist.playlist_id"
+            class="playlist-item"
+            @click="addToPlaylist(playlist.playlist_id)"
+          >
+            <el-icon><FolderAdd /></el-icon>
+            <span class="playlist-name">{{ playlist.name }}</span>
+            <span class="playlist-count">{{ playlist.videos?.length || 0 }} 个视频</span>
+          </div>
+        </div>
+        <div v-else class="no-playlists">
+          <p>暂无播放列表，请先创建一个</p>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 系列视频选择对话框 -->
     <el-dialog
       v-model="seriesDialogVisible" 
@@ -207,8 +265,9 @@ import VideoSection from '../components/VideoSection.vue';
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
 import VideoPlayer from './VideoPlayer.vue';
 import VideoComments from './VideoComments.vue';
-import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled } from '@element-plus/icons-vue';
+import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled, Star, StarFilled, Clock, FolderAdd } from '@element-plus/icons-vue';
 import { useDownloadStore } from '../stores/download';
+import { AccountApi, UserPlaylist } from '../api/account';
 import defaultAvatar from '../assets/default-avatar.svg';
 
 export default defineComponent({
@@ -225,7 +284,11 @@ export default defineComponent({
     Download,
     VideoCamera,
     Collection,
-    InfoFilled
+    InfoFilled,
+    Star,
+    StarFilled,
+    Clock,
+    FolderAdd
   },
   setup() {
     const route = useRoute();
@@ -244,6 +307,14 @@ export default defineComponent({
     // const showDebugInfo = ref('development');
     const showDebugInfo = ref(false); // 改为布尔值，false表示不显示调试信息，true表示显示
     const debugLogs = ref<string[]>([]);
+
+    // 收藏/稍后看/播放列表状态
+    const isFavorited = ref(false);
+    const isWatchLaterActive = ref(false);
+    const playlistDialogVisible = ref(false);
+    const playlists = ref<UserPlaylist[]>([]);
+    const newPlaylistName = ref('');
+    const isCreatingPlaylist = ref(false);
 
     // 视频详情数据
     const videoDetail = ref<VideoDetail>({
@@ -467,6 +538,18 @@ export default defineComponent({
     // 处理播放开始事件
     const handlePlayStarted = () => {
       addDebugLog('视频开始播放');
+      // 如果视频在稍后观看列表中，延迟5秒后自动移除
+      if (isWatchLaterActive.value) {
+        setTimeout(async () => {
+          try {
+            await AccountApi.removeWatchLater(videoDetail.value.video_id);
+            isWatchLaterActive.value = false;
+            ElMessage.success('已从稍后观看列表移除');
+          } catch (e) {
+            console.error('自动移除稍后观看失败:', e);
+          }
+        }, 5000);
+      }
     };
 
     // 处理播放错误事件
@@ -703,29 +786,150 @@ export default defineComponent({
         const downloadedCount = videoDetail.value.series_videos.filter(
           video => isVideoAlreadyDownloaded(video.video_id)
         ).length;
-        
+
         if (downloadedCount > 0) {
           ElMessage.info(`系列中有 ${downloadedCount} 个视频已下载`);
         }
       }
     };
 
+    // 检查收藏/稍后看状态
+    const checkFavoriteAndWatchLaterStatus = async () => {
+      const videoId = videoDetail.value.video_id;
+      if (!videoId) return;
+      try {
+        const [fav, wl] = await Promise.all([
+          AccountApi.isFavorite(videoId),
+          AccountApi.isWatchLater(videoId)
+        ]);
+        isFavorited.value = fav;
+        isWatchLaterActive.value = wl;
+      } catch (e) {
+        console.error('检查收藏/稍后看状态失败:', e);
+      }
+    };
+
+    // 切换收藏状态
+    const toggleFavorite = async () => {
+      const videoId = videoDetail.value.video_id;
+      if (!videoId) return;
+      try {
+        if (isFavorited.value) {
+          await AccountApi.removeFavorite(videoId);
+          isFavorited.value = false;
+          ElMessage.success('已取消收藏');
+        } else {
+          await AccountApi.addFavorite(videoId, videoDetail.value.title, videoDetail.value.cover_url);
+          isFavorited.value = true;
+          ElMessage.success('已添加收藏');
+        }
+      } catch (e) {
+        console.error('收藏操作失败:', e);
+        ElMessage.error('操作失败，请稍后重试');
+      }
+    };
+
+    // 切换稍后看状态
+    const toggleWatchLater = async () => {
+      const videoId = videoDetail.value.video_id;
+      if (!videoId) return;
+      try {
+        if (isWatchLaterActive.value) {
+          await AccountApi.removeWatchLater(videoId);
+          isWatchLaterActive.value = false;
+          ElMessage.success('已移出稍后看');
+        } else {
+          await AccountApi.addWatchLater(videoId, videoDetail.value.title, videoDetail.value.cover_url);
+          isWatchLaterActive.value = true;
+          ElMessage.success('已添加到稍后看');
+        }
+      } catch (e) {
+        console.error('稍后看操作失败:', e);
+        ElMessage.error('操作失败，请稍后重试');
+      }
+    };
+
+    // 打开播放列表对话框
+    const openPlaylistDialog = async () => {
+      playlistDialogVisible.value = true;
+      newPlaylistName.value = '';
+      try {
+        playlists.value = await AccountApi.getPlaylists();
+      } catch (e) {
+        console.error('获取播放列表失败:', e);
+        ElMessage.error('获取播放列表失败');
+      }
+    };
+
+    // 添加视频到播放列表
+    const addToPlaylist = async (playlistId: string) => {
+      const videoId = videoDetail.value.video_id;
+      if (!videoId) return;
+      try {
+        await AccountApi.addVideoToPlaylist(playlistId, videoId, videoDetail.value.title, videoDetail.value.cover_url);
+        ElMessage.success('已添加到播放列表');
+        playlistDialogVisible.value = false;
+      } catch (e) {
+        console.error('添加到播放列表失败:', e);
+        ElMessage.error('添加失败，请稍后重试');
+      }
+    };
+
+    // 创建新播放列表
+    const createNewPlaylist = async () => {
+      const name = newPlaylistName.value.trim();
+      if (!name) {
+        ElMessage.warning('请输入播放列表名称');
+        return;
+      }
+      try {
+        isCreatingPlaylist.value = true;
+        const newPlaylist = await AccountApi.createPlaylist(name);
+        playlists.value.push(newPlaylist);
+        newPlaylistName.value = '';
+        ElMessage.success('播放列表创建成功');
+      } catch (e) {
+        console.error('创建播放列表失败:', e);
+        ElMessage.error('创建失败，请稍后重试');
+      } finally {
+        isCreatingPlaylist.value = false;
+      }
+    };
+
     onMounted(() => {
-      fetchVideoDetail();
+      fetchVideoDetail().then(() => {
+        checkFavoriteAndWatchLaterStatus();
+        // 记录观看历史
+        AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
+          console.error('记录观看历史失败:', e);
+        });
+      });
     });
 
     // 当从缓存激活组件时更新视频ID
     onActivated(() => {
       const videoId = route.params.id as string;
       if (videoId !== videoDetail.value.video_id) {
-        fetchVideoDetail();
+        fetchVideoDetail().then(() => {
+          checkFavoriteAndWatchLaterStatus();
+          // 记录观看历史
+          AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
+            console.error('记录观看历史失败:', e);
+          });
+        });
       }
     });
 
     // 添加路由参数监听
     watch(() => route.params.id, (newId) => {
       if (newId && newId !== videoDetail.value.video_id) {
-        fetchVideoDetail();
+        fetchVideoDetail().then(() => {
+          checkFavoriteAndWatchLaterStatus();
+          // 记录观看历史
+          AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
+            console.error('记录观看历史失败:', e);
+          });
+        });
       }
     });
 
@@ -769,7 +973,19 @@ export default defineComponent({
       defaultAvatarUrl,
       handleImageError,
       highlightDownloadedSeriesVideos,
-      resetVideoPlayer
+      resetVideoPlayer,
+      // 收藏/稍后看/播放列表
+      isFavorited,
+      isWatchLaterActive,
+      playlistDialogVisible,
+      playlists,
+      newPlaylistName,
+      isCreatingPlaylist,
+      toggleFavorite,
+      toggleWatchLater,
+      openPlaylistDialog,
+      addToPlaylist,
+      createNewPlaylist
     };
   }
 });
@@ -1406,5 +1622,87 @@ export default defineComponent({
     top: 5px;
     left: 5px;
   }
+}
+
+/* 播放列表对话框样式 */
+.playlist-dialog :deep(.el-dialog__header) {
+  background-color: var(--bg-secondary-color);
+  padding: 15px 20px;
+}
+
+.playlist-dialog :deep(.el-dialog__title) {
+  color: var(--text-color);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.playlist-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: var(--text-secondary-color);
+}
+
+.playlist-dialog :deep(.el-dialog__body) {
+  background-color: var(--bg-color);
+  padding: 20px;
+}
+
+.playlist-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-playlist-row {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.playlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.playlist-item:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.playlist-item .el-icon {
+  font-size: 18px;
+}
+
+.playlist-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.playlist-count {
+  font-size: 12px;
+  color: var(--text-secondary-color);
+}
+
+.playlist-item:hover .playlist-count {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.no-playlists {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary-color);
 }
 </style>

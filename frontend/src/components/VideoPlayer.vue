@@ -25,10 +25,7 @@
     <!-- 视频封面 -->
     <div v-else class="video-placeholder" @click="playVideo">
       <img :src="coverUrl" :alt="title" referrerpolicy="no-referrer" loading="lazy" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"/>
-      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
-        <el-icon :size="48" class="blur-icon"><View /></el-icon>
-        <span class="blur-text">已屏蔽</span>
-      </div>
+      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
       <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
         <el-icon :size="64" class="hide-icon"><Hide /></el-icon>
         <span class="hide-text">图片已隐藏</span>
@@ -691,25 +688,7 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px) saturate(180%);
-  -webkit-backdrop-filter: blur(8px) saturate(180%);
   z-index: 3;
-}
-
-.video-placeholder .blur-icon {
-  color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 8px;
-}
-
-.video-placeholder .blur-text {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .video-placeholder .hide-overlay {
@@ -722,7 +701,7 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: linear-gradient(135deg, var(--bg-secondary-color) 0%, var(--bg-color) 100%);
   z-index: 3;
 }
 
@@ -767,7 +746,7 @@ export default defineComponent({
 .debug-info {
   margin: 20px 0;
   padding: 15px;
-  background: #1f1f23;
+  background: var(--bg-secondary-color);
   border-radius: 8px;
   border: 1px solid #3f3f46;
   max-height: 200px;

@@ -27,7 +27,7 @@ class VideoService:
 
             soup = BeautifulSoup(page_content, 'lxml')
 
-            banner_data = self._extract_banner_data(soup)
+            banner_data = self._extract_banners_data(soup)
 
             recommended_elem = soup.find('div', id='home-rows-wrapper')
             if not recommended_elem:
@@ -82,27 +82,68 @@ class VideoService:
             logger.exception(f"首页数据获取错误: {str(e)}")
             return HomeData(error=str(e))
 
-    def _extract_banner_data(self, soup: BeautifulSoup) -> BannerVideo:
-        """提取首页头图数据"""
-        banner_wrapper = soup.find('div', id='home-banner-wrapper')
-        if not banner_wrapper:
-            return BannerVideo()
+    def _extract_banners_data(self, soup: BeautifulSoup) -> List[BannerVideo]:
+        """提取首页多个Banner数据"""
+        banners = []
+        # 方式1: 查找所有 banner wrapper
+        banner_wrappers = soup.find_all('div', id='home-banner-wrapper')
 
-        banner_title_ele = banner_wrapper.find('h1')
-        banner_desc_ele = banner_wrapper.find('h4')
-        
-        prev_div = banner_wrapper.find_previous_sibling('div')
-        banner_img_ele = prev_div.find('img') if prev_div else None
+        for banner_wrapper in banner_wrappers:
+            try:
+                banner_title_ele = banner_wrapper.find('h1')
+                banner_desc_ele = banner_wrapper.find('h4')
 
-        image_url = banner_img_ele.get('src', '') if banner_img_ele else ''
-        video_id = self._extract_video_id_from_image(image_url)
+                prev_div = banner_wrapper.find_previous_sibling('div')
+                banner_img_ele = prev_div.find('img') if prev_div else None
 
-        return BannerVideo(
-            video_id=video_id,
-            cover_url=image_url,
-            title=banner_title_ele.get_text(strip=True) if banner_title_ele else '',
-            description=banner_desc_ele.get_text(strip=True) if banner_desc_ele else ''
-        )
+                image_url = banner_img_ele.get('src', '') if banner_img_ele else ''
+                video_id = self._extract_video_id_from_image(image_url)
+
+                if image_url or video_id:
+                    banners.append(BannerVideo(
+                        video_id=video_id,
+                        cover_url=image_url,
+                        title=banner_title_ele.get_text(strip=True) if banner_title_ele else '',
+                        description=banner_desc_ele.get_text(strip=True) if banner_desc_ele else ''
+                    ))
+            except Exception as e:
+                logger.warning(f"提取Banner数据错误: {str(e)}")
+                continue
+
+        # 方式2: 如果方式1只找到一个或没找到，尝试从所有大图中查找
+        if len(banners) < 3:
+            # 从 latest_videos 中选取前几个有封面的视频作为轮播
+            try:
+                recommended_elem = soup.find('div', id='home-rows-wrapper')
+                if recommended_elem:
+                    all_links = recommended_elem.find_all('a', href=re.compile(r'/watch'))
+                    seen_ids = {b.video_id for b in banners}
+                    for link in all_links:
+                        if len(banners) >= 5:
+                            break
+                        href = link.get('href', '')
+                        vid = self._extract_video_id(href)
+                        if not vid or vid in seen_ids:
+                            continue
+                        img = link.find('img')
+                        if not img:
+                            continue
+                        cover = img.get('src', '')
+                        title = img.get('alt', '') or ''
+                        if not title:
+                            title_elem = link.find('div', class_=lambda x: x and 'title' in x)
+                            title = title_elem.get_text(strip=True) if title_elem else vid
+                        banners.append(BannerVideo(
+                            video_id=vid,
+                            cover_url=cover,
+                            title=title,
+                            description=''
+                        ))
+                        seen_ids.add(vid)
+            except Exception as e:
+                logger.warning(f"提取额外Banner数据错误: {str(e)}")
+
+        return banners
 
     def _extract_section_videos(self, recommended_elem: Tag, matcher: str, display_name: str) -> List[Dict[str, Any]]:
         """提取特定分区的视频列表"""
@@ -365,8 +406,51 @@ class VideoService:
             if not video_id:
                 return None
 
-            title_elem = link_tag.find('div', class_=lambda x: x and 'home-rows-videos-title' in x)
-            video_title = title_elem.get_text(strip=True) if title_elem else ''
+            video_title = ""
+
+            # 尝试多种标题选择器
+            title_selectors = [
+                link_tag.find('div', class_=lambda x: x and 'home-rows-videos-title' in x),
+                link_tag.find('div', class_=lambda x: x and 'card-mobile-title' in x),
+                link_tag.find('div', class_=lambda x: x and 'title' in x and 'thumbnail' not in x and 'duration' not in x),
+                link_tag.find('span', class_=lambda x: x and 'title' in x),
+                link_tag.find('h3'),
+                link_tag.find('h4'),
+            ]
+
+            for title_elem in title_selectors:
+                if title_elem:
+                    text = title_elem.get_text(strip=True)
+                    if text and len(text) > 1:
+                        video_title = text
+                        break
+
+            # 回退：从 img 的 alt/title 属性获取标题
+            if not video_title:
+                img_elem = link_tag.find('img')
+                if img_elem:
+                    video_title = img_elem.get('alt', '') or img_elem.get('title', '')
+
+            # 如果 <a> 内没找到标题，尝试从父级或兄弟元素查找
+            if not video_title:
+                parent = link_tag.parent
+                if parent:
+                    parent_title_selectors = [
+                        parent.find('div', class_=lambda x: x and 'home-rows-videos-title' in x),
+                        parent.find('div', class_=lambda x: x and 'card-mobile-title' in x),
+                        parent.find('div', class_=lambda x: x and 'title' in x and 'thumbnail' not in x and 'duration' not in x),
+                        parent.find('span', class_=lambda x: x and 'title' in x),
+                    ]
+                    for title_elem in parent_title_selectors:
+                        if title_elem:
+                            text = title_elem.get_text(strip=True)
+                            if text and len(text) > 1:
+                                video_title = text
+                                break
+
+            # 最终回退：使用 video_id 作为标题
+            if not video_title:
+                video_title = video_id
 
             img_elem = link_tag.find('img')
             cover_url = img_elem.get('src', '') if img_elem else ''

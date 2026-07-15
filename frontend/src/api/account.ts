@@ -32,7 +32,7 @@ export class AccountApi {
   }
 
   static async addFavorite(video_id: string, title: string, cover_url: string): Promise<VideoActionResponse> {
-    const response = await request.post('/accounts/me/favorites', {
+    const response = await request.post('/accounts/me/favorites', null, {
       params: { video_id, title, cover_url }
     });
     return response.data;
@@ -54,7 +54,7 @@ export class AccountApi {
   }
 
   static async addWatchLater(video_id: string, title: string, cover_url: string): Promise<VideoActionResponse> {
-    const response = await request.post('/accounts/me/watch_later', {
+    const response = await request.post('/accounts/me/watch_later', null, {
       params: { video_id, title, cover_url }
     });
     return response.data;
@@ -76,7 +76,7 @@ export class AccountApi {
   }
 
   static async createPlaylist(name: string): Promise<UserPlaylist> {
-    const response = await request.post('/accounts/me/playlists', {
+    const response = await request.post('/accounts/me/playlists', null, {
       params: { name }
     });
     return response.data.playlist;
@@ -93,7 +93,7 @@ export class AccountApi {
   }
 
   static async addVideoToPlaylist(playlist_id: string, video_id: string, title: string, cover_url: string): Promise<VideoActionResponse> {
-    const response = await request.post(`/accounts/me/playlists/${playlist_id}/videos`, {
+    const response = await request.post(`/accounts/me/playlists/${playlist_id}/videos`, null, {
       params: { video_id, title, cover_url }
     });
     return response.data;
@@ -105,7 +105,7 @@ export class AccountApi {
   }
 
   static async updatePlaylistName(playlist_id: string, name: string): Promise<VideoActionResponse> {
-    const response = await request.put(`/accounts/me/playlists/${playlist_id}`, {
+    const response = await request.put(`/accounts/me/playlists/${playlist_id}`, null, {
       params: { name }
     });
     return response.data;
@@ -117,7 +117,7 @@ export class AccountApi {
   }
 
   static async addWatchHistory(video_id: string, title: string, cover_url: string, progress: number = 0, duration: string = ''): Promise<VideoActionResponse> {
-    const response = await request.post('/accounts/me/history', {
+    const response = await request.post('/accounts/me/history', null, {
       params: { video_id, title, cover_url, progress, duration }
     });
     return response.data;
@@ -130,6 +130,14 @@ export class AccountApi {
 
   static async removeWatchHistory(video_id: string): Promise<VideoActionResponse> {
     const response = await request.delete(`/accounts/me/history/${video_id}`);
+    return response.data;
+  }
+
+  static async changePassword(oldPassword: string, newPassword: string): Promise<{success: boolean; message: string}> {
+    const response = await request.put('/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword
+    });
     return response.data;
   }
 }

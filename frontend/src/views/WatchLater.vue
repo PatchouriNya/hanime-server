@@ -32,6 +32,13 @@
       >
         <template #actions>
           <el-button
+            size="small"
+            @click.stop="handleStartWatching(video.video_id)"
+            type="primary"
+          >
+            开始观看
+          </el-button>
+          <el-button
             icon="Delete"
             size="small"
             @click.stop="handleRemove(video.video_id)"
@@ -86,6 +93,10 @@ const loadWatchLater = async () => {
 };
 
 const handleVideoClick = (videoId: string) => {
+  router.push(`/video/${videoId}`);
+};
+
+const handleStartWatching = (videoId: string) => {
   router.push(`/video/${videoId}`);
 };
 

@@ -8,53 +8,166 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="warning" size="large">v2.0.1</el-tag>
+          <el-tag type="success" size="large">v2.1.3</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
         <div class="section-content">
           <h3 class="section-title">新增功能</h3>
           <ul class="update-list">
             <li class="update-item">
-              <el-icon class="update-icon"><User /></el-icon>
-              <span>侧边栏左上角添加用户登出按钮（确认后清除登录状态）</span>
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>添加修改密码功能，在设置页面可修改用户密码</span>
             </li>
             <li class="update-item">
-              <el-icon class="update-icon"><Picture /></el-icon>
-              <span>用户头像功能：默认显示用户名首字母，点击可从已下载番剧封面中选择头像</span>
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>稍后观看功能优化：观看后自动从列表移除，新增"开始观看"按钮</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>区分收藏与稍后观看：收藏为永久标记，稍后观看为临时待看队列</span>
             </li>
             <li class="update-item">
-              <el-icon class="update-icon"><SwitchButton /></el-icon>
-              <span>头像持久化存储，切换账号后自动加载对应用户的头像设置</span>
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>用户密码从硬编码改为数据库存储，Docker重新部署不再丢失用户数据</span>
+            </li>
+          </ul>
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复观看历史功能未生效的问题，进入视频详情页自动记录观看历史</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复Docker重新部署后用户数据丢失的问题</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="warning" size="large">v2.1.2</el-tag>
+          <span class="version-date">2026-07-15</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复内容屏蔽设置浏览器刷新后恢复默认的问题</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复收藏/稍后观看/播放清单 API 422 参数传递错误</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复旧数据库表缺少 username 列导致收藏等 API 500 错误</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复下载封面和用户头像不显示毛玻璃屏蔽效果</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复添加下载后需要手动刷新页面才能看到下载项的问题</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up" style="animation-delay: 0.1s;">
+        <div class="section-header">
+          <el-tag type="warning" size="large">v2.1.1</el-tag>
+          <span class="version-date">2026-07-15</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复封面图片无法显示（改为通过 URL 查询参数传递认证 token）</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复用户头像选择后无法显示</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复添加下载后下载列表不实时更新</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复内容屏蔽设置浏览器刷新后恢复默认</span>
             </li>
           </ul>
           <h3 class="section-title" style="margin-top: 24px;">优化改进</h3>
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Setting /></el-icon>
-              <span>登录页面添加记住账号和记住密码功能（本地存储）</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><Setting /></el-icon>
-              <span>侧边栏用户区域优化：显示当前登录用户名，不再显示"未登录"</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><Delete /></el-icon>
-              <span>移除登录页面上显示的默认账号密码（仅保留在 README 中）</span>
+              <span>主题模式绑定用户：跨设备/浏览器保持一致</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><InfoFilled /></el-icon>
-              <span>版本号更新为 v2.0.1</span>
+              <span>代理设置添加 Docker 环境 host.docker.internal 使用提示</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up" style="animation-delay: 0.1s;">
+        <div class="section-header">
+          <el-tag type="warning" size="large">v2.1.0</el-tag>
+          <span class="version-date">2026-07-15</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><VideoPlay /></el-icon>
+              <span>Banner 轮播图：首页 Banner 改为自动轮播，支持左右箭头和圆点指示器切换</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Star /></el-icon>
+              <span>收藏功能：视频卡片快速收藏按钮，视频详情页收藏/稍后观看/加入播放清单</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><FolderOpened /></el-icon>
+              <span>用户收藏夹实装：喜欢的影片、稍后观看、播放清单、观看历史全部可用</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 24px;">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Calendar /></el-icon>
+              <span>新番列表页面全新重设计：Tab 过滤器、卡片网格、彩色分类标题、展开动画</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>明亮模式优化：修复中间区域背景黑色，适配 Element Plus 全局组件样式</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><View /></el-icon>
+              <span>毛玻璃模式优化：移除图标和"已屏蔽"文字，只保留模糊效果</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Search /></el-icon>
+              <span>搜索结果标题提取优化：修复"最新上市"和"他们在看"无标题的问题</span>
             </li>
           </ul>
           <h3 class="section-title" style="margin-top: 24px;">修复</h3>
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span>修复刷新页面时 /api/downloads/history 报 500 错误（添加 DB 迁移逻辑）</span>
+              <span>修复登录后侧边栏仍显示"未登录"</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span>修复首次进入登录页面时请求 /api/downloads/history 报未认证错误</span>
+              <span>修复亮色模式下多个页面背景仍为黑色</span>
             </li>
           </ul>
         </div>
@@ -319,7 +432,7 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import { Cpu, Delete, Refresh, Location, Warning, VideoPlay, Search, Setting, Plus, Key, Lock, View, Star, InfoFilled, User, FolderOpened, Calendar, Connection, Loading, SwitchButton, Picture } from '@element-plus/icons-vue';
+import { Cpu, Delete, Refresh, Location, Warning, VideoPlay, Search, Setting, Plus, Key, Lock, View, Star, InfoFilled, User, FolderOpened, Calendar, Connection, Loading, SwitchButton, Picture, CircleCheck, SetUp } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'ChangelogPage',
@@ -344,7 +457,9 @@ export default defineComponent({
     Connection,
     Loading,
     SwitchButton,
-    Picture
+    Picture,
+    CircleCheck,
+    SetUp
   }
 });
 </script>

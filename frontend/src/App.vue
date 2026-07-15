@@ -6,6 +6,7 @@ import './assets/styles/common.css';
 import './assets/styles/animations.css';
 import { useDownloadStore } from './stores/download';
 import { useRouter } from 'vue-router';
+import request from './utils/request';
 
 const sidebarOpen = ref(false);
 const theme = ref(localStorage.getItem('theme') || 'dark');
@@ -22,11 +23,38 @@ const closeSidebar = () => {
   sidebarOpen.value = false;
 };
 
+// 保存主题到后端
+const saveThemeToServer = async (themeValue: string) => {
+  try {
+    if (localStorage.getItem('token')) {
+      await request.post('/accounts/me/settings', { theme: themeValue });
+    }
+  } catch (e) {
+    // 静默失败
+  }
+};
+
+// 从后端加载主题
+const loadThemeFromServer = async () => {
+  try {
+    if (localStorage.getItem('token')) {
+      const response = await request.get('/accounts/me/settings');
+      if (response.data?.settings?.theme) {
+        theme.value = response.data.settings.theme;
+        localStorage.setItem('theme', theme.value);
+      }
+    }
+  } catch (e) {
+    // 静默失败
+  }
+};
+
 // 切换主题
 const toggleTheme = () => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
   localStorage.setItem('theme', theme.value);
   setTheme();
+  saveThemeToServer(theme.value);
 };
 
 // 登出
@@ -56,18 +84,27 @@ watch(theme, () => {
 });
 
 // 组件挂载时设置主题
-onMounted(() => {
+onMounted(async () => {
+  // 从后端加载用户主题设置
+  await loadThemeFromServer();
+
   // 确保默认使用暗黑模式
   if (!localStorage.getItem('theme')) {
     localStorage.setItem('theme', 'dark');
     theme.value = 'dark';
   }
   setTheme();
-  
+
   // 仅已登录时初始化下载存储和WebSocket连接
   if (localStorage.getItem('token')) {
     downloadStore.initializeDownloads();
   }
+
+  // 监听登录事件，登录后刷新主题
+  window.addEventListener('user-login', async () => {
+    await loadThemeFromServer();
+    setTheme();
+  });
 });
 </script>
 
@@ -117,6 +154,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background-color: var(--bg-color);
 }
 
 .app-content {

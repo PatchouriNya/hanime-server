@@ -4,23 +4,23 @@
   --primary-color: #ff4757;
   --primary-hover-color: #ff6b7a;
   --secondary-color: #ec4899;
-  
+
   /* 文本颜色 */
   --text-color: #fff;
   --text-secondary-color: #a1a1aa;
-  
+
   /* 背景颜色 */
   --bg-color: #18181b;
   --bg-secondary-color: #27272a;
   --border-color: #3f3f46;
-  
+
   /* 卡片样式 */
   --card-bg-color: #27272a;
   --card-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
-  
+
   /* 交互元素 */
   --hover-bg-color: rgba(255, 255, 255, 0.1);
-  
+
   /* 按钮和标签颜色 */
   --button-text-color: #fff;
 }
@@ -31,25 +31,38 @@ html.light {
   --primary-color: #ff4757;
   --primary-hover-color: #ff6b7a;
   --secondary-color: #ec4899;
-  
+
   /* 文本颜色 - 增强对比度 */
-  --text-color: #222;
-  --text-secondary-color: #555;
-  
+  --text-color: #1f2937;
+  --text-secondary-color: #6b7280;
+
   /* 背景颜色 */
-  --bg-color: #f5f5f7;
-  --bg-secondary-color: #fff;
-  --border-color: #ddd;
-  
+  --bg-color: #f0f2f5;
+  --bg-secondary-color: #ffffff;
+  --border-color: #e5e7eb;
+
   /* 卡片样式 - 优化阴影 */
-  --card-bg-color: #fff;
-  --card-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
-  
+  --card-bg-color: #ffffff;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+
   /* 交互元素 */
-  --hover-bg-color: rgba(0, 0, 0, 0.05);
-  
+  --hover-bg-color: rgba(0, 0, 0, 0.04);
+
   /* 按钮和标签颜色 */
   --button-text-color: #fff;
+}
+
+/* 全局基础样式 */
+html {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Element Plus 自定义变量 */
@@ -77,4 +90,71 @@ html.light .el-button--primary {
   --el-button-border-color: var(--primary-color);
   --el-button-hover-bg-color: var(--primary-hover-color);
   --el-button-hover-border-color: var(--primary-hover-color);
+}
+
+/* 亮色模式下的 Element Plus 组件全局覆盖 */
+html.light {
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f0f2f5;
+  --el-bg-color-overlay: #ffffff;
+  --el-text-color-primary: #1f2937;
+  --el-text-color-regular: #374151;
+  --el-text-color-secondary: #6b7280;
+  --el-text-color-placeholder: #9ca3af;
+  --el-border-color: #e5e7eb;
+  --el-border-color-light: #f3f4f6;
+  --el-border-color-lighter: #f9fafb;
+  --el-fill-color: #f3f4f6;
+  --el-fill-color-light: #f9fafb;
+  --el-fill-color-lighter: #ffffff;
+  --el-fill-color-blank: #ffffff;
+  --el-mask-color: rgba(0, 0, 0, 0.5);
+}
+
+html.light .el-card {
+  --el-card-bg-color: #ffffff;
+  border-color: var(--el-border-color-light);
+}
+
+html.light .el-dialog {
+  --el-dialog-bg-color: #ffffff;
+}
+
+html.light .el-input__wrapper {
+  background-color: #ffffff;
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+}
+
+html.light .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+}
+
+html.light .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--primary-color) inset;
+}
+
+html.light .el-select .el-input__wrapper {
+  background-color: #ffffff;
+}
+
+html.light .el-skeleton__item {
+  background-color: #e5e7eb;
+}
+
+html.light .el-skeleton {
+  --el-skeleton-color: #e5e7eb;
+  --el-skeleton-to-color: #f3f4f6;
+}
+
+/* 亮色模式下的滚动条 */
+html.light ::-webkit-scrollbar-track {
+  background: #f0f2f5;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #c1c5cd;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #a0a5ae;
 } 

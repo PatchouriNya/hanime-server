@@ -4,8 +4,10 @@
     <aside class="sidebar">
       <div class="user-info" @click="showAvatarPicker = true">
         <div class="avatar" :class="{ 'has-avatar': avatarUrl }">
-          <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" alt="avatar" />
-          <span v-else class="avatar-text">{{ avatarLetter }}</span>
+          <img v-if="avatarUrl" :src="avatarUrl" class="avatar-img" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }" alt="avatar" />
+          <div v-if="avatarUrl && shouldBlur && blurMode === 'blur'" class="avatar-blur-overlay"></div>
+          <div v-if="avatarUrl && shouldBlur && blurMode === 'hide'" class="avatar-hide-overlay"></div>
+          <span v-if="!avatarUrl" class="avatar-text">{{ avatarLetter }}</span>
         </div>
         <div class="user-details">
           <div class="username">{{ currentUsername || '未登录' }}</div>
@@ -86,8 +88,8 @@
           :class="{ 'selected': selectedCoverId === item.video_id }"
           @click="selectedCoverId = item.video_id"
         >
-          <img 
-            :src="`/api/downloads/cover/${item.video_id}`" 
+          <img
+            :src="`/api/downloads/cover/${item.video_id}?token=${authToken}`"
             :alt="item.title"
             class="cover-img"
             loading="lazy"
@@ -114,6 +116,7 @@
 import { defineComponent, ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useContentSettings } from '../composables/useContentSettings';
 import { 
   HomeFilled, 
   Setting, 
@@ -159,14 +162,15 @@ export default defineComponent({
   emits: ['close', 'toggle-theme', 'logout'],
   setup(props, { emit }) {
     const router = useRouter();
+    const { shouldBlur, mode: blurMode } = useContentSettings();
     const currentTheme = ref(localStorage.getItem('theme') || 'dark');
     const showAvatarPicker = ref(false);
     const downloadedCovers = ref<DownloadedCover[]>([]);
     const selectedCoverId = ref<string>('');
     const avatarUrl = ref('');
+    const authToken = ref(localStorage.getItem('token') || '');
 
-    const username = computed(() => localStorage.getItem('username') || '');
-    const currentUsername = computed(() => username.value);
+    const currentUsername = ref(localStorage.getItem('username') || '');
     const avatarLetter = computed(() => {
       return currentUsername.value ? currentUsername.value.charAt(0).toUpperCase() : '?';
     });
@@ -211,7 +215,7 @@ export default defineComponent({
         if (response.ok) {
           const data = await response.json();
           if (data.settings && data.settings.avatar_video_id) {
-            avatarUrl.value = `/api/downloads/cover/${data.settings.avatar_video_id}`;
+            avatarUrl.value = `/api/downloads/cover/${data.settings.avatar_video_id}?token=${token}`;
           } else {
             avatarUrl.value = '';
           }
@@ -259,7 +263,7 @@ export default defineComponent({
     const confirmAvatar = async () => {
       if (selectedCoverId.value) {
         await saveAvatar(selectedCoverId.value);
-        avatarUrl.value = `/api/downloads/cover/${selectedCoverId.value}`;
+        avatarUrl.value = `/api/downloads/cover/${selectedCoverId.value}?token=${localStorage.getItem('token')}`;
         showAvatarPicker.value = false;
         ElMessage.success('头像已更新');
       }
@@ -308,8 +312,16 @@ export default defineComponent({
       }
     });
 
+    const refreshUsername = () => {
+      currentUsername.value = localStorage.getItem('username') || '';
+    };
+
     onMounted(() => {
       loadAvatar();
+      refreshUsername();
+      // 监听 storage 事件（跨标签页同步）和自定义事件（同标签页登录）
+      window.addEventListener('storage', refreshUsername);
+      window.addEventListener('user-login', refreshUsername);
     });
 
     return {
@@ -317,6 +329,9 @@ export default defineComponent({
       currentUsername,
       avatarLetter,
       avatarUrl,
+      authToken,
+      shouldBlur,
+      blurMode,
       showAvatarPicker,
       downloadedCovers,
       selectedCoverId,
@@ -411,6 +426,7 @@ export default defineComponent({
   flex-shrink: 0;
   border: 2px solid transparent;
   transition: border-color 0.2s;
+  position: relative;
 }
 
 .avatar.has-avatar {
@@ -421,6 +437,35 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.avatar-img.blurred {
+  filter: blur(20px) brightness(0.8);
+}
+
+.avatar-blur-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.avatar-hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary-color);
+  font-size: 12px;
 }
 
 .avatar-text {

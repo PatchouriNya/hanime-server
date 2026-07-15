@@ -138,6 +138,7 @@ const handleArrowRight = async () => {
         localStorage.setItem('tokenType', response.data.token_type || 'bearer');
         localStorage.setItem('username', loginForm.username);
         localStorage.setItem('loginTime', Date.now().toString());
+        window.dispatchEvent(new Event('user-login'));
         
         // 记住账号密码
         if (rememberUsername.value) {

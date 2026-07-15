@@ -12,10 +12,7 @@
         referrerpolicy="no-referrer"
         :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
       />
-      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay">
-        <el-icon :size="32" class="blur-icon"><View /></el-icon>
-        <span class="blur-text">已屏蔽</span>
-      </div>
+      <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
       <div v-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
         <el-icon :size="48" class="hide-icon"><Hide /></el-icon>
         <span class="hide-text">图片已隐藏</span>
@@ -34,6 +31,16 @@
       <div class="play-overlay">
         <el-icon v-if="showPlayIcon && !(shouldBlur && blurMode === 'hide')" :size="48"><VideoPlay /></el-icon>
       </div>
+      <div
+        class="favorite-btn"
+        :class="{ 'is-favorited': isFavorited }"
+        @click.stop="toggleFavorite"
+      >
+        <el-icon :size="16">
+          <StarFilled v-if="isFavorited" />
+          <Star v-else />
+        </el-icon>
+      </div>
     </div>
     <div class="video-info">
       <div class="video-title" :class="{'single-line': singleLineTitle}">{{ video.title }}</div>
@@ -45,17 +52,21 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, PropType} from 'vue';
+import {defineComponent, PropType, ref, onMounted} from 'vue';
 import {VideoBase, VideoPreview} from '../types/video';
-import { View, VideoPlay, Hide } from '@element-plus/icons-vue';
+import { View, VideoPlay, Hide, Star, StarFilled } from '@element-plus/icons-vue';
 import { useContentSettings } from '../composables/useContentSettings';
+import { AccountApi } from '../api/account';
+import { ElMessage } from 'element-plus';
 
 export default defineComponent({
   name: 'VideoCard',
   components: {
     View,
     VideoPlay,
-    Hide
+    Hide,
+    Star,
+    StarFilled
   },
   props: {
     video: {
@@ -84,8 +95,9 @@ export default defineComponent({
     }
   },
   emits: ['click'],
-  setup() {
+  setup(props) {
     const { shouldBlur, mode } = useContentSettings();
+    const isFavorited = ref(false);
 
     const isVideoPreview = (video: VideoBase | VideoPreview): video is VideoPreview => {
       return 'duration' in video || 'view_count' in video || 'like_rate' in video || 'studio' in video;
@@ -101,11 +113,43 @@ export default defineComponent({
       return count.toString();
     };
 
+    const checkFavoriteStatus = async () => {
+      try {
+        isFavorited.value = await AccountApi.isFavorite(props.video.video_id);
+      } catch {
+        // 忽略错误，可能未登录
+      }
+    };
+
+    const toggleFavorite = async () => {
+      try {
+        if (isFavorited.value) {
+          await AccountApi.removeFavorite(props.video.video_id);
+          isFavorited.value = false;
+          ElMessage.success('已取消收藏');
+        } else {
+          await AccountApi.addFavorite(
+            props.video.video_id,
+            props.video.title,
+            props.video.cover_url || ''
+          );
+          isFavorited.value = true;
+          ElMessage.success('已添加收藏');
+        }
+      } catch {
+        ElMessage.error('操作失败');
+      }
+    };
+
+    onMounted(checkFavoriteStatus);
+
     return {
       isVideoPreview,
       formatViewCount,
       shouldBlur,
-      blurMode: mode
+      blurMode: mode,
+      isFavorited,
+      toggleFavorite
     };
   }
 });
@@ -174,36 +218,7 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px) saturate(180%);
-  -webkit-backdrop-filter: blur(8px) saturate(180%);
   z-index: 3;
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.blur-icon {
-  color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 8px;
-}
-
-.blur-text {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 1px;
 }
 
 .hide-overlay {
@@ -262,6 +277,48 @@ export default defineComponent({
 .video-card:hover .play-overlay .el-icon {
   opacity: 1;
   transform: scale(1);
+}
+
+/* 收藏按钮 */
+.favorite-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.25s ease;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.video-card:hover .favorite-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.favorite-btn:hover {
+  background-color: rgba(0, 0, 0, 0.7);
+  transform: scale(1.15) !important;
+}
+
+.favorite-btn.is-favorited {
+  opacity: 1;
+  transform: scale(1);
+  background-color: rgba(255, 71, 87, 0.85);
+  color: #fff;
+}
+
+.favorite-btn.is-favorited:hover {
+  background-color: rgba(255, 71, 87, 1);
+  transform: scale(1.15) !important;
 }
 
 /* 时长、点赞率和播放次数徽章的共同样式 */

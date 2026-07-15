@@ -73,7 +73,7 @@ export interface VideoSection {
 
 // 首页数据响应
 export interface HomeData {
-  banners: BannerVideo;
+  banners: BannerVideo[];
   latest_videos: VideoSection[];
   new_arrivals_videos: VideoSection[];
   new_uploads_videos: VideoSection[];

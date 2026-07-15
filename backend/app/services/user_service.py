@@ -79,8 +79,97 @@ class UserService:
             )
             """)
             
+            # 数据库迁移：为旧表添加 username 列
+            await self._migrate_tables(conn)
+            
             await conn.commit()
         logger.info("用户数据库初始化完成")
+
+    async def _migrate_tables(self, conn):
+        """数据库迁移 - 为旧表添加缺失的列"""
+        # 检查 favorites 表是否有 username 列
+        cursor = await conn.execute("PRAGMA table_info(favorites)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if columns and 'username' not in columns:
+            logger.info("迁移 favorites 表：添加 username 列")
+            # 旧表没有 username 列，需要重建表
+            await conn.execute("ALTER TABLE favorites RENAME TO favorites_old")
+            await conn.execute("""
+            CREATE TABLE favorites (
+                username TEXT NOT NULL DEFAULT 'admin',
+                video_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                cover_url TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (username, video_id)
+            )
+            """)
+            # 将旧数据迁移到新表
+            old_cols = ', '.join(columns)
+            await conn.execute(f"INSERT INTO favorites (username, {old_cols}) SELECT 'admin', {old_cols} FROM favorites_old")
+            await conn.execute("DROP TABLE favorites_old")
+
+        # 检查 watch_later 表
+        cursor = await conn.execute("PRAGMA table_info(watch_later)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if columns and 'username' not in columns:
+            logger.info("迁移 watch_later 表：添加 username 列")
+            await conn.execute("ALTER TABLE watch_later RENAME TO watch_later_old")
+            await conn.execute("""
+            CREATE TABLE watch_later (
+                username TEXT NOT NULL DEFAULT 'admin',
+                video_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                cover_url TEXT NOT NULL,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (username, video_id)
+            )
+            """)
+            old_cols = ', '.join(columns)
+            await conn.execute(f"INSERT INTO watch_later (username, {old_cols}) SELECT 'admin', {old_cols} FROM watch_later_old")
+            await conn.execute("DROP TABLE watch_later_old")
+
+        # 检查 watch_history 表
+        cursor = await conn.execute("PRAGMA table_info(watch_history)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if columns and 'username' not in columns:
+            logger.info("迁移 watch_history 表：添加 username 列")
+            await conn.execute("ALTER TABLE watch_history RENAME TO watch_history_old")
+            await conn.execute("""
+            CREATE TABLE watch_history (
+                username TEXT NOT NULL DEFAULT 'admin',
+                video_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                cover_url TEXT NOT NULL,
+                progress INTEGER DEFAULT 0,
+                duration TEXT DEFAULT '',
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (username, video_id)
+            )
+            """)
+            old_cols = ', '.join(columns)
+            await conn.execute(f"INSERT INTO watch_history (username, {old_cols}) SELECT 'admin', {old_cols} FROM watch_history_old")
+            await conn.execute("DROP TABLE watch_history_old")
+
+        # 检查 playlists 表
+        cursor = await conn.execute("PRAGMA table_info(playlists)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if columns and 'username' not in columns:
+            logger.info("迁移 playlists 表：添加 username 列")
+            await conn.execute("ALTER TABLE playlists RENAME TO playlists_old")
+            await conn.execute("""
+            CREATE TABLE playlists (
+                playlist_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL DEFAULT 'admin',
+                name TEXT NOT NULL,
+                videos TEXT DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """)
+            old_cols = ', '.join(columns)
+            await conn.execute(f"INSERT INTO playlists (username, {old_cols}) SELECT 'admin', {old_cols} FROM playlists_old")
+            await conn.execute("DROP TABLE playlists_old")
     
     async def add_favorite(self, username: str, video_id: str, title: str, cover_url: str) -> bool:
         """添加收藏"""
