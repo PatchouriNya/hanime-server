@@ -3,6 +3,62 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 八、版本 v2.1.4 - 修复满屏请求错误和缓存空结果导致网站不可用 (2026-07-16)
+
+### 修改原因
+用户报告严重bug：在未知情况下（疑似搜索触发）会出现满屏请求错误/超时提示，之后整个网站无法获取视频。
+
+### 根本原因分析
+1. **lru_cache缓存空结果**：后端 `video_service.py` 的 `search_videos`、`get_search_combination`、`get_home_data` 方法在失败时返回空对象（如 `SearchResults()`、`HomeData(error=...)`），这些空结果被 `@lru_cache` 缓存（搜索缓存24小时，首页缓存30分钟），导致后续相同参数的请求持续返回空数据。
+2. **前端错误消息无节流**：`request.ts` 中每个失败的请求都调用 `ElMessage.error`，多个请求同时失败时出现满屏错误提示。
+3. **前端无请求超时**：axios 实例未设置 timeout，后端超时60秒期间前端持续等待，可能积累大量待处理请求。
+4. **401重复跳转**：token 过期时多个并发请求同时触发 `window.location.href = '/login'`。
+5. **loadMore失败跳页**：`SearchPage.vue` 的 `loadMore` 在请求前 `currentPage++`，失败后不回退，导致跳页。
+
+### 修改内容
+
+#### 后端修改
+
+**文件：backend/app/services/video_service.py**
+- `get_home_data`：`page_content` 为空时抛出异常而非返回 `HomeData(error=...)`；异常处理改为 `raise` 而非返回空对象
+- `get_search_combination`：异常处理改为 `raise` 而非返回 `SearchCombination()`
+- `search_videos`：`page_content` 为空时抛出异常而非返回 `SearchResults()`；异常处理改为 `raise` 而非返回空对象
+- 效果：失败时异常向上传播，`lru_cache` 不会缓存异常，下次请求会重新尝试
+
+**文件：backend/app/utils/ttl_lru_cache.py**
+- `async_wrapper` 和 `sync_wrapper`：添加 `if result is not None` 检查，不缓存 None 结果
+
+**文件：backend/app/utils/cloudflare_bypass.py**
+- `client` 属性：`httpx.AsyncClient(timeout=60.0)` → `httpx.AsyncClient(timeout=30.0)`
+- `direct_client` 属性：`httpx.AsyncClient(timeout=60.0, ...)` → `httpx.AsyncClient(timeout=30.0, ...)`
+- 效果：加快失败检测，减少请求积压
+
+**文件：backend/app/config.py**
+- `APP_VERSION`：`"2.1.3"` → `"2.1.4"`
+
+#### 前端修改
+
+**文件：frontend/src/utils/request.ts** - 完全重写错误处理
+- 添加错误消息节流：相同错误消息2秒内只显示一次（`showErrorMessage` 函数）
+- 添加 `isRedirecting` 标志：防止401时多个请求同时触发跳转
+- axios 实例添加 `timeout: 30000`（30秒超时）
+- 添加超时错误单独处理（`ECONNABORTED`）
+
+**文件：frontend/src/components/SearchPage.vue**
+- `loadMore` 方法：保存 `previousPage`，失败时回退 `currentPage.value = previousPage`
+
+**文件：frontend/src/components/AppHeader.vue**
+- 版本徽章：`v2.1.3` → `v2.1.4`
+
+**文件：frontend/src/views/Settings.vue**
+- 版本号：`v2.1.3` → `v2.1.4`
+
+**文件：frontend/src/views/ChangelogPage.vue**
+- 添加 v2.1.4 版本卡片（4项修复 + 3项优化改进）
+
+**文件：CHANGELOG.md**
+- 添加 v2.1.4 更新记录
+
 ## 七、版本 v2.0.1 - 用户登出与头像功能 (2026-07-15)
 
 ### 需求描述

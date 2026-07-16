@@ -40,7 +40,7 @@ class CloudflareBypasser:
     @property
     async def client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=60.0)
+            self._client = httpx.AsyncClient(timeout=30.0)
         return self._client
 
     @property
@@ -62,7 +62,7 @@ class CloudflareBypasser:
                 "Upgrade-Insecure-Requests": "1",
                 "Cache-Control": "max-age=0",
             }
-            self._direct_client = httpx.AsyncClient(timeout=60.0, proxy=proxy, headers=headers)
+            self._direct_client = httpx.AsyncClient(timeout=30.0, proxy=proxy, headers=headers)
         return self._direct_client
 
     async def close(self):

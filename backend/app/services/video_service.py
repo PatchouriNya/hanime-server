@@ -23,7 +23,7 @@ class VideoService:
         try:
             page_content = await self.cf_bypasser.get_request(settings.HANIME_BASE_URL)
             if not page_content:
-                return HomeData(error="Failed to fetch page content.")
+                raise Exception("Failed to fetch page content")
 
             soup = BeautifulSoup(page_content, 'lxml')
 
@@ -80,7 +80,7 @@ class VideoService:
             return home_data
         except Exception as e:
             logger.exception(f"首页数据获取错误: {str(e)}")
-            return HomeData(error=str(e))
+            raise
 
     def _extract_banners_data(self, soup: BeautifulSoup) -> List[BannerVideo]:
         """提取首页多个Banner数据"""
@@ -985,7 +985,7 @@ class VideoService:
 
         except Exception as e:
             logger.exception(f"获取搜索组合错误: {str(e)}")
-            return SearchCombination()
+            raise
 
     async def search_videos(self,
                             query: Optional[str],
@@ -1031,8 +1031,7 @@ class VideoService:
             page_content = await self.cf_bypasser.get_request(search_url, params=params)
 
             if not page_content:
-                logger.error("搜索视频失败: 无法获取页面内容")
-                return SearchResults()
+                raise Exception("搜索视频失败: 无法获取页面内容")
 
             soup = BeautifulSoup(page_content, 'lxml')
 
@@ -1089,4 +1088,4 @@ class VideoService:
 
         except Exception as e:
             logger.exception(f"搜索视频错误: {str(e)}")
-            return SearchResults()
+            raise

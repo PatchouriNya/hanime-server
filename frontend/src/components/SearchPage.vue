@@ -471,6 +471,7 @@ export default defineComponent({
       if (!hasMore.value || loadingMore.value) return;
 
       loadingMore.value = true;
+      const previousPage = currentPage.value;
 
       try {
         currentPage.value++;
@@ -496,6 +497,8 @@ export default defineComponent({
         searchResults.value.total_pages = response.total_pages;
       } catch (error) {
         console.error('加载更多失败:', error);
+        // 失败时回退页码，避免跳页
+        currentPage.value = previousPage;
       } finally {
         loadingMore.value = false;
       }

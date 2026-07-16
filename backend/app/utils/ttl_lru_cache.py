@@ -120,9 +120,10 @@ def lru_cache(
             # 缓存未命中，执行函数
             logger.debug(f"缓存未命中: {func.__name__}, key={cache_key}")
             result = await func(*args, **kwargs)
-            
-            # 存储结果到缓存
-            cache_instance.set(cache_key, result)
+
+            # 不缓存 None 结果，避免临时错误被长期缓存
+            if result is not None:
+                cache_instance.set(cache_key, result)
             return result
         
         @functools.wraps(func)
@@ -146,9 +147,10 @@ def lru_cache(
             # 缓存未命中，执行函数
             logger.debug(f"缓存未命中: {func.__name__}, key={cache_key}")
             result = func(*args, **kwargs)
-            
-            # 存储结果到缓存
-            cache_instance.set(cache_key, result)
+
+            # 不缓存 None 结果，避免临时错误被长期缓存
+            if result is not None:
+                cache_instance.set(cache_key, result)
             return result
         
         # 添加缓存控制方法到包装函数

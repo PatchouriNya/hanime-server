@@ -8,6 +8,49 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v2.1.4</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复搜索时满屏请求错误/超时提示的问题，添加错误消息节流机制</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复后端缓存失败/空结果导致网站无法获取视频的问题</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复 token 过期时多个请求同时触发重复跳转登录页的问题</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复搜索加载更多失败后页码不回退导致跳页的问题</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 24px;">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>前端 axios 添加 30 秒超时，避免请求积压</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>后端 httpx 客户端超时从 60 秒减少到 30 秒</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>后端方法失败时抛出异常而非返回空对象，避免错误结果被缓存</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v2.1.3</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
