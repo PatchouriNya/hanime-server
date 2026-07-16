@@ -489,4 +489,56 @@ html.light .banner-content {
 html.light .banner-skeleton {
   background-color: #e5e7eb;
 }
+html.light .hide-overlay {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+html.light .hide-icon,
+html.light .hide-text {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+/* 亮色模式下渐变遮罩减弱，保持文字可读的同时不过于突兀 */
+html.light .banner-gradient-dark {
+  background: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.5) 25%,
+    rgba(0, 0, 0, 0.1) 55%,
+    transparent 100%
+  );
+}
+html.light .banner-gradient-accent {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.4) 0%,
+    rgba(0, 0, 0, 0.05) 50%,
+    rgba(236, 72, 153, 0.05) 100%
+  );
+}
+html.light .banner-gradient-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
+}
+html.light .banner-bottom-panel {
+  background: linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    transparent 100%
+  );
+}
+html.light .capsule-indicators {
+  background: rgba(128, 128, 128, 0.25);
+}
+html.light .nav-arrow {
+  background: rgba(128, 128, 128, 0.3);
+}
+html.light .nav-arrow:hover {
+  background: rgba(236, 72, 153, 0.5);
+}
+html.light .banner-image.blurred {
+  filter: blur(20px) brightness(0.9);
+}
 </style>

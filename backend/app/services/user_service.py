@@ -419,7 +419,25 @@ class UserService:
         except Exception as e:
             logger.error(f"更新播放清单名称失败: {e}")
             return False
-    
+
+    async def move_video_between_playlists(self, username: str, from_playlist_id: str, to_playlist_id: str, video_id: str) -> bool:
+        """将视频从一个清单移动到另一个清单"""
+        try:
+            # 从源清单获取视频信息
+            source = await self.get_playlist(username, from_playlist_id)
+            if not source:
+                return False
+            target_video = next((v for v in source.videos if v.video_id == video_id), None)
+            if not target_video:
+                return False
+            # 从源清单移除
+            await self.remove_video_from_playlist(username, from_playlist_id, video_id)
+            # 添加到目标清单
+            return await self.add_video_to_playlist(username, to_playlist_id, target_video.video_id, target_video.title, target_video.cover_url)
+        except Exception as e:
+            logger.error(f"移动视频失败: {e}")
+            return False
+
     async def add_watch_history(self, username: str, video_id: str, title: str, cover_url: str, progress: int = 0, duration: str = "") -> bool:
         """添加观看历史"""
         try:

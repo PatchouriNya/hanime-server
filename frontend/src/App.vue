@@ -83,9 +83,26 @@ watch(theme, () => {
   setTheme();
 });
 
-// 侧边栏打开时锁定body滚动
+// 侧边栏打开时锁定页面滚动（兼容iOS/Android）
+let _scrollY = 0;
 watch(sidebarOpen, (open) => {
-  document.body.style.overflow = open ? 'hidden' : '';
+  const html = document.documentElement;
+  const body = document.body;
+  if (open) {
+    _scrollY = window.scrollY;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.width = '100%';
+    body.style.top = `-${_scrollY}px`;
+  } else {
+    html.style.overflow = '';
+    body.style.overflow = '';
+    body.style.position = '';
+    body.style.width = '';
+    body.style.top = '';
+    window.scrollTo(0, _scrollY);
+  }
 });
 
 // 组件挂载时设置主题

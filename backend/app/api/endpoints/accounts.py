@@ -138,6 +138,22 @@ async def update_playlist_name(playlist_id: str, name: str = Query(...), user: d
     raise HTTPException(status_code=500, detail="更新名称失败")
 
 
+@router.post("/playlists/move-video", response_model=VideoActionResponse)
+async def move_video_between_playlists(
+    from_playlist_id: str = Query(...),
+    to_playlist_id: str = Query(...),
+    video_id: str = Query(...),
+    user: dict = Depends(get_current_user)
+):
+    """将视频从一个清单移动到另一个清单"""
+    success = await user_service.move_video_between_playlists(
+        user["username"], from_playlist_id, to_playlist_id, video_id
+    )
+    if success:
+        return VideoActionResponse(success=True, message="移动成功")
+    raise HTTPException(status_code=500, detail="移动失败")
+
+
 @router.get("/history", response_model=WatchHistoryResponse)
 async def get_watch_history(user: dict = Depends(get_current_user)):
     """获取观看历史"""

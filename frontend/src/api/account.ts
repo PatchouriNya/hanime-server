@@ -111,6 +111,13 @@ export class AccountApi {
     return response.data;
   }
 
+  static async moveVideoToPlaylist(from_playlist_id: string, to_playlist_id: string, video_id: string): Promise<VideoActionResponse> {
+    const response = await request.post('/accounts/me/playlists/move-video', null, {
+      params: { from_playlist_id, to_playlist_id, video_id }
+    });
+    return response.data;
+  }
+
   static async getWatchHistory(): Promise<WatchHistoryItem[]> {
     const response = await request.get('/accounts/me/history');
     return response.data.history || [];

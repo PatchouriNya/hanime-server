@@ -8,6 +8,41 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="primary" size="large">v2.4.0</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>播放清单全面改版为文件夹式UI：文件夹网格视图、封面缩略图预览、进入文件夹查看影片</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>跨文件夹移动影片：新增"移动到..."功能，可将影片从一个文件夹移动到另一个文件夹</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>文件夹操作：新建/重命名/删除文件夹，右键菜单快速操作</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>播放清单页面深浅主题全面适配，文件夹卡片 hover 发光效果</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>手机端完整适配：480px 以下 2 列布局，影片操作按钮常驻显示</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="warning" size="large">v2.3.5</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
@@ -16,11 +51,11 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span>浅色模式 Banner 未适配：阴影减弱、空状态背景改为浅灰</span>
+              <span>浅色模式 Banner 全面适配：三层渐变遮罩、隐藏遮罩、指示器、毛玻璃模式等全部适配浅色主题，风格统一</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span>手机端侧边栏底部空缺：打开菜单栏时自动锁定页面滚动，避免背景内容滑动露出空隙</span>
+              <span>手机端侧边栏底部空缺：打开菜单栏时自动锁定页面滚动，兼容 iOS/Android，关闭后恢复滚动位置</span>
             </li>
           </ul>
         </div>

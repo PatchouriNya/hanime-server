@@ -3,34 +3,99 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
-## 十五、版本 v2.3.5 - 浅色模式Banner适配 + 侧边栏底部空缺修复 (2026-07-16)
+## 十六、版本 v2.4.0 - 播放清单文件夹式UI大改版 (2026-07-16)
 
 ### 修改原因
-1. 浅色模式下 Banner 阴影太重、空状态背景色太暗
-2. 手机端打开侧边栏后滚动页面，侧边栏底部出现空隙
+播放清单页面设计简陋，无手机端适配，功能单一（只能创建/删除/重命名清单），无法跨清单移动影片。
 
 ### 修改内容
 
-**修复1：浅色模式 Banner 适配**
+**新增功能1：文件夹式UI**
 
-**文件：frontend/src/components/BannerSlider.vue**
-- 新增 `html.light .banner-container`：阴影改为 `rgba(0,0,0,0.1)`
-- 新增 `html.light .banner-content`：空状态背景 `#e5e7eb`
-- 新增 `html.light .banner-skeleton`：骨架屏背景 `#e5e7eb`
+**文件：frontend/src/views/Playlists.vue** - 完全重写
+- 主页视图：文件夹网格布局（`grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))`）
+- 每个文件夹卡片包含：封面缩略图（前4个影片2x2网格）、文件夹名称、影片数量、更新时间
+- 空文件夹显示大 Folder 图标占位
+- 点击文件夹进入内部视图（`currentFolder` ref 切换）
+- 内部视图：返回按钮 + 可编辑文件夹名 + 删除按钮、影片网格
+- 影片卡 hover 显示移动/移除操作按钮（移动端常驻显示）
+- 空状态：圆形图标背景 + 创建按钮引导
+- 加载状态：旋转 Loading 图标
 
-**修复2：侧边栏底部空缺**
+**新增功能2：跨文件夹移动影片**
 
-**文件：frontend/src/App.vue**
-- 新增 `watch(sidebarOpen)`：打开时设 `document.body.style.overflow = 'hidden'`，关闭时恢复
+**文件：backend/app/services/user_service.py**
+- 新增 `move_video_between_playlists()` 方法：获取源清单视频信息 → 从源移除 → 添加到目标
 
-**文件：frontend/src/components/AppSidebar.vue**
-- `.sidebar-container` 新增 `height: 100dvh`（动态视口高度，兼容手机浏览器地址栏变化）
+**文件：backend/app/api/endpoints/accounts.py**
+- 新增 `POST /api/accounts/me/playlists/move-video` 端点
+- 参数：`from_playlist_id`、`to_playlist_id`、`video_id`
+
+**文件：frontend/src/api/account.ts**
+- 新增 `AccountApi.moveVideoToPlaylist()` 方法
+
+**新增功能3：文件夹操作**
+
+- 新建弹窗：带 Folder 图标前缀的输入框、空名禁用创建按钮
+- 右键菜单（el-dropdown）：重命名 + 删除（红色危险标注）
+- 内联重命名：文件夹名旁 Edit 按钮 → 点击变为 el-input → blur/enter 保存
+- 删除确认弹窗：红色警告图标 + 不可撤销提示
+
+**样式全面升级**
+
+- `max-width: 1000px` 居中布局
+- 标题加 `title-accent` 渐变装饰条
+- 文件夹卡片 hover 边框发光 `var(--primary-color)` + `translateY(-2px)`
+- 亮色模式独立 hover 阴影
+- 文件夹封面 `linear-gradient` 底部渐变遮罩
+- 内部视图 `fadeIn` 入场动画
+- 移动选择列表 hover 高亮
+- 时间显示：今天/昨天/月日 智能判断
+- `font-size`、`gap`、`padding` 等全面调优
+
+**手机端适配**
+
+- 768px：文件夹 `minmax(160px)` / 影片 `minmax(130px)`、影片操作按钮常驻
+- 480px：文件夹 `repeat(2, 1fr)` / 影片 `repeat(2, 1fr)`、字号缩小、间距收窄
 
 ### 版本号更新
-- `backend/app/config.py`：APP_VERSION 2.3.4 → 2.3.5
-- `frontend/src/components/AppHeader.vue`：版本徽章 v2.3.5
-- `frontend/src/views/Settings.vue`：版本号 v2.3.5
-- `CHANGELOG.md`、`ChangelogPage.vue`：新增 v2.3.5 条目
+- `backend/app/config.py`：APP_VERSION 2.3.5 → 2.4.0
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.4.0
+- `frontend/src/views/Settings.vue`：版本号 v2.4.0
+- `CHANGELOG.md`、`ChangelogPage.vue`：新增 v2.4.0 条目
+
+## 十五、版本 v2.3.5 - 浅色模式Banner全面适配 + 侧边栏滚动锁定增强 (2026-07-16)
+
+### 修改原因
+1. 浅色模式下 Banner 三种状态（正常/毛玻璃/隐藏）均未完全适配
+2. 手机端侧边栏滚动锁定在 iOS Safari 上不生效
+
+### 修改内容
+
+**修复1：浅色模式 Banner 全面适配（三轮迭代）**
+
+**文件：frontend/src/components/BannerSlider.vue**
+- 容器阴影改为 `rgba(0,0,0,0.1)`
+- 空状态/骨架屏背景改为 `#e5e7eb`
+- "图片已隐藏"遮罩改为浅灰渐变 `#f3f4f6 → #e5e7eb` + 深色文字图标
+- 三层渐变遮罩透明度全面减弱（暗角 0.95→0.85, 0.7→0.5, 0.2→0.1；品红 0.6→0.4, 0.08→0.05；晕影 0.4→0.25）
+- 底部信息面板渐变减弱（0.7→0.5）
+- 胶囊指示器和导航箭头改为灰色半透明 `rgba(128,128,128,0.25)`
+- 毛玻璃模式图片提亮（brightness 0.8 → 0.9）
+
+**修复2：侧边栏滚动锁定增强（两轮迭代）**
+
+**文件：frontend/src/App.vue**
+- 第一轮：仅 `body overflow:hidden`（iOS 不生效）
+- 第二轮：`html` + `body` 同时 `overflow:hidden` + `body position:fixed; width:100%`
+- 打开时保存 `window.scrollY`，关闭后恢复 `window.scrollTo()`
+
+**文件：frontend/src/components/AppSidebar.vue**
+- `.sidebar-container` 新增 `height: 100dvh`
+
+### 版本号更新
+- 版本号保持 v2.3.5
+- `CHANGELOG.md`、`ChangelogPage.vue`：更新条目内容
 
 ## 十四、版本 v2.3.4 - 深浅模式切换bug修复 + 设置页UI升级 + Header浅色适配 (2026-07-16)
 
