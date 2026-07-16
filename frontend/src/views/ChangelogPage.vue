@@ -8,6 +8,86 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag size="large">v2.4.3</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>全页面PC端布局大幅优化：设置页 max-width 提升至 900px，收藏/稍后看/观看历史/下载页提升至 1200px，播放清单提升至 1100px，更新日志提升至 1000px，首页提升至 1400px，搜索页和日历页提升至 1200px/1400px，充分利用桌面宽屏空间</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>PC端页面标题全面增大：设置页 32px、视频详情页 30px、收藏/稍后看/观看历史/下载/播放清单 28px、搜索结果 24px、更新日志 36px、日历页 30px</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>PC端卡片网格列宽和间距优化：视频网格 minmax(200px, 1fr)、文件夹网格 minmax(260px, 1fr)、番剧网格 minmax(260px, 1fr)，间距统一增大至 18-20px</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>PC端内边距和留白增大：各页面 padding 提升至 28-40px，卡片区 padding 增大，页面标题与内容间距增大</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>PC端字体尺寸提升：分区标题、表单标签、按钮文字、标签页等全部增大，视觉层级更分明</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>设置页数据管理按钮在PC端改为横排布局，搜索栏搜索输入框和按钮放大</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>视频详情页操作按钮加大 padding，标签页字号增大，标签 tag 字号增大</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>日历页PC端视频网格改为6列，搜索页结果网格加宽，视频卡片PC端信息区 padding 增大</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag size="large">v2.4.2</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>视频分区PC端箭头导航：隐藏原生滚动条，改为左右箭头按钮，悬停持续滚动，点击跳转一页，手机端保留触摸滚动</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>视频详情页手机端按钮改为 grid 网格布局，768px以下3列、480px以下2列，按钮等宽居中</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>视频详情页PC端优化：max-width 1000px 居中布局，标题字号增大，网格列宽优化</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>评论区分页功能：每页10条评论，替代"加载更多"，切页自动滚动到顶部</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>播放清单页面图片屏蔽支持：文件夹封面和视频封面支持模糊/隐藏屏蔽</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>全页面PC端布局优化：收藏/稍后看/观看历史/下载页面添加居中约束和PC端专属样式</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag size="large">v2.4.1</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
@@ -932,6 +1012,51 @@ export default defineComponent({
 
 .optimization-table tbody tr:hover {
   background-color: var(--hover-bg-color);
+}
+
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .changelog-page {
+    max-width: 1000px;
+    padding: 40px 32px;
+  }
+
+  .page-title {
+    font-size: 36px;
+  }
+
+  .page-header {
+    margin-bottom: 48px;
+  }
+
+  .page-subtitle {
+    font-size: 16px;
+  }
+
+  .changelog-container {
+    gap: 36px;
+  }
+
+  .section-header {
+    padding: 24px 28px;
+  }
+
+  .section-content {
+    padding: 28px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    margin-bottom: 24px;
+  }
+
+  .update-list li span {
+    font-size: 16px;
+  }
+
+  .version-date {
+    font-size: 15px;
+  }
 }
 
 @media (max-width: 600px) {

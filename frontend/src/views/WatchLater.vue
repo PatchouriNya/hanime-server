@@ -131,7 +131,9 @@ onMounted(loadWatchLater);
 <style scoped>
 .watch-later-page {
   width: 100%;
-  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px;
 }
 
 .page-header {
@@ -185,8 +187,35 @@ onMounted(loadWatchLater);
 
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 769px) {
+  .watch-later-page {
+    padding: 32px 28px;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .page-header {
+    margin-bottom: 28px;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+  }
+
+  .empty-text {
+    font-size: 22px;
+  }
+
+  .empty-hint {
+    font-size: 16px;
+  }
 }
 
 @media (max-width: 768px) {

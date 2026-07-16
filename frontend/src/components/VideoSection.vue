@@ -14,32 +14,55 @@
       </el-button>
     </div>
 
-    <div class="horizontal-scroll">
-      <video-card
-          v-for="(video, index) in videos"
-          :key="video.video_id"
-          :video="video"
-          :thumbnail-class="thumbnailClass"
-          :custom-class="'horizontal-item ' + itemClass"
-          :single-line-title="thumbnailClass === 'landscape'"
-          :style="{ animationDelay: `${index * 50}ms` }"
-          @click="(videoId) => $emit('video-click', videoId)"
-      />
+    <div class="scroll-wrapper">
+      <button
+        v-if="showLeftArrow"
+        class="scroll-arrow scroll-arrow-left"
+        @click="scrollByPage('left')"
+        @mouseenter="startAutoScroll('left')"
+        @mouseleave="stopAutoScroll"
+      >
+        <el-icon :size="20"><ArrowLeft /></el-icon>
+      </button>
+
+      <div class="horizontal-scroll" ref="scrollContainerRef" @scroll="updateArrowVisibility">
+        <video-card
+            v-for="(video, index) in videos"
+            :key="video.video_id"
+            :video="video"
+            :thumbnail-class="thumbnailClass"
+            :custom-class="'horizontal-item ' + itemClass"
+            :single-line-title="thumbnailClass === 'landscape'"
+            :style="{ animationDelay: `${index * 50}ms` }"
+            @click="(videoId) => $emit('video-click', videoId)"
+        />
+      </div>
+
+      <button
+        v-if="showRightArrow"
+        class="scroll-arrow scroll-arrow-right"
+        @click="scrollByPage('right')"
+        @mouseenter="startAutoScroll('right')"
+        @mouseleave="stopAutoScroll"
+      >
+        <el-icon :size="20"><ArrowRight /></el-icon>
+      </button>
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import {defineComponent, PropType} from 'vue';
+import {defineComponent, PropType, ref, onMounted, onUnmounted, nextTick} from 'vue';
 import {VideoBase, VideoPreview} from '../types/video';
 import VideoCard from "./VideoCard.vue";
-import { ArrowRight } from '@element-plus/icons-vue';
-
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'VideoSection',
   components: {
-    VideoCard
+    VideoCard,
+    ArrowLeft,
+    ArrowRight
   },
   props: {
     title: {
@@ -63,7 +86,79 @@ export default defineComponent({
       default: 'landscape'
     }
   },
-  emits: ['view-more', 'video-click']
+  emits: ['view-more', 'video-click'],
+  setup() {
+    const scrollContainerRef = ref<HTMLElement | null>(null);
+    const showLeftArrow = ref(false);
+    const showRightArrow = ref(false);
+    let autoScrollTimer: ReturnType<typeof setInterval> | null = null;
+    let isMobile = window.innerWidth <= 768;
+
+    const updateArrowVisibility = () => {
+      const el = scrollContainerRef.value;
+      if (!el || isMobile) {
+        showLeftArrow.value = false;
+        showRightArrow.value = false;
+        return;
+      }
+      showLeftArrow.value = el.scrollLeft > 10;
+      showRightArrow.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 10;
+    };
+
+    const scrollByPage = (direction: 'left' | 'right') => {
+      stopAutoScroll();
+      const el = scrollContainerRef.value;
+      if (!el) return;
+      const scrollAmount = el.clientWidth * 0.8;
+      el.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    };
+
+    const startAutoScroll = (direction: 'left' | 'right') => {
+      stopAutoScroll();
+      const el = scrollContainerRef.value;
+      if (!el) return;
+      autoScrollTimer = setInterval(() => {
+        el.scrollBy({ left: direction === 'left' ? -6 : 6 });
+      }, 16);
+    };
+
+    const stopAutoScroll = () => {
+      if (autoScrollTimer) {
+        clearInterval(autoScrollTimer);
+        autoScrollTimer = null;
+      }
+    };
+
+    const handleResize = () => {
+      isMobile = window.innerWidth <= 768;
+      updateArrowVisibility();
+    };
+
+    onMounted(() => {
+      nextTick(() => {
+        updateArrowVisibility();
+      });
+      window.addEventListener('resize', handleResize);
+    });
+
+    onUnmounted(() => {
+      window.removeEventListener('resize', handleResize);
+      stopAutoScroll();
+    });
+
+    return {
+      scrollContainerRef,
+      showLeftArrow,
+      showRightArrow,
+      updateArrowVisibility,
+      scrollByPage,
+      startAutoScroll,
+      stopAutoScroll
+    };
+  }
 });
 </script>
 
@@ -139,40 +234,88 @@ export default defineComponent({
   transform: translateX(3px);
 }
 
-/* 水平滚动布局 */
+/* Scroll wrapper with arrows */
+.scroll-wrapper {
+  position: relative;
+}
+
 .horizontal-scroll {
   display: flex;
   overflow-x: auto;
   gap: 14px;
   padding-bottom: 8px;
-  scrollbar-width: thin;
   scroll-behavior: smooth;
 }
 
-/* webkit自定义滚动条 */
-.horizontal-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.horizontal-scroll::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 10px;
-}
-
-.horizontal-scroll::-webkit-scrollbar-thumb {
-  background: rgba(236, 72, 153, 0.3);
-  border-radius: 10px;
-}
-
-.horizontal-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(236, 72, 153, 0.5);
-}
-
-/* Firefox自定义滚动条 */
-@supports (scrollbar-color: rgba(236, 72, 153, 0.3) transparent) {
+/* Desktop: hide scrollbar, show arrows */
+@media (min-width: 769px) {
   .horizontal-scroll {
-    scrollbar-color: rgba(236, 72, 153, 0.3) transparent;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .horizontal-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Mobile: show thin scrollbar */
+@media (max-width: 768px) {
+  .horizontal-scroll {
     scrollbar-width: thin;
+  }
+
+  .horizontal-scroll::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .horizontal-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .horizontal-scroll::-webkit-scrollbar-thumb {
+    background: rgba(236, 72, 153, 0.2);
+    border-radius: 10px;
+  }
+}
+
+/* Arrow buttons - vertical bar style */
+.scroll-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 32px;
+  height: 80px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  backdrop-filter: blur(4px);
+}
+
+.scroll-arrow:hover {
+  background: rgba(236, 72, 153, 0.85);
+  width: 36px;
+}
+
+.scroll-arrow-left {
+  left: 2px;
+}
+
+.scroll-arrow-right {
+  right: 2px;
+}
+
+/* Hide arrows on mobile */
+@media (max-width: 768px) {
+  .scroll-arrow {
+    display: none !important;
   }
 }
 
@@ -184,7 +327,19 @@ export default defineComponent({
   flex: 0 0 160px;
 }
 
-/* 响应式设计 */
+/* Light theme adjustments */
+:global(.light) .scroll-arrow {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+:global(.light) .scroll-arrow:hover {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
   .video-section {
     padding: 14px;
@@ -238,4 +393,4 @@ export default defineComponent({
     padding: 5px 12px;
   }
 }
-</style> 
+</style>

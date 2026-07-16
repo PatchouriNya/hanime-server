@@ -201,6 +201,28 @@ export default defineComponent({
   flex: 0 0 160px;
 }
 
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .page-container {
+    max-width: 1400px;
+    padding: 24px 32px;
+  }
+
+  .skeleton-section {
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+
+  .skeleton-header {
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+  }
+
+  .skeleton-card {
+    flex: 0 0 180px;
+  }
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .page-container {

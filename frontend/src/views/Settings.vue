@@ -191,7 +191,7 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v2.4.1</span>
+              <span class="about-value">v2.4.3</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
@@ -356,9 +356,7 @@ const handleProxyChange = () => {
 };
 
 const handleBlurChange = () => {
-  if (!contentForm.enableBlur) {
-    contentForm.blurMode = 'blur';
-  }
+  // 不再重置 blurMode，保留用户上次选择的屏蔽方式
 };
 
 const saveContentSettings = () => {
@@ -751,6 +749,10 @@ const saveDownloadDir = async () => {
   gap: 10px;
 }
 
+.data-actions .el-button {
+  width: 100%;
+}
+
 /* ========== 关于 ========== */
 .about-info {
   display: flex;
@@ -793,6 +795,80 @@ const saveDownloadDir = async () => {
 /* ========== 其他 ========== */
 .hidden-input {
   display: none;
+}
+
+/* ========== PC端大气布局 ========== */
+@media (min-width: 769px) {
+  .settings-page {
+    max-width: 900px;
+    padding: 40px 32px 60px;
+  }
+
+  .page-title {
+    font-size: 32px;
+  }
+
+  .title-accent {
+    height: 28px;
+    width: 5px;
+  }
+
+  .page-subtitle {
+    font-size: 15px;
+  }
+
+  .page-header {
+    margin-bottom: 36px;
+  }
+
+  .section-label {
+    font-size: 14px;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .section-label .el-icon {
+    font-size: 18px;
+  }
+
+  :deep(.el-card__body) {
+    padding: 24px 32px;
+  }
+
+  :deep(.el-form-item__label) {
+    font-size: 14px;
+  }
+
+  .card-footer {
+    margin-top: 20px;
+    gap: 12px;
+  }
+
+  .card-footer .el-button {
+    padding: 10px 24px;
+  }
+
+  .data-actions {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .data-actions .el-button {
+    width: auto;
+  }
+
+  .about-key {
+    font-size: 14px;
+    min-width: 56px;
+  }
+
+  .about-value {
+    font-size: 15px;
+  }
+
+  .changelog-link {
+    font-size: 15px;
+  }
 }
 
 /* ========== 响应式 ========== */

@@ -1214,6 +1214,53 @@ export default defineComponent({
   color: white !important;
 }
 
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .page-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .search-header {
+    padding: 32px 0 24px 0;
+    margin-bottom: 24px;
+  }
+
+  .search-container {
+    max-width: 640px;
+  }
+
+  .search-input {
+    font-size: 20px !important;
+    height: 50px !important;
+  }
+
+  .search-button,
+  .filter-button {
+    height: 50px;
+    font-size: 18px;
+  }
+
+  .results-title {
+    font-size: 24px;
+  }
+
+  .video-grid-basic {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 18px;
+  }
+
+  .video-grid-detailed {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+  }
+
+  .section-title {
+    font-size: 20px;
+  }
+}
+
 /* 优化高级搜索弹窗在手机端的适配 */
 :deep(.advanced-search-dialog) {
   border-radius: 12px;

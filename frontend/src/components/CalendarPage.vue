@@ -686,6 +686,61 @@ export default defineComponent({
   gap: 6px;
 }
 
+/* ===== PC端大气布局 ===== */
+@media (min-width: 769px) {
+  .calendar-page {
+    max-width: 1400px;
+    padding: 0 28px 48px;
+  }
+
+  .header-gradient-bar {
+    margin: 0 -28px 28px;
+  }
+
+  .header-title {
+    font-size: 30px;
+  }
+
+  .header-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+  }
+
+  .header-subtitle {
+    font-size: 14px;
+  }
+
+  .page-header {
+    margin-bottom: 24px;
+  }
+
+  .section-header {
+    padding: 16px 24px;
+  }
+
+  .section-name {
+    font-size: 17px;
+  }
+
+  .section-content {
+    padding: 0 20px 20px;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 18px;
+  }
+
+  .card-title {
+    font-size: 14px;
+  }
+
+  .card-info {
+    padding: 12px 10px;
+  }
+}
+
 /* ===== 响应式布局 ===== */
 @media (max-width: 1200px) {
   .video-grid,

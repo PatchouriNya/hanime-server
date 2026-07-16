@@ -426,6 +426,33 @@ export default defineComponent({
   z-index: 3;
 }
 
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .video-info {
+    padding: 12px 12px 14px;
+  }
+
+  .video-title {
+    font-size: 15px;
+  }
+
+  .video-studio {
+    font-size: 13px;
+  }
+
+  .video-duration,
+  .video-views-badge,
+  .video-like-badge {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .favorite-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .video-card { border-radius: 10px; }

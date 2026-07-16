@@ -45,7 +45,7 @@
                 :key="video.video_id"
                 :src="video.cover_url"
                 class="cover-thumb"
-                :class="'thumb-' + (i + 1)"
+                :class="['thumb-' + (i + 1), { 'blurred': shouldBlur && blurMode === 'blur', 'hidden-img': shouldBlur && blurMode === 'hide' }]"
                 loading="lazy"
                 referrerpolicy="no-referrer"
               />
@@ -132,7 +132,7 @@
           @click="handleVideoClick(video.video_id)"
         >
           <div class="video-cover">
-            <img :src="video.cover_url" :alt="video.title" loading="lazy" referrerpolicy="no-referrer" />
+            <img :src="video.cover_url" :alt="video.title" loading="lazy" referrerpolicy="no-referrer" :class="{ 'blurred': shouldBlur && blurMode === 'blur', 'hidden-img': shouldBlur && blurMode === 'hide' }" />
             <div class="video-hover-actions">
               <el-button size="small" circle @click.stop="startMoveVideo(video.video_id)" title="移动到其他文件夹">
                 <el-icon :size="14"><Switch /></el-icon>
@@ -216,6 +216,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { AccountApi, UserPlaylist } from '../api/account';
+import { useContentSettings } from '../composables/useContentSettings';
 import {
   Plus, FolderOpened, Folder, FolderAdd, VideoCamera, Edit,
   Delete, MoreFilled, Switch, Close, ArrowLeftBold, Loading, WarningFilled
@@ -233,6 +234,7 @@ const deletingId = ref<string | null>(null);
 const movingVideoId = ref<string | null>(null);
 const currentFolder = ref<UserPlaylist | null>(null);
 const isMobile = ref(window.innerWidth <= 480);
+const { shouldBlur, mode: blurMode } = useContentSettings();
 
 // 重命名
 const renamingId = ref<string | null>(null);
@@ -845,6 +847,70 @@ onMounted(() => {
   font-size: 14px;
 }
 
+/* ========== PC端大气布局 ========== */
+@media (min-width: 769px) {
+  .playlists-page {
+    max-width: 1100px;
+    padding: 32px 28px 60px;
+  }
+
+  .page-header {
+    margin-bottom: 28px;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .title-accent {
+    height: 24px;
+    width: 5px;
+  }
+
+  .folder-count {
+    font-size: 14px;
+  }
+
+  .folders-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
+  }
+
+  .folder-info {
+    padding: 14px 16px;
+  }
+
+  .folder-name {
+    font-size: 15px;
+  }
+
+  .folder-meta {
+    font-size: 13px;
+  }
+
+  .detail-title {
+    font-size: 24px;
+  }
+
+  .videos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 16px;
+  }
+
+  .video-title {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .empty-title {
+    font-size: 20px;
+  }
+
+  .empty-desc {
+    font-size: 15px;
+  }
+}
+
 /* ========== 响应式 ========== */
 @media (max-width: 768px) {
   .playlists-page {
@@ -908,5 +974,14 @@ onMounted(() => {
   .detail-title {
     font-size: 16px;
   }
+}
+
+/* Content shielding */
+.blurred {
+  filter: blur(20px) brightness(0.8);
+}
+
+.hidden-img {
+  opacity: 0 !important;
 }
 </style>

@@ -20,8 +20,8 @@
     </div>
 
     <!-- 评论列表 -->
-    <div class="comments-list" v-if="comments.length > 0">
-      <div v-for="comment in comments" :key="comment.comment_id" class="comment-item">
+    <div class="comments-list" v-if="paginatedComments.length > 0">
+      <div v-for="comment in paginatedComments" :key="comment.comment_id" class="comment-item">
         <!-- 评论主体 -->
         <div class="comment-main">
           <div class="comment-avatar">
@@ -98,9 +98,17 @@
       </div>
     </div>
 
-    <!-- 加载更多评论 -->
-    <div class="load-more" v-if="hasMoreComments">
-      <el-button link @click="loadMoreComments">查看更多评论</el-button>
+    <!-- 评论分页 -->
+    <div class="comments-pagination" v-if="comments.length > commentsPerPage">
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="commentsPerPage"
+        :total="comments.length"
+        layout="prev, pager, next"
+        background
+        small
+        @current-change="handlePageChange"
+      />
     </div>
 
     <!-- 暂无评论 -->
@@ -117,7 +125,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, watch } from 'vue';
+import { defineComponent, ref, onMounted, watch, computed } from 'vue';
 import { VideoApi } from '../api/video';
 import { VideoComment, CommentReply } from '../types/video';
 import { ArrowUp, ArrowDown, ChatDotRound } from '@element-plus/icons-vue';
@@ -150,6 +158,23 @@ export default defineComponent({
     const currentSort = ref('最热');
     const repliesSort = ref('最热'); // 子评论排序方式
     const activeRepliesId = ref('');
+    const commentsPerPage = ref(10);
+    const currentPage = ref(1);
+
+    const paginatedComments = computed(() => {
+      const start = (currentPage.value - 1) * commentsPerPage.value;
+      const end = start + commentsPerPage.value;
+      return comments.value.slice(start, end);
+    });
+
+    const handlePageChange = (page: number) => {
+      currentPage.value = page;
+      // Scroll to top of comments
+      const container = document.querySelector('.comments-container');
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
     
     // 默认头像URL
     const defaultAvatarUrl = ref(defaultAvatar);
@@ -272,6 +297,7 @@ export default defineComponent({
           originalComments.value = processedResponse;
           // 应用当前排序
           sortComments(currentSort.value);
+          currentPage.value = 1;
           commentCount.value = response.length;
           hasMoreComments.value = response.length >= 20; // 假设每页20条评论
           
@@ -423,6 +449,7 @@ export default defineComponent({
       // 应用排序而不重新加载评论
       if (originalComments.value.length > 0) {
         sortComments(currentSort.value);
+        currentPage.value = 1;
         // 添加调试信息
         addDebugLog(`评论排序已更改为: ${currentSort.value}, 共 ${comments.value.length} 条评论`);
       } else {
@@ -465,7 +492,11 @@ export default defineComponent({
       handleSortChange,
       handleRepliesSortChange,
       defaultAvatarUrl,
-      handleImageError
+      handleImageError,
+      paginatedComments,
+      commentsPerPage,
+      currentPage,
+      handlePageChange
     };
   }
 });
@@ -719,5 +750,13 @@ export default defineComponent({
   .replies-list {
     margin-left: 42px;
   }
+}
+
+.comments-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border-color);
 }
 </style> 

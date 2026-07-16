@@ -465,7 +465,9 @@ onUnmounted(() => {
 <style scoped>
 .downloads-page {
   width: 100%;
-  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px;
   overflow-x: hidden;
 }
 
@@ -802,6 +804,61 @@ onUnmounted(() => {
 
 .video-dialog :deep(.el-dialog__body) {
   padding: 10px;
+}
+
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .downloads-page {
+    padding: 32px 28px;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .downloads-header {
+    margin-bottom: 24px;
+  }
+
+  .search-input {
+    width: 280px;
+  }
+
+  .stats-container {
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    border-radius: 12px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .stat-label {
+    font-size: 14px;
+  }
+
+  .group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 20px;
+  }
+
+  .group-info {
+    padding: 14px 16px;
+  }
+
+  .group-title {
+    font-size: 15px;
+  }
+
+  .group-meta {
+    font-size: 13px;
+  }
+
+  .download-content {
+    padding: 20px 24px;
+    border-radius: 12px;
+  }
 }
 
 /* 响应式 */

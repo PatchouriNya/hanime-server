@@ -1083,6 +1083,7 @@ export default defineComponent({
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 /* 下载按钮样式 */
@@ -1331,11 +1332,16 @@ export default defineComponent({
   .video-actions {
     margin-top: 10px;
     gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
   }
 
   .video-actions .el-button {
-    padding: 8px 12px;
+    width: 100%;
+    justify-content: center;
     font-size: 13px;
+    padding: 8px 4px;
   }
 }
 
@@ -1351,11 +1357,12 @@ export default defineComponent({
 
   .video-actions {
     gap: 6px;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .video-actions .el-button {
-    padding: 6px 10px;
     font-size: 12px;
+    padding: 6px 4px;
   }
 
   .tag-item {
@@ -1723,5 +1730,68 @@ export default defineComponent({
   text-align: center;
   padding: 20px;
   color: var(--text-secondary-color);
+}
+
+/* PC端大气布局 */
+@media (min-width: 769px) {
+  .page-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .video-title {
+    font-size: 30px;
+  }
+
+  .video-subtitle {
+    font-size: 17px;
+  }
+
+  .video-actions .el-button {
+    font-size: 14px;
+    padding: 10px 20px;
+  }
+
+  .video-grid-basic {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 18px;
+  }
+
+  .video-grid-detailed {
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 18px;
+  }
+
+  .section-title {
+    font-size: 20px;
+  }
+
+  .author-name {
+    font-size: 17px;
+  }
+
+  .author-avatar {
+    width: 48px;
+    height: 48px;
+  }
+
+  .description-content {
+    font-size: 15px;
+  }
+
+  .tag-item {
+    padding: 10px 18px !important;
+    font-size: 15px !important;
+  }
+
+  .tab {
+    font-size: 17px;
+    padding: 14px 24px;
+  }
+
+  .video-info-container {
+    margin-bottom: 36px;
+  }
 }
 </style>
