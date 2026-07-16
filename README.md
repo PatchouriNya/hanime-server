@@ -265,8 +265,8 @@ services:
     ports:
       - "7788:7788"
     volumes:
+      # 挂载一个目录即可持久化所有用户数据（数据库、下载文件、封面）
       - /volume1/docker/hanime/data:/app/backend/data
-      - /volume1/docker/hanime/downloads:/app/backend/downloads
     environment:
       - TZ=Asia/Shanghai
       - USE_PROXY=false
@@ -278,7 +278,7 @@ services:
 
 ```bash
 # 创建数据目录
-mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads
+mkdir -p /volume1/docker/hanime/data
 
 # 启动容器
 docker-compose up -d
@@ -297,7 +297,7 @@ docker-compose up -d
 
 ```bash
 # 创建数据目录
-mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads
+mkdir -p /volume1/docker/hanime/data
 
 # 拉取镜像并启动
 docker-compose -f docker-compose.nas.yml pull
@@ -337,7 +337,7 @@ environment:
 
 #### 绿联 (UGreen) NAS 部署（以 4800Plus 为例）
 1. 在应用中心安装 Docker
-2. 创建部署目录：`mkdir -p /volume1/docker/hanime/data /volume1/docker/hanime/downloads`
+2. 创建部署目录：`mkdir -p /volume1/docker/hanime/data`
 3. 创建或下载 docker-compose.nas.yml
 4. 运行 `docker-compose -f docker-compose.nas.yml up -d`
 5. 访问：http://你的NASIP:7788

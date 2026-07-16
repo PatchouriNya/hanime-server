@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v2.3.2</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>用户数据持久化：所有用户数据（收藏、稍后观看、观看历史、下载记录、封面等）统一存放到 DATA_ROOT 目录，Docker 部署只需挂载一个目录即可持久化全部数据，更新镜像不再丢失数据</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>自动迁移：首次启动时自动将旧路径（/app/backend/db、/app/backend/downloads）的数据迁移到新路径（/app/backend/data/db、/app/backend/data/downloads），无需手动操作</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v2.3.1</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>

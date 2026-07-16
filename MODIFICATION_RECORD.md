@@ -3,6 +3,43 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十二、版本 v2.3.2 - 用户数据持久化 (2026-07-16)
+
+### 修改原因
+用户反馈每次更新重新拉取镜像后，收藏、稍后观看等用户数据全部丢失。根因是 docker-compose.nas.yml 中数据目录挂载路径（/app/backend/data）与实际数据库路径（/app/backend/db）不匹配，导致数据库未被挂载到宿主机，容器重建后数据随容器一起删除。
+
+### 修改内容
+
+**文件：backend/app/config.py** - 数据路径统一
+- 新增 `DATA_ROOT` 配置项：`Path(os.getenv("DATA_ROOT", str(backend_root / "data")))`
+- `DB_PATH` 默认值改为 `DATA_ROOT / "db"`（旧：`backend_root / "db"`）
+- `DOWNLOAD_PATH` 默认值改为 `DATA_ROOT / "downloads"`（旧：`backend_root / "downloads"`）
+- `COVER_PATH` 默认值改为 `DATA_ROOT / "downloads" / "covers"`（旧：`backend_root / "downloads" / "covers"`）
+- 使用 `pydantic.model_validator(mode='after')` 在环境变量未指定时使用 DATA_ROOT 默认路径，兼容旧配置
+- 新增自动迁移逻辑：首次启动时检测旧路径（backend/db、backend/downloads），如有数据自动 move 到新路径
+- 版本号 2.3.1 → 2.3.2
+
+**文件：docker-compose.yml** - 简化挂载
+- 旧：`./data/downloads:/app/backend/downloads` + `./data/db:/app/backend/db`（两个挂载）
+- 新：`./data:/app/backend/data`（一个挂载持久化所有数据）
+
+**文件：docker-compose.nas.yml** - 修正挂载路径
+- 旧：`/volume1/docker/hanime/data:/app/backend/data` + `/volume1/docker/hanime/downloads:/app/backend/downloads`（data 挂载了但路径不含数据库）
+- 新：`/volume1/docker/hanime/data:/app/backend/data`（一个挂载）
+
+**文件：backend/.env.example** - 新增 DATA_ROOT
+- 新增 `DATA_ROOT=/app/backend/data`
+- 更新 `DOWNLOAD_PATH=/app/backend/data/downloads`
+
+**文件：README.md** - 部署示例更新
+- docker-compose 示例简化为单挂载
+- mkdir 命令简化
+
+**文件：frontend/src/components/AppHeader.vue** - 版本号 v2.3.2
+**文件：frontend/src/views/Settings.vue** - 版本号 v2.3.2
+**文件：frontend/src/views/ChangelogPage.vue** - 新增 v2.3.2 条目
+**文件：CHANGELOG.md** - 新增 v2.3.2 条目
+
 ## 十一、版本 v2.3.1 - 修复请求超时后全站不可用 (2026-07-16)
 
 ### 修改原因

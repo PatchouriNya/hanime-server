@@ -1,5 +1,22 @@
 # 更新日志
 
+## v2.3.2 (2026-07-16)
+
+### 优化改进
+
+1. **用户数据持久化**：
+   - 新增 `DATA_ROOT` 配置项，所有用户数据（数据库、下载文件、封面等）统一存放到一个目录
+   - Docker 部署只需挂载一个目录 `/app/backend/data` 即可持久化全部数据，更新镜像不再丢失收藏、稍后观看、观看历史、下载记录等
+   - 支持通过 `DATA_ROOT` 环境变量自定义数据根目录
+   - 旧部署配置中的 `DB_PATH`、`DOWNLOAD_PATH` 环境变量仍然有效，兼容旧配置
+
+2. **自动数据迁移**：
+   - 首次启动时自动检测旧路径（`/app/backend/db`、`/app/backend/downloads`），如有数据自动迁移到新路径（`/app/backend/data/db`、`/app/backend/data/downloads`），无需手动操作
+
+3. **部署配置简化**：
+   - `docker-compose.yml` 和 `docker-compose.nas.yml` 简化为只挂载一个目录
+   - README 中的部署示例同步更新
+
 ## v2.3.1 (2026-07-16)
 
 ### 修复

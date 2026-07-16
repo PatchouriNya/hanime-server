@@ -5,8 +5,8 @@ services:
     ports:
       - "7788:7788"
     volumes:
+      # 挂载一个目录即可持久化所有用户数据（数据库、下载文件、封面）
       - /volume1/docker/hanime/data:/app/backend/data
-      - /volume1/docker/hanime/downloads:/app/backend/downloads
     environment:
       - TZ=Asia/Shanghai
       - USE_PROXY=false

@@ -10,10 +10,8 @@ services:
       - PYTHONOPTIMIZE=2
       - PYTHONDONTWRITEBYTECODE=1
     volumes:
-      - ./data/downloads:/app/backend/downloads
-      - ./data/db:/app/backend/db
-      # 如需下载到宿主机其他目录，取消注释以下行并修改路径：
-      # - /your/host/path:/data/downloads
+      # 挂载一个目录即可持久化所有用户数据（数据库、下载文件、封面）
+      - ./data:/app/backend/data
     ports:
       - "7788:7788"
     deploy:

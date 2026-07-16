@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import Optional
 from loguru import logger
 from pathlib import Path
@@ -30,7 +30,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "2.3.1")
+    APP_VERSION: str = os.getenv("APP_VERSION", "2.3.2")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -38,10 +38,24 @@ class Settings(BaseModel):
     # 外部API设置
     HANIME_BASE_URL: str = os.getenv("HANIME_BASE_URL", "https://hanime1.me")
 
-    # 文件设置
-    DOWNLOAD_PATH: Path = Path(os.getenv("DOWNLOAD_PATH", str(backend_root / "downloads")))
-    DB_PATH: Path = Path(os.getenv("DB_PATH", str(backend_root / "db")))
-    COVER_PATH: Path = Path(os.getenv("COVER_PATH", str(backend_root / "downloads" / "covers")))
+    # 数据根目录 - 所有用户数据统一存放于此，Docker 挂载这一个目录即可持久化
+    DATA_ROOT: Path = Path(os.getenv("DATA_ROOT", str(backend_root / "data")))
+
+    # 文件设置（默认值在 model_validator 中基于 DATA_ROOT 计算）
+    DOWNLOAD_PATH: Path = Path(os.getenv("DOWNLOAD_PATH", ""))
+    DB_PATH: Path = Path(os.getenv("DB_PATH", ""))
+    COVER_PATH: Path = Path(os.getenv("COVER_PATH", ""))
+
+    @model_validator(mode='after')
+    def set_default_paths(self):
+        """未通过环境变量指定路径时，使用 DATA_ROOT 下的默认路径"""
+        if not os.getenv("DOWNLOAD_PATH"):
+            self.DOWNLOAD_PATH = self.DATA_ROOT / "downloads"
+        if not os.getenv("DB_PATH"):
+            self.DB_PATH = self.DATA_ROOT / "db"
+        if not os.getenv("COVER_PATH"):
+            self.COVER_PATH = self.DATA_ROOT / "downloads" / "covers"
+        return self
 
     # 爬虫设置
     USER_AGENT: str = os.getenv("USER_AGENT","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -75,13 +89,30 @@ if settings.USE_DOWNLOAD_PROXY and not settings.DOWNLOAD_PROXY_URL:
     settings.USE_DOWNLOAD_PROXY = False
 
 # 打印下载目录信息
+logger.info(f"数据根目录: {settings.DATA_ROOT}")
 logger.info(f"下载目录: {settings.DOWNLOAD_PATH}")
 logger.info(f"数据库目录: {settings.DB_PATH}")
 logger.info(f"封面目录: {settings.COVER_PATH}")
 
-# 确保下载目录存在
-settings.DOWNLOAD_PATH.mkdir(exist_ok=True)
-settings.DB_PATH.mkdir(exist_ok=True)
+# 自动迁移旧路径数据到新的 DATA_ROOT 结构
+import shutil as _shutil
+_old_paths = {
+    "db": backend_root / "db",
+    "downloads": backend_root / "downloads",
+}
+for _name, _old in _old_paths.items():
+    _new = settings.DATA_ROOT / _name
+    if _old.exists() and _old.is_dir() and not _new.exists():
+        try:
+            _new.parent.mkdir(parents=True, exist_ok=True)
+            _shutil.move(str(_old), str(_new))
+            logger.info(f"已迁移旧目录 {_old} -> {_new}")
+        except Exception as e:
+            logger.warning(f"迁移旧目录 {_old} -> {_new} 失败: {e}，将使用新路径")
+
+# 确保目录存在
+settings.DOWNLOAD_PATH.mkdir(exist_ok=True, parents=True)
+settings.DB_PATH.mkdir(exist_ok=True, parents=True)
 settings.COVER_PATH.mkdir(parents=True, exist_ok=True)
 
 

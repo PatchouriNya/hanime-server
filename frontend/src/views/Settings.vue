@@ -180,7 +180,7 @@
           </div>
         </template>
         <div class="about-info">
-          <p><strong>版本:</strong> v2.3.1</p>
+          <p><strong>版本:</strong> v2.3.2</p>
           <p><strong>描述:</strong> Hanime视频聚合平台</p>
           <p><strong>功能:</strong> 视频浏览、收藏、下载、播放清单</p>
           <p><strong>更新日志:</strong> <a href="/changelog" class="changelog-link">查看更新记录</a></p>
