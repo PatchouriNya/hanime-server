@@ -490,13 +490,16 @@ class UserService:
             return {}
     
     async def save_user_settings(self, username: str, settings: Dict[str, Any]) -> bool:
-        """保存用户设置"""
+        """保存用户设置（合并模式：只更新传入的字段，不覆盖未传入的字段）"""
         try:
+            # 读取现有设置，与传入的设置合并
+            existing = await self.get_user_settings(username)
+            existing.update(settings)
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
                 INSERT OR REPLACE INTO user_settings (username, settings)
                 VALUES (?, ?)
-                """, (username, json.dumps(settings)))
+                """, (username, json.dumps(existing)))
                 await conn.commit()
             return True
         except Exception as e:

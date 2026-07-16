@@ -1,5 +1,31 @@
 # 更新日志
 
+## v2.3.4 (2026-07-16)
+
+### 修复
+
+1. **切换深浅模式导致屏蔽图片设置重置**：
+   - **根因**：后端 `save_user_settings` 使用 `INSERT OR REPLACE` 直接覆盖整个 settings 行。当 App.vue 切换主题调用 `saveThemeToServer` 只传 `{ theme: 'light' }` 时，之前保存的 `enableBlur` 和 `blurMode` 被清空
+   - **修复**：`save_user_settings` 改为合并模式，先读取已有设置，用 `existing.update(settings)` 合并后再写入，只更新传入的字段
+
+2. **浅色模式手机端 Header 未适配**：
+   - `:global(.light)` 选择器在 scoped CSS 中有兼容性问题，改为 `html.light .app-header` 更可靠
+   - 增加浅色边框 `border-bottom-color: #e5e7eb` 和微阴影
+
+### 优化改进
+
+1. **设置页面 UI 全面升级**：
+   - 居中卡片式布局（max-width 680px）
+   - 图标驱动分区标头（下载/代理/屏蔽/数据/安全/关于，各配专属图标）
+   - 卡片 hover 边框发光 + 亮色模式阴影
+   - 关于页从 `<p>` 段落改为 key-value 行式排版
+   - 提示块增加细微边框 + 8px 圆角
+   - 标题加渐变色装饰条（蓝→紫）
+
+2. **侧边栏新增"更新记录"入口**：手机端隐藏顶部导航栏后，仍可通过侧边栏访问更新日志
+
+3. **手机端设置页表单 label 防换行**：480px 以下 `el-form-item__label` 添加 `white-space: nowrap`
+
 ## v2.3.3 (2026-07-16)
 
 ### 优化改进

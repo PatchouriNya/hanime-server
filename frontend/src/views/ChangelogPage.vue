@@ -8,6 +8,41 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v2.3.4</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>切换深浅模式导致屏蔽图片设置重置：后端用户设置保存改为合并模式，只更新传入字段不再覆盖未传入字段</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>浅色模式手机端 Header 未适配：改用更可靠的选择器，增加浅色边框和微阴影</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>设置页面 UI 全面升级：新增图标分区标头、卡片 hover 发光边框、居中布局、关于页行式排版</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>侧边栏新增"更新记录"入口，手机端也可方便访问</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>手机端设置页表单 label 防换行优化</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v2.3.3</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>

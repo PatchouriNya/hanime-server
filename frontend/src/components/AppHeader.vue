@@ -9,7 +9,7 @@
       </button>
       <div class="title-wrapper">
         <h1 class="app-title" @click="goToHome">HanimeViewer</h1>
-        <span class="version-badge">v2.3.3</span>
+        <span class="version-badge">v2.3.4</span>
       </div>
     </div>
     <div class="header-right">
@@ -131,8 +131,10 @@ export default defineComponent({
   background-color: rgba(24, 24, 27, 0.85);
 }
 
-:global(.light) .app-header {
-  background-color: rgba(255, 255, 255, 0.85);
+html.light .app-header {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-bottom-color: #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .header-left, .header-right {

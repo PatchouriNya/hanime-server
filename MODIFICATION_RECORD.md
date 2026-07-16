@@ -3,6 +3,54 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十四、版本 v2.3.4 - 深浅模式切换bug修复 + 设置页UI升级 + Header浅色适配 (2026-07-16)
+
+### 修改原因
+1. 切换深浅模式时屏蔽图片设置会重置为默认毛玻璃
+2. 设置页样式不够高级，用户要求优化
+3. 浅色模式下手机端 Header 没有适配
+4. 手机端设置页 label 文字换行
+5. 手机端侧边栏缺少更新记录入口
+
+### 修改内容
+
+**修复1：切换深浅模式屏蔽设置重置**
+
+**文件：backend/app/services/user_service.py**
+- `save_user_settings` 改为合并模式：先 `get_user_settings` 读出现有设置，`existing.update(settings)` 合并后再 `INSERT OR REPLACE`
+- 根因：App.vue 切换主题时 `saveThemeToServer` 只传 `{ theme: 'light' }`，旧的 INSERT OR REPLACE 直接覆盖了整行，blur 设置被清空
+
+**修复2：浅色模式 Header 适配**
+
+**文件：frontend/src/components/AppHeader.vue**
+- `:global(.light) .app-header` 改为 `html.light .app-header`（scoped CSS 中的 `:global()` 选择器不可靠）
+- 亮色背景改为 `rgba(255, 255, 255, 0.9)`
+- 新增 `border-bottom-color: #e5e7eb` 和 `box-shadow`
+
+**优化：设置页 UI 全面升级**
+
+**文件：frontend/src/views/Settings.vue**
+- 布局改为居中卡片式（max-width 680px）
+- 每个分区新增 `section-label`（图标 + uppercase 标题），隐藏原 `el-card__header`
+- 卡片 hover 边框发光：`border-color: var(--primary-color)` + `box-shadow`
+- 亮色模式卡片白色背景 + hover 阴影
+- 关于页改为 `about-row` 行式排版（key-value 结构）
+- 标题加 `title-accent` 渐变色装饰条
+- 新增 `Hide`、`Lock` 图标导入
+- 手机端 label 添加 `white-space: nowrap`
+
+**新增：侧边栏更新记录入口**
+
+**文件：frontend/src/components/AppSidebar.vue**
+- "设置"下方新增"更新记录"导航项
+- 导入并注册 `Document` 图标
+
+### 版本号更新
+- `backend/app/config.py`：APP_VERSION 2.3.3 → 2.3.4
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.3.4
+- `frontend/src/views/Settings.vue`：版本号 v2.3.4
+- `CHANGELOG.md`、`ChangelogPage.vue`：新增 v2.3.4 条目
+
 ## 十三、版本 v2.3.3 - 下载进度实时更新 + 冗余提示清理 + 手机端适配 (2026-07-16)
 
 ### 修改原因

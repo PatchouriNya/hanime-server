@@ -191,7 +191,7 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v2.3.3</span>
+              <span class="about-value">v2.3.4</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
@@ -835,6 +835,7 @@ const saveDownloadDir = async () => {
   :deep(.el-form-item__label) {
     width: 80px !important;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .card-footer {
