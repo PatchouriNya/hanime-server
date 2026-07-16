@@ -497,48 +497,51 @@ html.light .hide-text {
   color: rgba(0, 0, 0, 0.3);
 }
 
-/* 亮色模式下渐变遮罩减弱，保持文字可读的同时不过于突兀 */
+/* 亮色模式下渐变遮罩大幅减弱，与浅色页面融为一体 */
 html.light .banner-gradient-dark {
   background: linear-gradient(
     0deg,
-    rgba(0, 0, 0, 0.85) 0%,
-    rgba(0, 0, 0, 0.5) 25%,
-    rgba(0, 0, 0, 0.1) 55%,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.25) 25%,
+    rgba(0, 0, 0, 0.04) 55%,
     transparent 100%
   );
 }
 html.light .banner-gradient-accent {
   background: linear-gradient(
     90deg,
-    rgba(0, 0, 0, 0.4) 0%,
-    rgba(0, 0, 0, 0.05) 50%,
-    rgba(236, 72, 153, 0.05) 100%
+    rgba(0, 0, 0, 0.15) 0%,
+    transparent 50%,
+    rgba(236, 72, 153, 0.03) 100%
   );
 }
 html.light .banner-gradient-vignette {
   background: radial-gradient(
     ellipse at center,
-    transparent 55%,
-    rgba(0, 0, 0, 0.25) 100%
+    transparent 60%,
+    rgba(0, 0, 0, 0.12) 100%
   );
 }
 html.light .banner-bottom-panel {
   background: linear-gradient(
     0deg,
-    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.3) 0%,
     transparent 100%
   );
 }
 html.light .capsule-indicators {
-  background: rgba(128, 128, 128, 0.25);
+  background: rgba(128, 128, 128, 0.15);
 }
 html.light .nav-arrow {
-  background: rgba(128, 128, 128, 0.3);
+  background: rgba(128, 128, 128, 0.2);
 }
 html.light .nav-arrow:hover {
-  background: rgba(236, 72, 153, 0.5);
+  background: rgba(236, 72, 153, 0.35);
 }
 html.light .banner-image.blurred {
-  filter: blur(20px) brightness(0.9);
+  filter: blur(20px) brightness(0.95);
+}
+html.light .folder-overlay {
+  background: linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 50%);
 }
 </style>

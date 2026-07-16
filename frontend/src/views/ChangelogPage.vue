@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag size="large">v2.4.1</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>浅色模式 Banner 遮罩大幅减淡：暗角、品红、晕影等渐变透明度全面降低，毛玻璃提亮，与浅色页面融为一体</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="primary" size="large">v2.4.0</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
