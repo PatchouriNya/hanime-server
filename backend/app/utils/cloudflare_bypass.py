@@ -113,6 +113,7 @@ class CloudflareBypasser:
     async def _direct_get_request(self, url: str, params: Optional[Dict] = None,
                                   max_retries: int = 3) -> str:
         client = await self.direct_client
+        last_error = None
         for attempt in range(1, max_retries + 1):
             try:
                 logger.debug(f"[Direct] GET {url} (第{attempt}次请求)")
@@ -122,19 +123,23 @@ class CloudflareBypasser:
                 logger.debug(f"[Direct] 响应 {response.status_code}, 耗时 {elapsed:.2f}s")
                 if response.status_code >= 500:
                     logger.warning(f"[Direct] 响应 {response.status_code}, 将重试")
+                    last_error = f"服务器错误 {response.status_code}"
                     continue
                 return response.text
             except httpx.TimeoutException:
                 logger.warning(f"[Direct] 请求超时 (attempt {attempt}/{max_retries}), URL: {url}")
+                last_error = "请求超时"
             except Exception as e:
                 logger.error(f"[Direct] 请求异常 (attempt {attempt}/{max_retries}): {e}")
+                last_error = str(e)
         logger.error(f"[Direct] 已达最大重试次数({max_retries})，请求失败: {url}")
-        return ""
+        raise Exception(f"请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def _direct_post_request(self, url: str, data: Dict,
                                    headers: Optional[Dict] = None,
                                    max_retries: int = 3) -> Dict:
         client = await self.direct_client
+        last_error = None
         for attempt in range(1, max_retries + 1):
             try:
                 logger.debug(f"[Direct] POST {url} (第{attempt}次请求)")
@@ -144,18 +149,22 @@ class CloudflareBypasser:
                 logger.debug(f"[Direct] POST 响应 {response.status_code}, 耗时 {elapsed:.2f}s")
                 if response.status_code >= 500:
                     logger.warning(f"[Direct] POST 响应 {response.status_code}, 将重试")
+                    last_error = f"服务器错误 {response.status_code}"
                     continue
                 try:
                     return response.json()
                 except Exception:
                     logger.warning(f"[Direct] POST 响应非 JSON: {response.text[:100]}...")
-                    return {}
+                    last_error = "响应非JSON"
+                    continue
             except httpx.TimeoutException:
                 logger.warning(f"[Direct] POST 超时 (attempt {attempt}/{max_retries}), URL: {url}")
+                last_error = "请求超时"
             except Exception as e:
                 logger.error(f"[Direct] POST 异常 (attempt {attempt}/{max_retries}): {e}")
+                last_error = str(e)
         logger.error(f"[Direct] POST 已达最大重试次数({max_retries})，请求失败: {url}")
-        return {}
+        raise Exception(f"POST请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def get_request(self, url: str, params: Optional[Dict] = None, max_retries: int = 3) -> str:
         if not self._use_bypass():
@@ -163,6 +172,7 @@ class CloudflareBypasser:
 
         bypass_url, hostname = self._build_bypass_url(url)
         client = await self.client
+        last_error = None
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -176,11 +186,13 @@ class CloudflareBypasser:
 
                 if response.status_code >= 500:
                     logger.warning(f"[CF] Bypass 服务返回 {response.status_code}, 将重试")
+                    last_error = f"服务器错误 {response.status_code}"
                     continue
 
                 content = response.text
                 if self._is_cf_challenge(content):
                     logger.warning(f"[CF] 检测到 CF 挑战页面, 将强制刷新 cookie 重试")
+                    last_error = "CF挑战页面"
                     continue
 
                 self._bypass_available = True
@@ -188,6 +200,7 @@ class CloudflareBypasser:
 
             except httpx.TimeoutException:
                 logger.warning(f"[CF] 请求超时 (attempt {attempt}/{max_retries}), URL: {url}")
+                last_error = "请求超时"
             except httpx.ConnectError as e:
                 logger.warning(f"[CF] 连接 Bypass 服务失败: {e}，降级为直接代理模式")
                 self._bypass_available = False
@@ -195,9 +208,10 @@ class CloudflareBypasser:
                 return await self._direct_get_request(url, params, max_retries)
             except Exception as e:
                 logger.error(f"[CF] 请求异常 (attempt {attempt}/{max_retries}): {e}, URL: {url}")
+                last_error = str(e)
 
         logger.error(f"[CF] 已达最大重试次数({max_retries})，请求失败: {url}")
-        return ""
+        raise Exception(f"请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def post_request(self, url: str, data: Dict, headers: Optional[Dict] = None,
                            max_retries: int = 3) -> Dict:
@@ -206,6 +220,7 @@ class CloudflareBypasser:
 
         bypass_url, hostname = self._build_bypass_url(url)
         client = await self.client
+        last_error = None
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -222,10 +237,12 @@ class CloudflareBypasser:
 
                 if response.status_code >= 500:
                     logger.warning(f"[CF] Bypass 服务返回 {response.status_code}, 将重试")
+                    last_error = f"服务器错误 {response.status_code}"
                     continue
 
                 if self._is_cf_challenge(response.text):
                     logger.warning(f"[CF] POST 检测到 CF 挑战页面, 将强制刷新 cookie 重试")
+                    last_error = "CF挑战页面"
                     continue
 
                 self._bypass_available = True
@@ -233,10 +250,12 @@ class CloudflareBypasser:
                     return response.json()
                 except Exception:
                     logger.warning(f"[CF] POST 响应非 JSON: {response.text[:100]}...")
-                    return {}
+                    last_error = "响应非JSON"
+                    continue
 
             except httpx.TimeoutException:
                 logger.warning(f"[CF] POST 超时 (attempt {attempt}/{max_retries}), URL: {url}")
+                last_error = "请求超时"
             except httpx.ConnectError as e:
                 logger.warning(f"[CF] 连接 Bypass 服务失败: {e}，降级为直接代理模式")
                 self._bypass_available = False
@@ -244,9 +263,10 @@ class CloudflareBypasser:
                 return await self._direct_post_request(url, data, headers, max_retries)
             except Exception as e:
                 logger.error(f"[CF] POST 异常 (attempt {attempt}/{max_retries}): {e}, URL: {url}")
+                last_error = str(e)
 
         logger.error(f"[CF] POST 已达最大重试次数({max_retries})，请求失败: {url}")
-        return {}
+        raise Exception(f"POST请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def set_proxy(self, use_proxy: bool, proxy_url: str) -> bool:
         """运行时设置代理"""

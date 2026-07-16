@@ -8,7 +8,59 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v2.3.1</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>请求超时后全站不可用（根因修复）：CloudflareBypasser 失败时不再返回空值，改为抛异常，避免空结果被 lru_cache 缓存</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>lru_cache 缓存过滤增强：空字符串、空列表、空字典、全空字段的 Pydantic 模型均不被缓存</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>头像选择弹窗手机端适配：弹窗宽度自适应，封面网格改为2列</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="primary" size="large">v2.3.0</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>首页 Banner 电影级升级：多层渐变遮罩、Ken Burns 动画、发光播放按钮、胶囊指示器</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>视频卡片精致化：圆角 12px、微透明边框、品红微光悬停、毛玻璃徽章</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>视频分区样式升级：渐变发光竖条、胶囊按钮、品红半透明滚动条</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>顶部导航栏毛玻璃效果，滚动时更有层次感</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v2.2.0</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -39,23 +91,15 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><SetUp /></el-icon>
-              <span>首页 Banner 电影级升级：多层渐变遮罩、Ken Burns 动画、发光播放按钮、胶囊指示器</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><SetUp /></el-icon>
-              <span>视频卡片精致化：圆角 12px、微透明边框、品红微光悬停、毛玻璃徽章</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><SetUp /></el-icon>
-              <span>视频分区样式升级：渐变发光竖条、胶囊按钮、品红半透明滚动条</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><SetUp /></el-icon>
-              <span>顶部导航栏毛玻璃效果，滚动时更有层次感</span>
-            </li>
-            <li class="update-item">
-              <el-icon class="update-icon"><SetUp /></el-icon>
               <span>下载中心 UI 重构：搜索栏 + 列表/番剧视图切换</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>下载历史 API 支持搜索和过滤</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>番剧卡片手机端适配</span>
             </li>
           </ul>
         </div>

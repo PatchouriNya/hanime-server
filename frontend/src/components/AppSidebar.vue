@@ -72,7 +72,7 @@
     <el-dialog
       v-model="showAvatarPicker"
       title="选择头像"
-      width="520px"
+      :width="isMobile ? '90%' : '520px'"
       :close-on-click-modal="true"
       class="avatar-picker-dialog"
     >
@@ -169,6 +169,11 @@ export default defineComponent({
     const selectedCoverId = ref<string>('');
     const avatarUrl = ref('');
     const authToken = ref(localStorage.getItem('token') || '');
+    const isMobile = ref(window.innerWidth <= 480);
+
+    window.addEventListener('resize', () => {
+      isMobile.value = window.innerWidth <= 480;
+    });
 
     const currentUsername = ref(localStorage.getItem('username') || '');
     const avatarLetter = computed(() => {
@@ -340,7 +345,8 @@ export default defineComponent({
       handleLogout,
       confirmAvatar,
       resetAvatar,
-      onCoverError
+      onCoverError,
+      isMobile
     };
   }
 });
@@ -638,5 +644,25 @@ export default defineComponent({
 .empty-covers p {
   margin-top: 16px;
   font-size: 14px;
+}
+
+@media (max-width: 480px) {
+  .cover-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    max-height: 300px;
+  }
+
+  .cover-title {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  .selected-mark {
+    width: 20px;
+    height: 20px;
+    top: 4px;
+    right: 4px;
+  }
 }
 </style>

@@ -3,6 +3,53 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十一、版本 v2.3.1 - 修复请求超时后全站不可用 (2026-07-16)
+
+### 修改原因
+用户反馈严重bug仍未修复：切换菜单后突然报请求超时/错误，之后整个网站无法获取视频，播放视频提示没有可用的url流，首页所有地方都没有内容。此前已做两轮修复但问题仍在。同时用户指出更新记录从v2.1.5直接跳到v2.3.0，漏了v2.2.0版本号。
+
+### 根本原因分析（第三轮深入排查）
+前两轮修复只改了 `_direct_get_request` 和 `_direct_post_request`，但 `get_request` 和 `post_request` 方法（CF bypass 模式）在所有重试失败后仍返回空字符串 `""` 和空字典 `{}`。这些空值导致 `video_service` 解析出空对象，被 API 端点层的 `@lru_cache` 缓存（因为空对象不是 `None`），后续所有请求持续返回缓存的无效数据。
+
+### 修改内容
+
+#### 后端修改
+
+**文件：backend/app/utils/cloudflare_bypass.py** - 核心修复
+- `get_request` 方法：所有重试失败后从 `return ""` 改为 `raise Exception(...)`
+- `post_request` 方法：所有重试失败后从 `return {}` 改为 `raise Exception(...)`
+- `post_request` 方法中 CF bypass 模式下响应非 JSON 时从 `return {}` 改为 `continue` 重试
+- 两个方法都添加了 `last_error` 变量追踪具体错误信息
+- 错误信息从通用的"全部超时"改为包含具体错误原因
+
+**文件：backend/app/utils/ttl_lru_cache.py** - 缓存过滤增强
+- 新增 `_is_empty_result()` 辅助函数，检测以下无效结果：
+  - `None`
+  - 空字符串（`""` 或仅空格）
+  - 空列表/空字典/空元组/空集合
+  - Pydantic 模型所有字段都是默认空值（`model_dump()` 后全为 `None`/`""`/`[]`/`{}`/`0`）
+- `async_wrapper` 和 `sync_wrapper`：缓存条件从 `if result is not None` 改为 `if not _is_empty_result(result)`
+- 被跳过的缓存记录 `logger.warning` 级别日志
+
+#### 版本号和更新记录修复
+
+**问题**：更新记录从 v2.1.5 直接跳到 v2.3.0，缺少 v2.2.0
+
+**文件：CHANGELOG.md**
+- 在 v2.3.0 之前插入 v2.2.0（下载中心优化）和 v2.2.1（bug修复）条目
+- v2.3.0 仅保留首页美化内容
+- v2.2.0 包含下载中心的新增功能和优化
+
+**文件：frontend/src/views/ChangelogPage.vue**
+- 在 v2.3.0 之前插入 v2.2.1（红色danger标签）和 v2.2.0（绿色success标签）版本卡片
+- v2.3.0 的"新增功能"部分（下载中心5项）移到 v2.2.0
+- v2.3.0 保留首页美化4项优化
+
+**文件：版本号更新**
+- `backend/app/config.py`：APP_VERSION 2.3.0 → 2.3.1
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.3.1
+- `frontend/src/views/Settings.vue`：版本号 v2.3.1
+
 ## 十、版本 v2.2.0 - 下载中心优化 (2026-07-16)
 
 ### 修改原因

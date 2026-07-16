@@ -5,6 +5,30 @@ from typing import Any, Callable, Dict, Optional, TypeVar, Union, cast
 from collections import OrderedDict
 from app.config import logger
 
+
+def _is_empty_result(result: Any) -> bool:
+    """判断结果是否为空/无效，空结果不应被缓存"""
+    if result is None:
+        return True
+    # 空字符串
+    if isinstance(result, str) and result.strip() == "":
+        return True
+    # 空列表/空字典/空元组/空集合
+    if isinstance(result, (list, dict, tuple, set)) and len(result) == 0:
+        return True
+    # Pydantic模型：检查关键字段是否全为默认空值
+    if hasattr(result, 'model_dump'):
+        try:
+            data = result.model_dump()
+            # 如果所有值都是空的（None、空列表、空字符串），视为无效
+            return all(
+                v is None or v == "" or v == [] or v == {} or v == 0
+                for v in data.values()
+            )
+        except Exception:
+            pass
+    return False
+
 T = TypeVar('T')
 
 class LRUCache:
@@ -121,9 +145,11 @@ def lru_cache(
             logger.debug(f"缓存未命中: {func.__name__}, key={cache_key}")
             result = await func(*args, **kwargs)
 
-            # 不缓存 None 结果，避免临时错误被长期缓存
-            if result is not None:
+            # 不缓存空/无效结果，避免临时错误被长期缓存
+            if not _is_empty_result(result):
                 cache_instance.set(cache_key, result)
+            else:
+                logger.warning(f"缓存跳过(空结果): {func.__name__}, key={cache_key}")
             return result
         
         @functools.wraps(func)
@@ -148,9 +174,11 @@ def lru_cache(
             logger.debug(f"缓存未命中: {func.__name__}, key={cache_key}")
             result = func(*args, **kwargs)
 
-            # 不缓存 None 结果，避免临时错误被长期缓存
-            if result is not None:
+            # 不缓存空/无效结果，避免临时错误被长期缓存
+            if not _is_empty_result(result):
                 cache_instance.set(cache_key, result)
+            else:
+                logger.warning(f"缓存跳过(空结果): {func.__name__}, key={cache_key}")
             return result
         
         # 添加缓存控制方法到包装函数
