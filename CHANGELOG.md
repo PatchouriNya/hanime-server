@@ -4,9 +4,12 @@
 
 ### 修复
 
-1. **请求超时后全站不可用（根因修复）**：修复 `CloudflareBypasser` 的 `get_request` 和 `post_request` 方法在所有重试失败后返回空字符串/空字典而非抛异常的问题。空返回值导致 `video_service` 解析出空对象，被 `@lru_cache` 缓存后持续返回无效数据，造成整个网站无法使用
+1. **请求超时后全站不可用（根因修复）**：
+   - **根本原因**：httpx `AsyncClient` 在请求超时后连接池被污染（损坏/半开连接），后续所有请求复用同一连接池导致全部失败
+   - **修复方案**：在 `CloudflareBypasser` 的四个请求方法（`_direct_get_request`、`_direct_post_request`、`get_request`、`post_request`）中，所有重试耗尽抛出异常前，先调用 `_reset_direct_client()` / `_reset_client()` 关闭并清理客户端连接池，确保后续请求使用全新连接
+   - **并发安全**：将 `client = await self.direct_client` 从方法级别移入重试循环内部，每次重试重新获取客户端引用，防止并发任务间互相干扰（一个任务重置了客户端，另一个任务使用已关闭引用导致 "client has been closed" 错误）
 
-2. **lru_cache 缓存无效结果**：增强缓存过滤逻辑，新增 `_is_empty_result` 函数，检测并跳过空字符串、空列表、空字典、全空字段 Pydantic 模型的缓存，避免临时错误被长期缓存
+2. **lru_cache 缓存无效结果**：增强缓存过滤逻辑，新增 `_is_empty_result` 函数，检测并跳过空字符串、空列表、空字典、全空字段 Pydantic 模型的缓存
 
 3. **头像选择弹窗手机端适配**：弹窗宽度在 480px 以下改为 90%，封面网格改为 2 列，缩小间距和字体
 

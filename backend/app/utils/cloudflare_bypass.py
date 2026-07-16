@@ -65,6 +65,26 @@ class CloudflareBypasser:
             self._direct_client = httpx.AsyncClient(timeout=30.0, proxy=proxy, headers=headers)
         return self._direct_client
 
+    async def _reset_direct_client(self):
+        """重置直连客户端，超时/失败后清理被污染的连接池"""
+        if self._direct_client and not self._direct_client.is_closed:
+            try:
+                await self._direct_client.aclose()
+            except Exception:
+                pass
+        self._direct_client = None
+        logger.info("[CF] 已重置 direct_client（连接池清理）")
+
+    async def _reset_client(self):
+        """重置 CF bypass 客户端"""
+        if self._client and not self._client.is_closed:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+        self._client = None
+        logger.info("[CF] 已重置 bypass client（连接池清理）")
+
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
@@ -112,9 +132,9 @@ class CloudflareBypasser:
 
     async def _direct_get_request(self, url: str, params: Optional[Dict] = None,
                                   max_retries: int = 3) -> str:
-        client = await self.direct_client
         last_error = None
         for attempt in range(1, max_retries + 1):
+            client = await self.direct_client  # 每次重试重新获取，防止使用被并发重置的旧引用
             try:
                 logger.debug(f"[Direct] GET {url} (第{attempt}次请求)")
                 start_time = time.time()
@@ -133,14 +153,15 @@ class CloudflareBypasser:
                 logger.error(f"[Direct] 请求异常 (attempt {attempt}/{max_retries}): {e}")
                 last_error = str(e)
         logger.error(f"[Direct] 已达最大重试次数({max_retries})，请求失败: {url}")
+        await self._reset_direct_client()
         raise Exception(f"请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def _direct_post_request(self, url: str, data: Dict,
                                    headers: Optional[Dict] = None,
                                    max_retries: int = 3) -> Dict:
-        client = await self.direct_client
         last_error = None
         for attempt in range(1, max_retries + 1):
+            client = await self.direct_client
             try:
                 logger.debug(f"[Direct] POST {url} (第{attempt}次请求)")
                 start_time = time.time()
@@ -164,6 +185,7 @@ class CloudflareBypasser:
                 logger.error(f"[Direct] POST 异常 (attempt {attempt}/{max_retries}): {e}")
                 last_error = str(e)
         logger.error(f"[Direct] POST 已达最大重试次数({max_retries})，请求失败: {url}")
+        await self._reset_direct_client()
         raise Exception(f"POST请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def get_request(self, url: str, params: Optional[Dict] = None, max_retries: int = 3) -> str:
@@ -171,10 +193,10 @@ class CloudflareBypasser:
             return await self._direct_get_request(url, params, max_retries)
 
         bypass_url, hostname = self._build_bypass_url(url)
-        client = await self.client
         last_error = None
 
         for attempt in range(1, max_retries + 1):
+            client = await self.client
             try:
                 force_refresh = attempt > 1
                 headers = self._build_headers(hostname, force_refresh=force_refresh)
@@ -211,6 +233,7 @@ class CloudflareBypasser:
                 last_error = str(e)
 
         logger.error(f"[CF] 已达最大重试次数({max_retries})，请求失败: {url}")
+        await self._reset_client()
         raise Exception(f"请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def post_request(self, url: str, data: Dict, headers: Optional[Dict] = None,
@@ -219,10 +242,10 @@ class CloudflareBypasser:
             return await self._direct_post_request(url, data, headers, max_retries)
 
         bypass_url, hostname = self._build_bypass_url(url)
-        client = await self.client
         last_error = None
 
         for attempt in range(1, max_retries + 1):
+            client = await self.client
             try:
                 force_refresh = attempt > 1
                 req_headers = self._build_headers(hostname, force_refresh=force_refresh)
@@ -266,6 +289,7 @@ class CloudflareBypasser:
                 last_error = str(e)
 
         logger.error(f"[CF] POST 已达最大重试次数({max_retries})，请求失败: {url}")
+        await self._reset_client()
         raise Exception(f"POST请求失败({max_retries}次重试): {last_error or '未知错误'}, URL: {url}")
 
     async def set_proxy(self, use_proxy: bool, proxy_url: str) -> bool:

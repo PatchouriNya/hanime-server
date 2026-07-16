@@ -8,19 +8,31 @@
 ### 修改原因
 用户反馈严重bug仍未修复：切换菜单后突然报请求超时/错误，之后整个网站无法获取视频，播放视频提示没有可用的url流，首页所有地方都没有内容。此前已做两轮修复但问题仍在。同时用户指出更新记录从v2.1.5直接跳到v2.3.0，漏了v2.2.0版本号。
 
-### 根本原因分析（第三轮深入排查）
-前两轮修复只改了 `_direct_get_request` 和 `_direct_post_request`，但 `get_request` 和 `post_request` 方法（CF bypass 模式）在所有重试失败后仍返回空字符串 `""` 和空字典 `{}`。这些空值导致 `video_service` 解析出空对象，被 API 端点层的 `@lru_cache` 缓存（因为空对象不是 `None`），后续所有请求持续返回缓存的无效数据。
+### 根本原因分析（第四轮深度排查）
+
+**真正的根因不是空值缓存，而是 httpx AsyncClient 连接池污染**：
+
+前几轮修复分别尝试了：
+1. video_service 方法改为抛异常（不返回空对象）
+2. API 端点移除 404 判断
+3. cloudflare_bypass `_direct_*` 方法改为抛异常
+4. cloudflare_bypass `get_request`/`post_request` 改为抛异常
+5. lru_cache 增强空值过滤
+
+但问题仍在。第四轮排查发现：当请求超时后，httpx `AsyncClient` 的 TCP 连接池中存在损坏/半开连接。CloudflareBypasser 是全局单例，`_direct_client` 只在与 `None` 或 `is_closed` 时重建。超时后的客户端既不是 None 也没关闭，被所有后续请求复用，导致"一连串全部失败"的症状。同时，并发请求中一个任务重置客户端后，其他任务仍持有旧引用导致 "client has been closed" 错误。
 
 ### 修改内容
 
 #### 后端修改
 
-**文件：backend/app/utils/cloudflare_bypass.py** - 核心修复
-- `get_request` 方法：所有重试失败后从 `return ""` 改为 `raise Exception(...)`
-- `post_request` 方法：所有重试失败后从 `return {}` 改为 `raise Exception(...)`
-- `post_request` 方法中 CF bypass 模式下响应非 JSON 时从 `return {}` 改为 `continue` 重试
-- 两个方法都添加了 `last_error` 变量追踪具体错误信息
-- 错误信息从通用的"全部超时"改为包含具体错误原因
+**文件：backend/app/utils/cloudflare_bypass.py** - 核心修复（连接池清理）
+- 新增 `_reset_direct_client()` 方法：关闭并清空 `_direct_client`，确保下次请求创建全新客户端
+- 新增 `_reset_client()` 方法：关闭并清空 `_client`（CF bypass）同理
+- `_direct_get_request`：所有重试耗尽后调用 `_reset_direct_client()` 再抛异常
+- `_direct_post_request`：所有重试耗尽后调用 `_reset_direct_client()` 再抛异常
+- `get_request`（CF bypass 模式）：所有重试耗尽后调用 `_reset_client()` 再抛异常
+- `post_request`（CF bypass 模式）：所有重试耗尽后调用 `_reset_client()` 再抛异常
+- **并发安全修复**：四个方法都将 `client = await self.xxx_client` 从方法级别移入重试循环内部，每次重试重新获取引用，避免并发任务间互相干扰
 
 **文件：backend/app/utils/ttl_lru_cache.py** - 缓存过滤增强
 - 新增 `_is_empty_result()` 辅助函数，检测以下无效结果：
