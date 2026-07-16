@@ -1097,6 +1097,7 @@ export default defineComponent({
   .search-container {
     max-width: 100%;
     gap: 6px;
+    padding: 0 4px;
   }
   .search-input {
     font-size: 16px !important;
@@ -1108,12 +1109,12 @@ export default defineComponent({
   }
   .video-grid-basic {
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
   
   .video-grid-detailed {
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
   
   .results-title {
@@ -1125,6 +1126,10 @@ export default defineComponent({
     font-size: 16px;
     margin: 20px 0 12px;
   }
+
+  .active-filters {
+    padding: 8px 10px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1134,23 +1139,25 @@ export default defineComponent({
   }
   .search-container {
     gap: 4px;
+    padding: 0 2px;
   }
   .search-input {
-    font-size: 15px !important;
-    height: 32px !important;
+    font-size: 14px !important;
+    height: 34px !important;
   }
   .search-button, .filter-button {
-    height: 32px;
-    font-size: 13px;
+    height: 34px;
+    font-size: 12px;
+    padding: 0 8px;
   }
   .video-grid-basic {
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
   
   .video-grid-detailed {
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
   
   .results-title {
@@ -1161,6 +1168,19 @@ export default defineComponent({
   .result-section-title {
     font-size: 15px;
     margin: 15px 0 10px;
+  }
+
+  .active-filters {
+    padding: 6px 8px;
+    flex-wrap: wrap;
+  }
+
+  .filter-tags {
+    gap: 4px;
+  }
+
+  .filter-tag {
+    font-size: 11px !important;
   }
 }
 

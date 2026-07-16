@@ -8,6 +8,93 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="primary" size="large">v2.3.0</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>扫描恢复下载记录：重新部署后自动从文件系统恢复丢失的记录</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>番剧分组视图：按番剧系列分组展示，显示封面、集数、进度</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>番剧详情弹窗：点击番剧卡片展开所有集，直接播放</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>下载搜索：按番剧名/文件名搜索下载记录</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>一键清除已完成/失败记录（不删除文件）</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 24px;">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>首页 Banner 电影级升级：多层渐变遮罩、Ken Burns 动画、发光播放按钮、胶囊指示器</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>视频卡片精致化：圆角 12px、微透明边框、品红微光悬停、毛玻璃徽章</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>视频分区样式升级：渐变发光竖条、胶囊按钮、品红半透明滚动条</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>顶部导航栏毛玻璃效果，滚动时更有层次感</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>下载中心 UI 重构：搜索栏 + 列表/番剧视图切换</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v2.1.5</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>全局防横向溢出，彻底消除手机端横向滚动条</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>AppHeader 手机端适配：小屏幕隐藏次要图标，缩小间距和字体</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>视频详情页手机端适配：操作按钮允许换行，缩小按钮和标签尺寸</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>首页视频分区手机端适配：横向滚动项目改为百分比宽度</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><SetUp /></el-icon>
+              <span>搜索页和设置页手机端适配优化</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v2.1.4</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
@@ -16,11 +103,11 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span>修复搜索时满屏请求错误/超时提示的问题，添加错误消息节流机制</span>
+              <span>修复搜索时满屏请求错误提示的问题，添加错误消息3秒节流</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span>修复后端缓存失败/空结果导致网站无法获取视频的问题</span>
+              <span>修复后端缓存空结果导致网站无法获取视频的核心问题（失败时不再缓存，返回503而非404）</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
@@ -29,6 +116,10 @@
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
               <span>修复搜索加载更多失败后页码不回退导致跳页的问题</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span>修复 API 端点函数名冲突问题</span>
             </li>
           </ul>
           <h3 class="section-title" style="margin-top: 24px;">优化改进</h3>
@@ -43,7 +134,15 @@
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><Setting /></el-icon>
-              <span>后端方法失败时抛出异常而非返回空对象，避免错误结果被缓存</span>
+              <span>后端所有方法失败时抛出异常，确保错误结果不被缓存，重试可恢复</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>503 错误静默处理，不弹错误提示，由页面组件自行降级显示</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Setting /></el-icon>
+              <span>全局异常响应码从 500 改为 503，区分内部错误与外部服务不可用</span>
             </li>
           </ul>
         </div>

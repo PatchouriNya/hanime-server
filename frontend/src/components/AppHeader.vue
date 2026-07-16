@@ -9,7 +9,7 @@
       </button>
       <div class="title-wrapper">
         <h1 class="app-title" @click="goToHome">HanimeViewer</h1>
-        <span class="version-badge">v2.1.4</span>
+        <span class="version-badge">v2.3.0</span>
       </div>
     </div>
     <div class="header-right">
@@ -121,12 +121,18 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 10px 15px;
-  background-color: var(--bg-color);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-color);
   position: sticky;
   top: 0;
   z-index: 100;
-  border-bottom: 1px solid var(--bg-secondary-color);
+  border-bottom: 1px solid var(--border-color);
+  background-color: rgba(24, 24, 27, 0.85);
+}
+
+:global(.light) .app-header {
+  background-color: rgba(255, 255, 255, 0.85);
 }
 
 .header-left, .header-right {
@@ -199,7 +205,38 @@ export default defineComponent({
 
 @media (max-width: 480px) {
   .app-title {
-    font-size: 20px;
+    font-size: 18px;
+  }
+
+  .header-left, .header-right {
+    gap: 6px;
+  }
+
+  .menu-button, .back-button, .calendar-button, .search-button, .theme-button, .changelog-button {
+    padding: 4px;
+  }
+
+  .changelog-button {
+    display: none;
+  }
+
+  .version-badge {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .app-header {
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-title {
+    font-size: 16px;
+  }
+
+  .calendar-button {
+    display: none;
   }
 }
 </style> 

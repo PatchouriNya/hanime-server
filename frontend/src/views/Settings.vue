@@ -180,7 +180,7 @@
           </div>
         </template>
         <div class="about-info">
-          <p><strong>版本:</strong> v2.1.4</p>
+          <p><strong>版本:</strong> v2.3.0</p>
           <p><strong>描述:</strong> Hanime视频聚合平台</p>
           <p><strong>功能:</strong> 视频浏览、收藏、下载、播放清单</p>
           <p><strong>更新日志:</strong> <a href="/changelog" class="changelog-link">查看更新记录</a></p>
@@ -690,11 +690,45 @@ const saveDownloadDir = async () => {
   .settings-container {
     max-width: 100%;
   }
+
+  :deep(.el-form-item__label) {
+    width: 100px !important;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 480px) {
   .settings-page {
     padding: 5px;
+  }
+
+  .page-title {
+    font-size: 18px;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 80px !important;
+    font-size: 12px;
+  }
+
+  .card-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .download-dir-hint,
+  .proxy-hint {
+    font-size: 11px;
+  }
+
+  .data-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .data-actions .el-button {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>

@@ -4,7 +4,7 @@ from app.models.video import *
 from app.models.video import CalendarData
 from app.services.video_service import VideoService
 import httpx
-from app.config import settings
+from app.config import settings, logger
 from app.utils.ttl_lru_cache import lru_cache
 from app.utils.chinese_converter import convert_dict
 
@@ -13,7 +13,7 @@ video_service = VideoService()
 
 
 @router.get("/home", response_model=HomeData)
-@lru_cache(maxsize=1, ttl=1800)  # 缓存10个结果，过期时间30分钟
+@lru_cache(maxsize=1, ttl=1800)  # 缓存过期时间30分钟
 async def get_home_page():
     """获取首页数据，包括头图和推荐视频"""
     return await video_service.get_home_data()
@@ -28,7 +28,7 @@ async def get_calendar():
 
 @router.get("/search_combination", response_model=SearchCombination)
 @lru_cache(maxsize=1, ttl=86400)  # 只缓存1个结果，过期时间24小时
-async def search_videos():
+async def get_search_combination():
     return await video_service.get_search_combination()
 
 
@@ -79,30 +79,21 @@ async def search_videos(
 @lru_cache(maxsize=100, ttl=3600)  # 缓存100个视频详情，过期时间1小时
 async def get_video_detail(video_id: str):
     """获取视频详情"""
-    video = await video_service.get_video_detail(video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail="视频不存在")
-    return video
+    return await video_service.get_video_detail(video_id)
 
 
 @router.get("/loadComments/{video_id}", response_model=List[VideoComment])
 @lru_cache(maxsize=100, ttl=3600)
 async def load_comments(video_id: str):
     """加载视频评论"""
-    comments = await video_service.get_video_comments(video_id)
-    if not comments:
-        raise HTTPException(status_code=404, detail="无法加载评论")
-    return comments
+    return await video_service.get_video_comments(video_id)
 
 
 @router.get("/loadReplies/{comment_id}", response_model=List[CommentReply])
 @lru_cache(maxsize=100, ttl=3600)
 async def load_replies(comment_id: str):
     """加载评论回复"""
-    replies = await video_service.get_comment_replies(comment_id)
-    if not replies:
-        raise HTTPException(status_code=404, detail="无法加载回复")
-    return replies
+    return await video_service.get_comment_replies(comment_id)
 
 
 @router.get("/stream/proxy")
@@ -122,8 +113,6 @@ async def stream_video(url: str, request: Request = None):
 
     # 获取请求头中的Range信息
     range_header = request.headers.get("range")
-
-    print(range_header)
 
     try:
         async with httpx.AsyncClient(proxies=proxy) as client:

@@ -69,20 +69,26 @@ export default defineComponent({
 
 <style scoped>
 .video-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   background-color: var(--bg-secondary-color);
-  border-radius: 8px;
-  padding: 15px;
-  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: box-shadow 0.3s ease;
+}
+
+.video-section:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .section-title {
@@ -91,31 +97,37 @@ export default defineComponent({
   font-weight: 600;
   color: var(--text-color);
   position: relative;
-  padding-left: 12px;
+  padding-left: 14px;
+  letter-spacing: 0.3px;
 }
 
 .section-title::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 0;
-  height: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
   width: 4px;
-  background: #ec4899; /* 粉色 */
+  background: linear-gradient(180deg, #ec4899, #f43f5e);
   border-radius: 2px;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.4);
 }
 
 .more-btn {
   font-weight: 500;
   transition: all 0.3s;
-  background-color: #ec4899; /* 粉色 */
-  border-color: #ec4899;
+  background: linear-gradient(135deg, #ec4899, #f43f5e);
+  border-color: transparent;
+  border-radius: 20px;
+  padding: 6px 16px;
 }
 
 .more-btn:hover {
-  background-color: #d946ef; /* 紫色 */
-  border-color: #d946ef;
+  background: linear-gradient(135deg, #d946ef, #e11d48);
+  border-color: transparent;
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4);
 }
 
 .more-btn i {
@@ -131,36 +143,35 @@ export default defineComponent({
 .horizontal-scroll {
   display: flex;
   overflow-x: auto;
-  gap: 12px;
-  padding-bottom: 10px;
+  gap: 14px;
+  padding-bottom: 8px;
   scrollbar-width: thin;
   scroll-behavior: smooth;
 }
 
-/* 使用webkit自定义滚动条 */
+/* webkit自定义滚动条 */
 .horizontal-scroll::-webkit-scrollbar {
-  height: 8px;
+  height: 6px;
 }
 
 .horizontal-scroll::-webkit-scrollbar-track {
-  background: var(--border-color);
+  background: transparent;
   border-radius: 10px;
 }
 
 .horizontal-scroll::-webkit-scrollbar-thumb {
-  background: var(--secondary-color);
+  background: rgba(236, 72, 153, 0.3);
   border-radius: 10px;
-  border: 2px solid var(--border-color);
 }
 
 .horizontal-scroll::-webkit-scrollbar-thumb:hover {
-  background: #d946ef;
+  background: rgba(236, 72, 153, 0.5);
 }
 
 /* Firefox自定义滚动条 */
-@supports (scrollbar-color: var(--secondary-color) var(--border-color)) {
+@supports (scrollbar-color: rgba(236, 72, 153, 0.3) transparent) {
   .horizontal-scroll {
-    scrollbar-color: var(--secondary-color) var(--border-color);
+    scrollbar-color: rgba(236, 72, 153, 0.3) transparent;
     scrollbar-width: thin;
   }
 }
@@ -176,8 +187,9 @@ export default defineComponent({
 /* 响应式设计 */
 @media (max-width: 768px) {
   .video-section {
-    padding: 12px;
-    margin-bottom: 15px;
+    padding: 14px;
+    margin-bottom: 16px;
+    border-radius: 10px;
   }
 
   .section-title {
@@ -200,15 +212,30 @@ export default defineComponent({
   }
 
   .section-title {
-    font-size: 15px;
+    font-size: 14px;
+    padding-left: 10px;
+  }
+
+  .section-title::before {
+    height: 16px;
+    width: 3px;
+  }
+
+  .horizontal-scroll {
+    gap: 8px;
   }
 
   .horizontal-item {
-    flex: 0 0 48%;
+    flex: 0 0 45%;
   }
 
   .latest-horizontal-item {
-    flex: 0 0 120px;
+    flex: 0 0 32%;
+  }
+
+  .more-btn {
+    font-size: 12px;
+    padding: 5px 12px;
   }
 }
 </style> 

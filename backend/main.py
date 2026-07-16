@@ -90,8 +90,8 @@ async def log_requests(request: Request, call_next):
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global error: {exc}", exc_info=True)
     return JSONResponse(
-        status_code=500,
-        content={"detail": "服务器内部错误，请稍后再试"}
+        status_code=503,
+        content={"detail": "服务暂时不可用，请稍后重试"}
     )
 
 

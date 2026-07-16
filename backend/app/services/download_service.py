@@ -1182,6 +1182,240 @@ class DownloadManager:
                 logger.error(f"关闭HTTP客户端失败 ({domain}): {str(e)}")
         self.http_clients = {}
 
+    async def scan_and_restore_downloads(self, username: str) -> Dict[str, Any]:
+        """
+        扫描下载目录，恢复丢失的下载记录
+        从文件系统中发现已下载但数据库中无记录的文件，自动补建记录
+        """
+        import re
+        
+        restored = []
+        skipped = []
+        errors = []
+        
+        download_path = settings.DOWNLOAD_PATH
+        if not download_path.exists():
+            return {"restored": [], "skipped": [], "errors": ["下载目录不存在"]}
+        
+        # 获取当前用户的所有下载记录video_id集合
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT video_id FROM downloads WHERE username = ?", (username,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                existing_ids = {row['video_id'] for row in rows}
+        
+        # 扫描下载目录
+        for series_dir in download_path.iterdir():
+            if not series_dir.is_dir():
+                continue
+            
+            series_name = series_dir.name
+            
+            # 遍历番剧目录中的视频文件
+            for video_file in series_dir.iterdir():
+                if not video_file.is_file():
+                    continue
+                if not video_file.suffix.lower() in ('.mp4', '.mkv', '.avi', '.wmv'):
+                    continue
+                
+                # 从文件名解析 video_id（格式：{video_id}_{subtitle}.mp4）
+                filename_stem = video_file.stem
+                video_id = None
+                
+                # 尝试匹配 video_id_ 前缀
+                match = re.match(r'^([a-zA-Z0-9]+?)_(.+)$', filename_stem)
+                if match:
+                    candidate_id = match.group(1)
+                    # video_id 通常是纯数字或包含字母的短ID
+                    if len(candidate_id) <= 20:
+                        video_id = candidate_id
+                
+                if not video_id:
+                    # 如果无法解析video_id，跳过
+                    skipped.append({
+                        "filename": video_file.name,
+                        "series": series_name,
+                        "reason": "无法解析video_id"
+                    })
+                    continue
+                
+                # 检查是否已有记录
+                if video_id in existing_ids:
+                    skipped.append({
+                        "video_id": video_id,
+                        "filename": video_file.name,
+                        "reason": "记录已存在"
+                    })
+                    continue
+                
+                # 获取文件大小
+                file_size = video_file.stat().st_size
+                
+                # 构建相对路径（与start_download格式一致）
+                relative_path = f"{series_name}/{video_file.name}"
+                
+                # 检查是否有本地封面
+                cover_url = ""
+                cover_path = series_dir / f"{video_id}.jpg"
+                if cover_path.exists():
+                    cover_url = f"/api/downloads/cover/{video_id}"
+                
+                # 补建下载记录
+                try:
+                    async with aiosqlite.connect(self.db_path) as conn:
+                        await conn.execute(
+                            """INSERT OR REPLACE INTO downloads 
+                            (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count, created_at, completed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                username,
+                                video_id,
+                                series_name,  # 标题先用系列名
+                                relative_path,
+                                cover_url,
+                                "",  # URL不再有效，留空
+                                DownloadStatus.COMPLETED,
+                                file_size,
+                                file_size,
+                                0,
+                                datetime.now().isoformat(),
+                                datetime.now().isoformat()
+                            )
+                        )
+                        await conn.commit()
+                    
+                    existing_ids.add(video_id)
+                    restored.append({
+                        "video_id": video_id,
+                        "filename": video_file.name,
+                        "series": series_name,
+                        "size": file_size
+                    })
+                    logger.info(f"恢复下载记录: {video_id} - {series_name}/{video_file.name}")
+                    
+                except Exception as e:
+                    errors.append({
+                        "video_id": video_id,
+                        "filename": video_file.name,
+                        "error": str(e)
+                    })
+                    logger.error(f"恢复下载记录失败: {video_id} - {str(e)}")
+        
+        return {
+            "restored": restored,
+            "skipped": skipped,
+            "errors": errors,
+            "total_restored": len(restored)
+        }
+
+    async def search_downloads(self, username: str, query: str = "", status: str = "") -> List[Dict[str, Any]]:
+        """
+        搜索下载记录
+        :param username: 用户名
+        :param query: 搜索关键词（匹配标题或文件名）
+        :param status: 按状态过滤
+        """
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            conditions = ["username = ?"]
+            params = [username]
+            
+            if query:
+                conditions.append("(title LIKE ? OR filename LIKE ?)")
+                params.extend([f"%{query}%", f"%{query}%"])
+            
+            if status:
+                conditions.append("status = ?")
+                params.append(status)
+            
+            where_clause = " AND ".join(conditions)
+            
+            async with db.execute(
+                f"SELECT * FROM downloads WHERE {where_clause} ORDER BY created_at DESC",
+                params
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    async def clear_completed_downloads(self, username: str) -> int:
+        """清除所有已完成的下载记录（不删除文件）"""
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM downloads WHERE username = ? AND status = 'completed'",
+                (username,)
+            )
+            await conn.commit()
+            return cursor.rowcount
+
+    async def clear_failed_downloads(self, username: str) -> int:
+        """清除所有失败的下载记录"""
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "DELETE FROM downloads WHERE username = ? AND status IN ('error', 'cancelled')",
+                (username,)
+            )
+            await conn.commit()
+            return cursor.rowcount
+
+    async def get_download_groups(self, username: str) -> List[Dict[str, Any]]:
+        """
+        获取按番剧系列分组的下载列表
+        从数据库中按title字段分组，返回每个番剧的概要信息
+        """
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            # 获取用户所有下载记录
+            async with db.execute(
+                "SELECT * FROM downloads WHERE username = ? ORDER BY created_at DESC",
+                (username,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                all_downloads = [dict(row) for row in rows]
+        
+        # 按番剧目录名分组（从filename提取）
+        groups = {}
+        for dl in all_downloads:
+            filename = dl.get('filename', '')
+            series_name = filename.split('/')[0] if '/' in filename else (dl.get('title') or '未知番剧')
+            
+            if series_name not in groups:
+                groups[series_name] = {
+                    'series_name': series_name,
+                    'cover_url': '',
+                    'downloads': [],
+                    'total_size': 0,
+                    'completed_count': 0,
+                    'downloading_count': 0,
+                    'failed_count': 0,
+                }
+            
+            # 用第一个有封面的记录作为组封面
+            if not groups[series_name]['cover_url'] and dl.get('cover_url'):
+                groups[series_name]['cover_url'] = dl['cover_url']
+            
+            groups[series_name]['downloads'].append(dl)
+            file_size = dl.get('total_size') or 0
+            groups[series_name]['total_size'] += file_size
+            
+            status = dl.get('status', '')
+            if status == 'completed':
+                groups[series_name]['completed_count'] += 1
+            elif status in ('downloading', 'paused', 'pending'):
+                groups[series_name]['downloading_count'] += 1
+            elif status in ('error', 'cancelled'):
+                groups[series_name]['failed_count'] += 1
+        
+        return list(groups.values())
+
 
 # 创建下载管理器实例
 download_manager = DownloadManager() 

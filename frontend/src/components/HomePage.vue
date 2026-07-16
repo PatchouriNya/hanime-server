@@ -166,32 +166,34 @@ export default defineComponent({
 .page-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 10px;
+  padding: 16px;
   background-color: var(--bg-color);
   min-height: 100vh;
   color: var(--text-color);
+  overflow-x: hidden;
 }
 
 /* 骨架屏样式 */
 .skeleton-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   background-color: var(--bg-secondary-color);
-  border-radius: 8px;
-  padding: 15px;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .skeleton-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 12px;
 }
 
 .skeleton-cards {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   overflow: hidden;
 }
 
@@ -202,7 +204,7 @@ export default defineComponent({
 /* 响应式设计 */
 @media (max-width: 768px) {
   .page-container {
-    padding: 8px;
+    padding: 10px;
   }
   .skeleton-card {
     flex: 0 0 140px;
@@ -211,7 +213,7 @@ export default defineComponent({
 
 @media (max-width: 480px) {
   .page-container {
-    padding: 5px;
+    padding: 6px;
   }
   .skeleton-card {
     flex: 0 0 120px;

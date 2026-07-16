@@ -1084,6 +1084,7 @@ export default defineComponent({
 .video-actions {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* 下载按钮样式 */
@@ -1331,6 +1332,12 @@ export default defineComponent({
   
   .video-actions {
     margin-top: 10px;
+    gap: 8px;
+  }
+
+  .video-actions .el-button {
+    padding: 8px 12px;
+    font-size: 13px;
   }
 }
 
@@ -1342,6 +1349,20 @@ export default defineComponent({
   .tab {
     padding: 10px 15px;
     font-size: 14px;
+  }
+
+  .video-actions {
+    gap: 6px;
+  }
+
+  .video-actions .el-button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .tag-item {
+    padding: 5px 10px !important;
+    font-size: 12px !important;
   }
 }
 

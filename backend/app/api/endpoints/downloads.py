@@ -39,9 +39,28 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @router.get("/history")
-async def get_download_history(user: dict = Depends(get_current_user)) -> List[Dict[str, Any]]:
-    """获取下载历史记录"""
+async def get_download_history(
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    status: Optional[str] = Query(None, description="按状态过滤"),
+    user: dict = Depends(get_current_user)
+) -> List[Dict[str, Any]]:
+    """获取下载历史记录，支持搜索和过滤"""
+    if search or status:
+        return await download_manager.search_downloads(user["username"], query=search or "", status=status or "")
     return await download_manager.get_download_history(user["username"])
+
+
+@router.get("/groups")
+async def get_download_groups(user: dict = Depends(get_current_user)):
+    """获取按番剧系列分组的下载列表"""
+    return await download_manager.get_download_groups(user["username"])
+
+
+@router.post("/scan")
+async def scan_and_restore(user: dict = Depends(get_current_user)):
+    """扫描下载目录，恢复丢失的下载记录"""
+    result = await download_manager.scan_and_restore_downloads(user["username"])
+    return result
 
 
 @router.post("/start")
@@ -76,6 +95,12 @@ async def handle_download_action(action: DownloadAction, user: dict = Depends(ge
     elif action_type == "delete":
         success = await download_manager.delete_download(video_id, user["username"])
         result = {"status": "success" if success else "error", "message": "删除操作处理完成" if success else "操作失败"}
+    elif action_type == "clear_completed":
+        count = await download_manager.clear_completed_downloads(user["username"])
+        result = {"status": "success", "message": f"已清除 {count} 条已完成记录"}
+    elif action_type == "clear_failed":
+        count = await download_manager.clear_failed_downloads(user["username"])
+        result = {"status": "success", "message": f"已清除 {count} 条失败记录"}
     
     return result
 

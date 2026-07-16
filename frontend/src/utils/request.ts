@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus';
 // 错误消息节流：同一消息在 interval 毫秒内只显示一次
 let lastErrorMessage = '';
 let lastErrorTime = 0;
-const ERROR_MESSAGE_INTERVAL = 2000; // 2秒节流
+const ERROR_MESSAGE_INTERVAL = 3000; // 3秒节流
 
 let isRedirecting = false; // 防止 401 重复跳转
 
@@ -54,36 +54,44 @@ instance.interceptors.response.use(
             return Promise.reject(error);
         }
 
-        if (error.response) {
-            switch (error.response.status) {
-                case 400:
-                    showErrorMessage('请求错误');
-                    break;
-                case 401:
-                    showErrorMessage('登录已过期，请重新登录');
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('tokenType');
-                    localStorage.removeItem('username');
-                    localStorage.removeItem('loginTime');
-                    if (!isRedirecting) {
-                        isRedirecting = true;
-                        window.location.href = '/login';
-                    }
-                    break;
-                case 403:
-                    showErrorMessage('拒绝访问');
-                    break;
-                case 404:
-                    showErrorMessage('请求地址出错');
-                    break;
-                case 500:
-                    showErrorMessage('服务器内部错误');
-                    break;
-                default:
-                    showErrorMessage(`连接错误 ${error.response.status}`);
-            }
-        } else {
-            showErrorMessage('网络连接异常，请稍后再试');
+        // 网络错误（后端不可达）
+        if (!error.response) {
+            showErrorMessage('网络连接异常，请检查网络');
+            return Promise.reject(error);
+        }
+
+        const status = error.response.status;
+
+        switch (status) {
+            case 400:
+                showErrorMessage('请求错误');
+                break;
+            case 401:
+                showErrorMessage('登录已过期，请重新登录');
+                localStorage.removeItem('token');
+                localStorage.removeItem('tokenType');
+                localStorage.removeItem('username');
+                localStorage.removeItem('loginTime');
+                if (!isRedirecting) {
+                    isRedirecting = true;
+                    window.location.href = '/login';
+                }
+                break;
+            case 403:
+                showErrorMessage('拒绝访问');
+                break;
+            case 404:
+                showErrorMessage('请求的资源不存在');
+                break;
+            case 503:
+                // 服务暂时不可用 - 不弹错误提示，静默失败让组件自己处理重试
+                // 这种情况通常是外部网站请求失败，不需要打扰用户
+                break;
+            case 500:
+                showErrorMessage('服务器内部错误');
+                break;
+            default:
+                showErrorMessage(`请求失败 (${status})`);
         }
         return Promise.reject(error)
     }

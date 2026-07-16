@@ -4,64 +4,68 @@
       <div class="header-top">
         <h1 class="page-title">下载管理</h1>
         
-        <!-- 普通模式下的批量操作按钮 -->
-        <div v-if="!downloadStore.batchDeleteMode" class="bulk-actions">
-          <el-button-group>
-            <el-button :disabled="!activeDownloads.length" @click="pauseAllDownloads" type="primary">
-              <el-icon><VideoPause /></el-icon> 全部暂停
+        <!-- 视图切换 + 搜索 -->
+        <div class="header-toolbar">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索番剧..."
+            prefix-icon="Search"
+            clearable
+            size="default"
+            class="search-input"
+            @input="handleSearch"
+            @clear="handleSearch"
+          />
+          
+          <el-button-group class="view-toggle">
+            <el-button 
+              :type="viewMode === 'list' ? 'primary' : 'default'" 
+              @click="viewMode = 'list'"
+              size="default"
+            >
+              <el-icon><List /></el-icon> 列表
             </el-button>
-            <el-button :disabled="!(downloadStore.pausedDownloads.length)" @click="resumeAllDownloads" type="success">
-              <el-icon><VideoPlay /></el-icon> 全部继续
+            <el-button 
+              :type="viewMode === 'group' ? 'primary' : 'default'" 
+              @click="viewMode = 'group'; loadGroups()"
+              size="default"
+            >
+              <el-icon><Grid /></el-icon> 番剧
             </el-button>
           </el-button-group>
-          
-          <el-dropdown @command="handleBatchAction" trigger="click">
-            <el-button>
-              批量操作 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="batchDelete">
-                  <el-icon><Delete /></el-icon> 批量删除
-                </el-dropdown-item>
-                <el-dropdown-item command="clearFailed" :disabled="!downloadStore.failedDownloads.length">
-                  <el-icon><Delete /></el-icon> 清除失败任务
-                </el-dropdown-item>
-                <el-dropdown-item command="retryFailed" :disabled="!downloadStore.failedDownloads.length">
-                  <el-icon><RefreshRight /></el-icon> 重试失败任务
-                </el-dropdown-item>
-                <el-dropdown-item command="exportData" divided>
-                  <el-icon><Download /></el-icon> 导出下载列表
-                </el-dropdown-item>
-                <el-dropdown-item command="refreshList">
-                  <el-icon><Refresh /></el-icon> 刷新列表
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-        
-        <!-- 批量删除模式下的操作面板 -->
-        <div v-else class="batch-delete-actions">
-          <div class="batch-action-info">
-            <span class="selected-count">已选择 {{ downloadStore.selectedDownloadsCount }} 项</span>
-          </div>
-          <div class="batch-action-buttons">
-            <el-button @click="toggleSelectAll" type="info" plain>
-              <el-icon><component :is="allSelected ? 'CloseBold' : 'Select'" /></el-icon> {{ allSelected ? '取消全选' : '全选' }}
-            </el-button>
-            <el-button @click="confirmDeleteSelected" type="danger" :disabled="!downloadStore.hasSelectedDownloads">
-              <el-icon><Delete /></el-icon> 删除所选
-            </el-button>
-            <el-button @click="downloadStore.toggleBatchDeleteMode()" type="default">
-              <el-icon><Back /></el-icon> 退出
-            </el-button>
-          </div>
         </div>
       </div>
       
-      <!-- 普通模式下显示统计信息 -->
-      <div v-if="!downloadStore.batchDeleteMode" class="stats-container">
+      <!-- 操作按钮行 -->
+      <div class="actions-row">
+        <div class="left-actions">
+          <el-button size="small" @click="handleScanRestore" :loading="isScanning">
+            <el-icon><FolderOpened /></el-icon> 扫描恢复
+          </el-button>
+          <el-button size="small" @click="confirmClearCompleted" :disabled="!completedDownloads?.length">
+            <el-icon><Delete /></el-icon> 清除已完成
+          </el-button>
+          <el-button size="small" @click="confirmClearFailed" :disabled="!downloadStore.failedDownloads.length">
+            <el-icon><Delete /></el-icon> 清除失败
+          </el-button>
+        </div>
+        <div class="right-actions">
+          <el-button-group>
+            <el-button :disabled="!activeDownloads.length" @click="pauseAllDownloads" type="primary" size="small">
+              <el-icon><VideoPause /></el-icon> 全部暂停
+            </el-button>
+            <el-button :disabled="!(downloadStore.pausedDownloads.length)" @click="resumeAllDownloads" type="success" size="small">
+              <el-icon><VideoPlay /></el-icon> 全部继续
+            </el-button>
+          </el-button-group>
+          <el-button size="small" @click="refreshDownloadList">
+            <el-icon><Refresh /></el-icon> 刷新
+          </el-button>
+        </div>
+      </div>
+      
+      <!-- 统计信息 -->
+      <div class="stats-container">
         <div class="download-stats">
           <div class="stat-card">
             <div class="stat-value">{{ activeDownloads?.length || 0 }}</div>
@@ -81,13 +85,14 @@
           </div>
           <div class="stat-card">
             <div class="stat-value">{{ formatFileSize(totalDownloaded) }}</div>
-            <div class="stat-label">已占用大小</div>
+            <div class="stat-label">已占用</div>
           </div>
         </div>
       </div>
     </div>
     
-    <div class="download-content">
+    <!-- 列表视图 -->
+    <div v-if="viewMode === 'list'" class="download-content">
       <el-tabs v-model="activeTab" class="download-tabs">
         <el-tab-pane label="全部下载" name="all">
           <download-list :filter="'all'" @play-video="handlePlayVideo" />
@@ -104,19 +109,103 @@
       </el-tabs>
     </div>
     
-    <!-- 批量删除确认对话框 -->
-    <el-dialog
-      v-model="confirmDialogVisible"
-      :title="confirmDialogTitle"
-      width="30%"
-    >
-      <span>{{ confirmDialogMessage }}</span>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="confirmDialogVisible = false">取消</el-button>
-          <el-button type="danger" @click="confirmAction">确认</el-button>
-        </span>
+    <!-- 番剧分组视图 -->
+    <div v-else class="group-content">
+      <div v-if="isLoadingGroups" class="loading-placeholder">
+        <el-skeleton :rows="3" animated />
+      </div>
+      <template v-else>
+        <div v-if="filteredGroups.length === 0" class="empty-state">
+          <el-empty description="暂无下载记录" />
+        </div>
+        <div v-else class="group-grid">
+          <div 
+            v-for="group in filteredGroups" 
+            :key="group.series_name" 
+            class="group-card"
+            @click="openGroupDetail(group)"
+          >
+            <div class="group-cover">
+              <img 
+                v-if="group.cover_url" 
+                :src="getCoverUrl(group.cover_url)" 
+                :alt="group.series_name"
+                referrerpolicy="no-referrer"
+                loading="lazy"
+                :class="{ 'blurred': shouldBlur && blurMode === 'blur' }"
+              />
+              <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
+              <div v-else-if="shouldBlur && blurMode === 'hide'" class="hide-overlay">
+                <el-icon :size="28"><Hide /></el-icon>
+              </div>
+              <div v-if="!group.cover_url" class="cover-placeholder">
+                <el-icon :size="36"><VideoPlay /></el-icon>
+              </div>
+              <div class="group-badge">
+                <span class="badge-count">{{ group.downloads.length }}</span>
+                <span class="badge-label">集</span>
+              </div>
+            </div>
+            <div class="group-info">
+              <h3 class="group-title">{{ group.series_name }}</h3>
+              <div class="group-meta">
+                <span class="group-size">{{ formatFileSize(group.total_size) }}</span>
+                <span v-if="group.downloading_count > 0" class="group-status downloading">
+                  {{ group.downloading_count }} 下载中
+                </span>
+                <span v-else-if="group.failed_count > 0" class="group-status failed">
+                  {{ group.failed_count }} 失败
+                </span>
+                <span v-else class="group-status completed">全部完成</span>
+              </div>
+              <el-progress 
+                :percentage="Math.round(group.completed_count / group.downloads.length * 100)"
+                :stroke-width="3"
+                :show-text="false"
+                :color="group.downloading_count > 0 ? '#409EFF' : group.failed_count > 0 ? '#F56C6C' : '#67C23A'"
+              />
+            </div>
+          </div>
+        </div>
       </template>
+    </div>
+    
+    <!-- 番剧详情弹窗 -->
+    <el-dialog
+      v-model="groupDetailVisible"
+      :title="currentGroup?.series_name || '番剧详情'"
+      width="80%"
+      destroy-on-close
+      top="5vh"
+    >
+      <div v-if="currentGroup" class="group-detail">
+        <div class="detail-stats">
+          <el-tag type="success">{{ currentGroup.completed_count }} 已完成</el-tag>
+          <el-tag v-if="currentGroup.downloading_count > 0" type="primary">{{ currentGroup.downloading_count }} 下载中</el-tag>
+          <el-tag v-if="currentGroup.failed_count > 0" type="danger">{{ currentGroup.failed_count }} 失败</el-tag>
+          <el-tag type="info">共 {{ formatFileSize(currentGroup.total_size) }}</el-tag>
+        </div>
+        <div class="detail-episodes">
+          <div v-for="dl in currentGroup.downloads" :key="dl.video_id" class="episode-item" @click="handleEpisodeClick(dl)">
+            <div class="episode-cover">
+              <img 
+                v-if="dl.cover_url" 
+                :src="getCoverUrl(dl.cover_url)" 
+                referrerpolicy="no-referrer"
+                loading="lazy"
+              />
+              <div v-else class="cover-placeholder small">
+                <el-icon><VideoPlay /></el-icon>
+              </div>
+            </div>
+            <div class="episode-info">
+              <span class="episode-title">{{ extractFilename(dl.filename) || dl.title }}</span>
+              <span class="episode-size">{{ formatFileSize(dl.total_size) }}</span>
+            </div>
+            <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
+          </div>
+        </div>
+      </div>
     </el-dialog>
     
     <!-- 视频播放器弹窗 -->
@@ -144,258 +233,229 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, ArrowDown, Delete, RefreshRight, Download, Refresh, Select, Close, Back, CloseBold } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
-import { DownloadProgress } from '../types/download';
+import { useContentSettings } from '../composables/useContentSettings';
 
-// 引入下载状态管理
 const downloadStore = useDownloadStore();
 const { 
   activeDownloads, 
   completedDownloads,
   allDownloads,
   totalDownloaded,
-  hasActiveDownloads,
-  hasPausedDownloads
 } = storeToRefs(downloadStore);
 
-// 当前活跃的标签页
+const { shouldBlur, mode: blurMode } = useContentSettings();
+
+// 视图状态
+const viewMode = ref<'list' | 'group'>('list');
 const activeTab = ref('all');
-const confirmDialogVisible = ref(false);
-const confirmDialogTitle = ref('');
-const confirmDialogMessage = ref('');
-const pendingAction = ref('');
+const searchQuery = ref('');
 
-// 视频播放相关状态
+// 分组视图状态
+const groups = ref<any[]>([]);
+const isLoadingGroups = ref(false);
+const groupDetailVisible = ref(false);
+const currentGroup = ref<any>(null);
+
+// 视频播放状态
 const videoPlayerVisible = ref(false);
-const currentVideo = ref<{
-  video_id: string;
-  url: string;
-  title: string;
-  cover_url: string;
-}>({
-  video_id: '',
-  url: '',
-  title: '',
-  cover_url: ''
+const currentVideo = ref<{ video_id: string; url: string; title: string; cover_url: string }>({
+  video_id: '', url: '', title: '', cover_url: ''
 });
 
-// 当前选项卡下的所有可见下载项
-const visibleDownloads = computed(() => {
-  switch (activeTab.value) {
-    case 'active':
-      return activeDownloads.value;
-    case 'completed':
-      return completedDownloads.value;
-    case 'failed':
-      return downloadStore.failedDownloads;
-    default:
-      return allDownloads.value;
-  }
-});
+// 扫描状态
+const isScanning = ref(false);
 
-// 计算总体下载进度
-const overallProgress = computed(() => {
-  return downloadStore.getOverallProgress();
-});
-
-// 判断是否全部选择了
-const allSelected = computed(() => {
-  const visibleCount = visibleDownloads.value.length;
-  const selectedCount = visibleDownloads.value.filter(item => 
-    downloadStore.selectedDownloads.has(item.video_id)
-  ).length;
-  
-  return visibleCount > 0 && visibleCount === selectedCount;
-});
-
-// 切换全选/取消全选
-const toggleSelectAll = () => {
-  if (allSelected.value) {
-    downloadStore.clearSelection();
-  } else {
-    selectAllVisible();
-  }
+// 搜索过滤
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+const handleSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    downloadStore.initializeDownloads();
+  }, 300);
 };
 
-// 初始化下载列表
-onMounted(async () => {
-  await downloadStore.initializeDownloads();
-});
-
-// 选中当前页面所有可见的下载项
-const selectAllVisible = () => {
-  downloadStore.selectAll(visibleDownloads.value);
-};
-
-// 确认删除已选项
-const confirmDeleteSelected = async () => {
-  if (!downloadStore.hasSelectedDownloads) return;
-  
+// 加载番剧分组
+const loadGroups = async () => {
+  isLoadingGroups.value = true;
   try {
-    await ElMessageBox.confirm(
-      `确定要删除已选择的 ${downloadStore.selectedDownloadsCount} 个下载记录吗？此操作不可撤销。`,
-      '确认删除',
-      {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    );
-    
-    await downloadStore.deleteSelected();
-  } catch (error) {
-    // 用户取消操作
+    groups.value = await DownloadApi.getDownloadGroups();
+  } finally {
+    isLoadingGroups.value = false;
   }
+};
+
+// 过滤分组（按搜索关键词）
+const filteredGroups = computed(() => {
+  if (!searchQuery.value) return groups.value;
+  const q = searchQuery.value.toLowerCase();
+  return groups.value.filter(g => g.series_name.toLowerCase().includes(q));
+});
+
+// 打开番剧详情
+const openGroupDetail = (group: any) => {
+  currentGroup.value = group;
+  groupDetailVisible.value = true;
+};
+
+// 获取封面URL
+const getCoverUrl = (coverUrl: string) => {
+  if (!coverUrl) return '';
+  if (coverUrl.startsWith('/api/')) {
+    const token = localStorage.getItem('token');
+    return `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}token=${token}`;
+  }
+  return coverUrl;
+};
+
+// 从文件名提取标题
+const extractFilename = (filename: string): string => {
+  if (!filename) return '';
+  const name = filename.split('/').pop() || filename;
+  const match = name.match(/^[^_]+_(.+)\.mp4$/);
+  return match ? match[1] : name.replace('.mp4', '');
 };
 
 // 格式化文件大小
 const formatFileSize = (bytes: number | undefined): string => {
-  if (bytes === undefined || isNaN(bytes)) {
-    return '0 B';
-  }
+  if (bytes === undefined || isNaN(bytes)) return '0 B';
   return DownloadApi.formatFileSize(bytes);
 };
 
-// 暂停所有下载
+// 获取状态标签类型
+const getStatusType = (status: string) => {
+  switch (status) {
+    case 'completed': return 'success';
+    case 'error': case 'cancelled': return 'danger';
+    case 'downloading': case 'paused': case 'pending': return 'primary';
+    default: return 'info';
+  }
+};
+
+// 获取状态文本
+const getStatusText = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '准备中', downloading: '下载中', paused: '已暂停',
+    completed: '已完成', cancelled: '已取消', error: '失败'
+  };
+  return map[status] || status;
+};
+
+// 点击集数
+const handleEpisodeClick = (dl: any) => {
+  if (dl.status === 'completed') {
+    currentVideo.value = {
+      video_id: dl.video_id,
+      url: DownloadApi.getVideoFileUrl(dl.video_id),
+      title: extractFilename(dl.filename) || dl.title,
+      cover_url: dl.cover_url
+    };
+    videoPlayerVisible.value = true;
+  } else {
+    // 跳转到视频详情页
+    window.open(`/video/${dl.video_id}`, '_blank');
+  }
+};
+
+// 扫描恢复
+const handleScanRestore = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将扫描下载目录，自动恢复文件存在但记录丢失的下载项。是否继续？',
+      '扫描恢复',
+      { confirmButtonText: '开始扫描', cancelButtonText: '取消', type: 'info' }
+    );
+  } catch { return; }
+  
+  isScanning.value = true;
+  try {
+    const result = await DownloadApi.scanAndRestore();
+    if (result.total_restored > 0) {
+      ElMessage.success(`成功恢复 ${result.total_restored} 条下载记录`);
+      await downloadStore.initializeDownloads();
+      if (viewMode.value === 'group') await loadGroups();
+    } else {
+      ElMessage.info('未发现需要恢复的下载记录');
+    }
+  } catch (e) {
+    ElMessage.error('扫描恢复失败');
+  } finally {
+    isScanning.value = false;
+  }
+};
+
+// 清除已完成
+const confirmClearCompleted = async () => {
+  try {
+    await ElMessageBox.confirm('确定清除所有已完成的下载记录吗？文件不会被删除。', '清除已完成', 
+      { confirmButtonText: '清除', cancelButtonText: '取消', type: 'warning' });
+    const result = await DownloadApi.clearCompleted();
+    if (result.status === 'success') {
+      ElMessage.success(result.message);
+      await downloadStore.initializeDownloads();
+      if (viewMode.value === 'group') await loadGroups();
+    }
+  } catch {}
+};
+
+// 清除失败
+const confirmClearFailed = async () => {
+  try {
+    await ElMessageBox.confirm('确定清除所有失败的下载记录吗？', '清除失败',
+      { confirmButtonText: '清除', cancelButtonText: '取消', type: 'warning' });
+    const result = await DownloadApi.clearFailed();
+    if (result.status === 'success') {
+      ElMessage.success(result.message);
+      await downloadStore.initializeDownloads();
+      if (viewMode.value === 'group') await loadGroups();
+    }
+  } catch {}
+};
+
+// 全部暂停
 const pauseAllDownloads = async () => {
   await downloadStore.pauseAllDownloads();
   ElMessage.success('已暂停所有下载');
 };
 
-// 恢复所有下载
+// 全部继续
 const resumeAllDownloads = async () => {
   await downloadStore.resumeAllDownloads();
   ElMessage.success('已恢复所有下载');
 };
 
-// 导出下载列表为JSON
-const exportDownloadData = () => {
-  try {
-    const data = JSON.stringify(allDownloads.value, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `downloads_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    ElMessage.success('下载列表已导出');
-  } catch (error) {
-    console.error('导出下载列表失败:', error);
-    ElMessage.error('导出下载列表失败');
-  }
-};
-
-// 刷新下载列表
+// 刷新列表
 const refreshDownloadList = async () => {
-  try {
-    ElMessage.info('正在刷新下载列表...');
-    await downloadStore.initializeDownloads();
-    ElMessage.success('下载列表已刷新');
-  } catch (error) {
-    console.error('刷新下载列表失败:', error);
-    ElMessage.error('刷新下载列表失败');
-  }
+  await downloadStore.initializeDownloads();
+  if (viewMode.value === 'group') await loadGroups();
+  ElMessage.success('已刷新');
 };
 
-// 确认执行操作
-const confirmAction = async () => {
-  confirmDialogVisible.value = false;
-  
-  try {
-    switch (pendingAction.value) {
-      case 'clearCompleted':
-        await downloadStore.clearCompletedDownloads();
-        ElMessage.success('已清除所有已完成的下载记录');
-        break;
-      case 'clearFailed':
-        await downloadStore.clearFailedDownloads();
-        ElMessage.success('已清除所有失败的下载记录');
-        break;
-      default:
-        break;
-    }
-  } catch (error) {
-    console.error(`执行操作 ${pendingAction.value} 失败:`, error);
-    ElMessage.error('操作失败，请稍后重试');
-  }
-};
-
-// 处理批量操作
-const handleBatchAction = async (command: string) => {
-  switch (command) {
-    case 'batchDelete':
-      downloadStore.toggleBatchDeleteMode();
-      break;
-      
-    case 'clearCompleted':
-      pendingAction.value = 'clearCompleted';
-      confirmDialogTitle.value = '清除已完成下载';
-      confirmDialogMessage.value = '确定要清除所有已完成的下载记录吗？此操作不可撤销。';
-      confirmDialogVisible.value = true;
-      break;
-      
-    case 'clearFailed':
-      pendingAction.value = 'clearFailed';
-      confirmDialogTitle.value = '清除失败下载';
-      confirmDialogMessage.value = '确定要清除所有失败的下载记录吗？此操作不可撤销。';
-      confirmDialogVisible.value = true;
-      break;
-      
-    case 'retryFailed':
-      await downloadStore.retryAllFailedDownloads();
-      ElMessage.success('已重试所有失败的下载任务');
-      break;
-      
-    case 'exportData':
-      exportDownloadData();
-      break;
-      
-    case 'refreshList':
-      refreshDownloadList();
-      break;
-      
-    default:
-      break;
-  }
-};
-
-// 当切换标签页时，如果在批量删除模式则清空选择
-watch(activeTab, () => {
-  if (downloadStore.batchDeleteMode) {
-    downloadStore.clearSelection();
-  }
-});
-
-// 处理播放视频事件
-const handlePlayVideo = (videoInfo: { video_id: string; url: string; title: string; cover_url: string }) => {
+// 播放视频
+const handlePlayVideo = (videoInfo: any) => {
   currentVideo.value = videoInfo;
   videoPlayerVisible.value = true;
 };
 
-// 关闭视频播放器
+// 关闭播放器
 const closeVideoPlayer = () => {
   videoPlayerVisible.value = false;
-  // 延迟清空数据，确保组件销毁后再清空
   setTimeout(() => {
-    currentVideo.value = {
-      video_id: '',
-      url: '',
-      title: '',
-      cover_url: ''
-    };
+    currentVideo.value = { video_id: '', url: '', title: '', cover_url: '' };
   }, 200);
 };
+
+// 初始化
+onMounted(async () => {
+  await downloadStore.initializeDownloads();
+});
 </script>
 
 <style scoped>
@@ -424,33 +484,33 @@ const closeVideoPlayer = () => {
   color: var(--text-color);
 }
 
-.bulk-actions {
+.header-toolbar {
   display: flex;
   gap: 10px;
   align-items: center;
 }
 
-.batch-delete-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
+.search-input {
+  width: 200px;
 }
 
-.batch-action-info {
+.view-toggle {
+  flex-shrink: 0;
+}
+
+.actions-row {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-}
-
-.selected-count {
-  font-weight: 500;
-  color: var(--primary-color);
-}
-
-.batch-action-buttons {
-  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+  margin-bottom: 15px;
+}
+
+.left-actions, .right-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   flex-wrap: wrap;
 }
 
@@ -466,7 +526,6 @@ const closeVideoPlayer = () => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 15px;
 }
 
 .stat-card {
@@ -497,6 +556,241 @@ const closeVideoPlayer = () => {
   padding: 15px;
 }
 
+/* 番剧分组视图 */
+.group-content {
+  min-height: 200px;
+}
+
+.loading-placeholder {
+  padding: 40px;
+}
+
+.empty-state {
+  padding: 60px 0;
+}
+
+.group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.group-card {
+  background-color: var(--bg-secondary-color);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--card-shadow);
+}
+
+.group-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.group-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  overflow: hidden;
+  background-color: var(--bg-color);
+}
+
+.group-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s;
+}
+
+.group-card:hover .group-cover img {
+  transform: scale(1.05);
+}
+
+.group-cover img.blurred {
+  filter: blur(15px) brightness(0.8);
+  transform: scale(1.1);
+}
+
+.group-cover .blur-overlay,
+.group-cover .hide-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+}
+
+.group-cover .hide-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-secondary-color), var(--bg-color));
+  color: var(--text-secondary-color);
+}
+
+.cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-secondary-color), var(--bg-color));
+  color: var(--text-secondary-color);
+}
+
+.cover-placeholder.small {
+  width: 56px;
+  height: 32px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.cover-placeholder.small .el-icon {
+  font-size: 18px;
+}
+
+.group-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+  padding: 3px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  z-index: 3;
+}
+
+.badge-count {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.badge-label {
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+}
+
+.group-info {
+  padding: 12px;
+}
+
+.group-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.group-size {
+  color: var(--text-secondary-color);
+}
+
+.group-status {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.group-status.completed {
+  color: #67C23A;
+  background: rgba(103, 194, 58, 0.1);
+}
+
+.group-status.downloading {
+  color: #409EFF;
+  background: rgba(64, 158, 255, 0.1);
+}
+
+.group-status.failed {
+  color: #F56C6C;
+  background: rgba(245, 108, 108, 0.1);
+}
+
+/* 番剧详情弹窗 */
+.detail-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.detail-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.episode-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: var(--bg-secondary-color);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.episode-item:hover {
+  background-color: var(--hover-bg-color);
+}
+
+.episode-cover {
+  width: 56px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background-color: var(--bg-color);
+}
+
+.episode-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.episode-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.episode-title {
+  font-size: 14px;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.episode-size {
+  font-size: 12px;
+  color: var(--text-secondary-color);
+}
+
 .video-player-wrapper {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -506,136 +800,30 @@ const closeVideoPlayer = () => {
   padding: 10px;
 }
 
-/* 响应式样式 */
+/* 响应式 */
 @media (max-width: 768px) {
-  .downloads-page {
-    padding: 10px;
-  }
-  
-  .header-top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  
-  .bulk-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .batch-action-buttons {
-    justify-content: space-between;
-    width: 100%;
-  }
-  
-  .download-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  }
-  
-  .stat-card {
-    min-width: 0;
-    flex: none;
-  }
-  
-  .download-tabs :deep(.el-tabs__header) {
-    margin-bottom: 10px;
-  }
-  
-  .download-tabs :deep(.el-tabs__nav) {
-    width: 100%;
-    display: flex;
-  }
-  
-  .download-tabs :deep(.el-tabs__item) {
-    flex: 1;
-    text-align: center;
-    padding: 0 5px;
-    font-size: 14px;
-  }
-  
-  .video-dialog {
-    width: 95% !important;
-    margin: 0 auto;
-  }
+  .downloads-page { padding: 10px; }
+  .header-top { flex-direction: column; align-items: stretch; }
+  .header-toolbar { justify-content: space-between; }
+  .search-input { flex: 1; }
+  .actions-row { flex-direction: column; }
+  .left-actions, .right-actions { width: 100%; justify-content: space-between; }
+  .download-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .stat-card { min-width: 0; flex: none; }
+  .group-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
 }
 
 @media (max-width: 480px) {
-  .downloads-page {
-    padding: 5px;
-  }
-  
-  .page-title {
-    font-size: 20px;
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  
-  .bulk-actions {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .download-stats {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-  
-  .stat-card {
-    padding: 8px;
-  }
-  
-  .stat-value {
-    font-size: 16px;
-  }
-  
-  .stat-label {
-    font-size: 12px;
-  }
-  
-  .download-tabs :deep(.el-tabs__item) {
-    font-size: 12px;
+  .downloads-page { padding: 5px; }
+  .page-title { font-size: 20px; }
+  .search-input { width: 100%; }
+  .header-toolbar { flex-wrap: wrap; }
+  .download-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 8px; }
+  .stat-value { font-size: 16px; }
+  .stat-label { font-size: 12px; }
+  .left-actions, .right-actions { flex-wrap: wrap; }
+  .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .group-title { font-size: 13px; }
 }
-
-  .video-dialog {
-    width: 100% !important;
-    margin: 0;
-  }
-}
-
-/* 手机端批量删除操作按钮样式 */
-@media (max-width: 576px) {
-  .batch-delete-actions {
-    flex-direction: column;
-    gap: 10px;
-  }
-  
-  .batch-action-info {
-    width: 100%;
-    text-align: center;
-  }
-  
-  .batch-action-buttons {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    justify-content: space-between;
-    flex-wrap: nowrap;
-    gap: 5px;
-  }
-  
-  .batch-action-buttons .el-button {
-    flex: 1;
-    padding: 8px 5px;
-    min-width: 0;
-  }
-  
-  .batch-action-buttons .el-button .el-icon {
-    margin-right: 0;
-  }
-  
-  .batch-action-buttons .el-button:not(.is-text) {
-    width: auto;
-  }
-}
-</style> 
+</style>

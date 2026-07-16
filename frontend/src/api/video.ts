@@ -1,5 +1,5 @@
 import request from '../utils/request.ts';
-import { HomeData, VideoDetail, VideoComment, CommentReply, SearchResults, BannerVideo, SearchCombination, CalendarData } from '../types/video';
+import { HomeData, VideoDetail, VideoComment, CommentReply, SearchResults, SearchCombination, CalendarData } from '../types/video';
 
 // 搜索参数接口
 interface SearchParams {
@@ -24,17 +24,11 @@ export const VideoApi = {
     try {
       const response = await request.get<HomeData>(`/videos/home`);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('获取首页数据失败:', error);
-      // 创建一个空的BannerVideo对象
-      const emptyBanner: BannerVideo = {
-        video_id: '',
-        title: '',
-        cover_url: ''
-      };
-
+      // 503表示外部网站暂时不可用，返回空数据让页面正常显示
       return {
-        banners: emptyBanner,
+        banners: [],
         latest_videos: [],
         new_arrivals_videos: [],
         new_uploads_videos: [],
@@ -43,7 +37,7 @@ export const VideoApi = {
         bubble_tea_videos: [],
         daily_rank_videos: [],
         monthly_rank_videos: [],
-        error: '获取首页数据失败'
+        error: error?.response?.status === 503 ? '外部服务暂时不可用，请稍后重试' : '获取首页数据失败'
       };
     }
   },
@@ -58,15 +52,10 @@ export const VideoApi = {
       // 再获取新数据
       const response = await request.get<HomeData>(`/videos/home`);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('刷新首页数据失败:', error);
-      const emptyBanner: BannerVideo = {
-        video_id: '',
-        title: '',
-        cover_url: ''
-      };
       return {
-        banners: emptyBanner,
+        banners: [],
         latest_videos: [],
         new_arrivals_videos: [],
         new_uploads_videos: [],
@@ -75,7 +64,7 @@ export const VideoApi = {
         bubble_tea_videos: [],
         daily_rank_videos: [],
         monthly_rank_videos: [],
-        error: '刷新首页数据失败'
+        error: error?.response?.status === 503 ? '外部服务暂时不可用，请稍后重试' : '刷新首页数据失败'
       };
     }
   },

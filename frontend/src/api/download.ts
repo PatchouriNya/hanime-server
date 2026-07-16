@@ -8,13 +8,74 @@ export const DownloadApi = {
   /**
    * 获取下载历史
    */
-  getDownloadHistory: async (): Promise<DownloadProgress[]> => {
+  getDownloadHistory: async (search?: string, status?: string): Promise<DownloadProgress[]> => {
     try {
-      const response = await request.get<DownloadProgress[]>('/downloads/history');
+      const params: Record<string, string> = {};
+      if (search) params.search = search;
+      if (status) params.status = status;
+      const response = await request.get<DownloadProgress[]>('/downloads/history', { params });
       return response.data;
     } catch (error) {
       console.error('获取下载历史失败:', error);
       return [];
+    }
+  },
+
+  /**
+   * 获取按番剧分组的下载列表
+   */
+  getDownloadGroups: async (): Promise<any[]> => {
+    try {
+      const response = await request.get('/downloads/groups');
+      return response.data;
+    } catch (error) {
+      console.error('获取下载分组失败:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 扫描下载目录恢复记录
+   */
+  scanAndRestore: async (): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/scan');
+      return response.data;
+    } catch (error) {
+      console.error('扫描恢复失败:', error);
+      return { restored: [], errors: ['请求失败'], total_restored: 0 };
+    }
+  },
+
+  /**
+   * 清除已完成的下载记录（不删除文件）
+   */
+  clearCompleted: async (): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/action', {
+        video_id: '',
+        action: 'clear_completed'
+      });
+      return response.data;
+    } catch (error) {
+      console.error('清除已完成记录失败:', error);
+      return { status: 'error', message: '操作失败' };
+    }
+  },
+
+  /**
+   * 清除失败的下载记录
+   */
+  clearFailed: async (): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/action', {
+        video_id: '',
+        action: 'clear_failed'
+      });
+      return response.data;
+    } catch (error) {
+      console.error('清除失败记录失败:', error);
+      return { status: 'error', message: '操作失败' };
     }
   },
 

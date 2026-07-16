@@ -3,35 +3,220 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
-## 八、版本 v2.1.4 - 修复满屏请求错误和缓存空结果导致网站不可用 (2026-07-16)
+## 十、版本 v2.2.0 - 下载中心优化 (2026-07-16)
 
 ### 修改原因
-用户报告严重bug：在未知情况下（疑似搜索触发）会出现满屏请求错误/超时提示，之后整个网站无法获取视频。
-
-### 根本原因分析
-1. **lru_cache缓存空结果**：后端 `video_service.py` 的 `search_videos`、`get_search_combination`、`get_home_data` 方法在失败时返回空对象（如 `SearchResults()`、`HomeData(error=...)`），这些空结果被 `@lru_cache` 缓存（搜索缓存24小时，首页缓存30分钟），导致后续相同参数的请求持续返回空数据。
-2. **前端错误消息无节流**：`request.ts` 中每个失败的请求都调用 `ElMessage.error`，多个请求同时失败时出现满屏错误提示。
-3. **前端无请求超时**：axios 实例未设置 timeout，后端超时60秒期间前端持续等待，可能积累大量待处理请求。
-4. **401重复跳转**：token 过期时多个并发请求同时触发 `window.location.href = '/login'`。
-5. **loadMore失败跳页**：`SearchPage.vue` 的 `loadMore` 在请求前 `currentPage++`，失败后不回退，导致跳页。
+用户反馈：重新部署后下载记录丢失（但文件还在）；下载列表越来越长无管理功能；需要搜索和分类展示。
 
 ### 修改内容
 
 #### 后端修改
 
-**文件：backend/app/services/video_service.py**
-- `get_home_data`：`page_content` 为空时抛出异常而非返回 `HomeData(error=...)`；异常处理改为 `raise` 而非返回空对象
-- `get_search_combination`：异常处理改为 `raise` 而非返回 `SearchCombination()`
-- `search_videos`：`page_content` 为空时抛出异常而非返回 `SearchResults()`；异常处理改为 `raise` 而非返回空对象
-- 效果：失败时异常向上传播，`lru_cache` 不会缓存异常，下次请求会重新尝试
+**文件：backend/app/services/download_service.py** - 新增5个方法
+- `scan_and_restore_downloads(username)`：扫描下载目录，从文件名解析video_id，补建缺失的数据库记录
+- `search_downloads(username, query, status)`：按标题/文件名搜索，按状态过滤
+- `clear_completed_downloads(username)`：清除已完成记录（不删文件）
+- `clear_failed_downloads(username)`：清除失败记录
+- `get_download_groups(username)`：按番剧目录名分组，返回每组概要信息（封面、集数、大小、完成进度）
+
+**文件：backend/app/api/endpoints/downloads.py** - 新增3个API端点
+- `POST /downloads/scan`：扫描恢复
+- `GET /downloads/groups`：获取番剧分组
+- `GET /downloads/history` 扩展：新增 `search` 和 `status` 查询参数
+- `POST /downloads/action` 扩展：新增 `clear_completed` 和 `clear_failed` 操作
+
+#### 前端修改
+
+**文件：frontend/src/api/download.ts** - 新增5个API方法
+- `getDownloadHistory(search?, status?)`
+- `getDownloadGroups()`
+- `scanAndRestore()`
+- `clearCompleted()`
+- `clearFailed()`
+
+**文件：frontend/src/views/Downloads.vue** - 完全重构
+- 新增搜索栏（支持番剧名/文件名搜索）
+- 新增列表/番剧视图切换
+- 新增番剧分组视图：卡片网格布局，显示封面、集数、大小、进度
+- 新增番剧详情弹窗：点击卡片展示所有集，可直接播放
+- 新增"扫描恢复"按钮
+- 新增"清除已完成"/"清除失败"按钮
+- 保留原有列表视图的tab切换
+
+#### 版本号更新
+- `backend/app/config.py`：APP_VERSION 2.1.5 → 2.2.0
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.2.0
+- `frontend/src/views/Settings.vue`：版本号 v2.2.0
+
+## 十、版本 v2.3.0 - 首页美化 + 下载中心优化 (2026-07-16)
+
+### 修改原因
+用户反馈：首页Banner不够好看、整体不够高级；下载中心重新部署后记录丢失、列表越来越长、无搜索无分类。
+
+### 修改内容
+
+#### 首页 Banner 全面升级
+
+**文件：frontend/src/components/BannerSlider.vue** - 完全重写
+- 高度从 380px → 420px，圆角 8px → 16px
+- 新增3层渐变遮罩：底部暗角、品红侧渐变、暗角晕影（电影感）
+- 新增 Ken Burns 微缩放动画（8秒慢推）
+- 播放按钮改为发光胶囊按钮（品红渐变 + 阴影光晕）
+- 圆点指示器改为胶囊指示器（激活时展开为胶囊形，宽24px）
+- 导航箭头添加 backdrop-filter 毛玻璃效果
+- 标题信息从slide内移到底部独立面板，更流畅的切换
+
+#### 视频卡片精致化
+
+**文件：frontend/src/components/VideoCard.vue** - 样式重构
+- 圆角从默认 → 12px，添加 1px 微透明边框
+- 悬停时边框添加品红微光（border-color: rgba(236, 72, 153, 0.15)）
+- 播放覆盖层从纯黑半透明 → 底部渐变遮罩，更自然
+- 收藏按钮和徽章添加 backdrop-filter: blur(4px)
+- 标题行高 1.3 → 1.4，间距优化
+
+#### 视频分区样式升级
+
+**文件：frontend/src/components/VideoSection.vue** - 样式重构
+- 标题竖条改为渐变发光（linear-gradient + box-shadow）
+- "查看更多"按钮改为胶囊圆角（border-radius: 20px）+ 渐变背景
+- 滚动条优化为品红半透明（rgba(236, 72, 153, 0.3)）
+- 分隔线改为微透明（rgba(255, 255, 255, 0.06)）
+- 分区容器添加微边框和hover阴影加深
+
+#### 顶部导航栏毛玻璃
+
+**文件：frontend/src/components/AppHeader.vue**
+- 背景色从 var(--bg-color) → rgba(24, 24, 27, 0.85) + backdrop-filter: blur(12px)
+- 底部边框从 var(--bg-secondary-color) → rgba(255, 255, 255, 0.06)
+
+#### 首页布局微调
+
+**文件：frontend/src/components/HomePage.vue**
+- padding 从 10px → 16px
+- 骨架屏样式对齐新圆角和间距
+
+#### 下载中心优化（后端+前端）
+
+**文件：backend/app/services/download_service.py** - 新增5个方法
+- scan_and_restore_downloads：扫描下载目录恢复记录
+- search_downloads：搜索+过滤
+- clear_completed_downloads/clear_failed_downloads：批量清理
+- get_download_groups：按番剧分组
+
+**文件：backend/app/api/endpoints/downloads.py** - 新增3个API
+- POST /downloads/scan
+- GET /downloads/groups
+- GET /downloads/history 扩展（search/status参数）
+
+**文件：frontend/src/api/download.ts** - 新增5个API方法
+
+**文件：frontend/src/views/Downloads.vue** - 完全重构
+- 新增搜索栏、列表/番剧视图切换
+- 新增番剧分组视图（卡片网格）
+- 新增番剧详情弹窗
+- 新增扫描恢复、清除已完成/失败按钮
+
+#### 版本号更新
+- APP_VERSION 2.2.0 → 2.3.0
+- AppHeader 版本徽章 v2.3.0
+- Settings 版本号 v2.3.0
+
+## 九、版本 v2.1.5 - 手机端适配优化 (2026-07-16)
+
+### 修改原因
+用户反馈手机端出现横向滚动条，体验不佳。需要全面适配手机端，让移动端体验更友好。
+
+### 修改内容
+
+#### 全局修改
+
+**文件：frontend/src/assets/styles/common.css**
+- 添加 `html, body { overflow-x: hidden; max-width: 100vw; }` 全局防横向溢出
+- `.page-container` 添加 `overflow-x: hidden`
+
+#### AppHeader 手机端适配
+
+**文件：frontend/src/components/AppHeader.vue**
+- 480px 以下：标题字体 18px，间距缩小到 6px，按钮 padding 4px，隐藏"更新日志"按钮，版本徽章缩小
+- 360px 以下：标题字体 16px，隐藏"日历"按钮
+- 原 480px 断点只有标题字体缩小，现在全面优化
+
+#### VideoDetailPage 手机端适配
+
+**文件：frontend/src/components/VideoDetailPage.vue**
+- `.video-actions` 添加 `flex-wrap: wrap` 允许按钮换行（原来5个按钮排一行会溢出）
+- 768px 以下：按钮间距 8px，按钮 padding 8px 12px，字体 13px
+- 480px 以下：按钮间距 6px，按钮 padding 6px 10px，字体 12px，标签缩小
+
+#### VideoSection 手机端适配
+
+**文件：frontend/src/components/VideoSection.vue**
+- 480px 以下：横向滚动项目宽度从 48% 改为 45%，最新项目从 120px 改为 32%
+- 缩小 padding、间距、字体和"查看更多"按钮
+
+#### SearchPage 手机端适配
+
+**文件：frontend/src/components/SearchPage.vue**
+- 768px 以下：搜索栏添加 padding 防贴边，网格间距 10px
+- 480px 以下：搜索框字体 14px，高度 34px，按钮高度 34px
+- 活跃过滤器区域允许换行
+
+#### Settings 手机端适配
+
+**文件：frontend/src/views/Settings.vue**
+- 768px 以下：表单 label 宽度 100px，字体 13px
+- 480px 以下：label 宽度 80px，字体 12px，按钮区域换行，提示文字缩小
+
+#### 版本号更新
+- `backend/app/config.py`：`APP_VERSION` 2.1.4 → 2.1.5
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.1.5
+- `frontend/src/views/Settings.vue`：版本号 v2.1.5
+- `CHANGELOG.md`：添加 v2.1.5 记录
+- `ChangelogPage.vue`：添加 v2.1.5 版本卡片
+
+## 八、版本 v2.1.4 - 修复满屏请求错误和缓存空结果导致网站不可用 (2026-07-16)
+
+### 修改原因
+用户报告严重bug：在未知情况下（疑似搜索触发）会出现满屏请求错误/超时提示，之后整个网站无法获取视频。首次修复后用户反馈：虽不再满屏刷，但仍出现"请求地址出错"（404），之后整个网站又不可用。
+
+### 根本原因分析（第二轮深入排查）
+1. **lru_cache缓存404响应（最核心bug）**：`get_video_detail` 方法失败时返回空 `VideoDetail(video_id=video_id, title="")`，API端点判断 `not video` 为 True → 返回 **HTTP 404** → 404响应被 `@lru_cache` 缓存1小时！同理 `load_comments` 和 `load_replies` 返回空列表也被判断为"不存在"返回404并被缓存。这导致某个视频请求失败后，该视频在1小时内持续返回404。
+2. **所有video_service方法都有此问题**：`get_home_data`、`get_search_combination`、`search_videos`、`get_video_detail`、`get_video_comments`、`get_comment_replies`、`get_calendar_data` 在失败时都返回空对象/空列表，被缓存后持续返回错误。
+3. **前端错误消息无节流**：每个失败请求都弹 `ElMessage.error`，多请求并发时满屏错误。
+4. **前端无请求超时**：axios 无 timeout + 后端 httpx 超时60秒 = 请求积压。
+5. **401重复跳转**：token 过期时多个并发请求同时触发 `window.location.href = '/login'`。
+6. **API函数名冲突**：`search_combination` 和 `search` 两个端点的处理函数同名 `search_videos`。
+
+### 修改内容
+
+#### 后端修改
+
+**文件：backend/app/services/video_service.py** - 核心修改
+- `get_home_data`：`page_content` 为空时抛异常；异常处理改为 `raise`
+- `get_search_combination`：异常处理改为 `raise`
+- `search_videos`：`page_content` 为空时抛异常；异常处理改为 `raise`
+- `get_video_detail`：异常处理改为 `raise`（不再返回空VideoDetail）
+- `get_video_comments`：异常处理改为 `raise`（不再返回空列表）
+- `get_comment_replies`：异常处理改为 `raise`（不再返回空列表）
+- `get_calendar_data`：异常处理改为 `raise`（不再返回CalendarData(error=...)）
+- **效果**：异常穿透 `lru_cache`（不被缓存），下次请求会重新执行
 
 **文件：backend/app/utils/ttl_lru_cache.py**
 - `async_wrapper` 和 `sync_wrapper`：添加 `if result is not None` 检查，不缓存 None 结果
 
+**文件：backend/app/api/endpoints/videos.py** - 重要重构
+- `get_search_combination` 函数名修正（原与 `search_videos` 同名）
+- 移除 `get_video_detail` 中的 `if not video: raise HTTPException(404)` 判断
+- 移除 `load_comments` 中的 `if not comments: raise HTTPException(404)` 判断
+- 移除 `load_replies` 中的 `if not replies: raise HTTPException(404)` 判断
+- **效果**：不再有错误的404响应被缓存
+
 **文件：backend/app/utils/cloudflare_bypass.py**
-- `client` 属性：`httpx.AsyncClient(timeout=60.0)` → `httpx.AsyncClient(timeout=30.0)`
-- `direct_client` 属性：`httpx.AsyncClient(timeout=60.0, ...)` → `httpx.AsyncClient(timeout=30.0, ...)`
-- 效果：加快失败检测，减少请求积压
+- `client` 和 `direct_client` 属性：httpx 超时从 60s → 30s
+
+**文件：backend/main.py**
+- 全局异常处理器：状态码从 500 → 503，消息改为"服务暂时不可用，请稍后重试"
 
 **文件：backend/app/config.py**
 - `APP_VERSION`：`"2.1.3"` → `"2.1.4"`
@@ -39,13 +224,18 @@
 #### 前端修改
 
 **文件：frontend/src/utils/request.ts** - 完全重写错误处理
-- 添加错误消息节流：相同错误消息2秒内只显示一次（`showErrorMessage` 函数）
-- 添加 `isRedirecting` 标志：防止401时多个请求同时触发跳转
-- axios 实例添加 `timeout: 30000`（30秒超时）
-- 添加超时错误单独处理（`ECONNABORTED`）
+- 错误消息节流：相同消息3秒内只显示一次
+- `isRedirecting` 标志：防止401重复跳转
+- `timeout: 30000`：30秒超时
+- 超时错误单独处理（`ECONNABORTED`）
+- **503静默处理**：不弹错误提示，由页面组件自行降级
+
+**文件：frontend/src/api/video.ts**
+- `getHomeData`/`refreshHomeData`：503时返回带 `error` 字段的空数据
+- `banners` 类型修正：从 `BannerVideo` 对象改为 `[]` 空数组
 
 **文件：frontend/src/components/SearchPage.vue**
-- `loadMore` 方法：保存 `previousPage`，失败时回退 `currentPage.value = previousPage`
+- `loadMore`：保存 `previousPage`，失败时回退页码
 
 **文件：frontend/src/components/AppHeader.vue**
 - 版本徽章：`v2.1.3` → `v2.1.4`
@@ -54,10 +244,15 @@
 - 版本号：`v2.1.3` → `v2.1.4`
 
 **文件：frontend/src/views/ChangelogPage.vue**
-- 添加 v2.1.4 版本卡片（4项修复 + 3项优化改进）
+- 更新 v2.1.4 版本卡片（5项修复 + 5项优化改进）
 
 **文件：CHANGELOG.md**
-- 添加 v2.1.4 更新记录
+- 更新 v2.1.4 记录（5项修复 + 5项优化改进）
+
+### 测试验证
+- lru_cache异常不缓存测试：✓ 通过（3个用例全通过）
+- 后端启动测试：✓ 通过（所有路由正确注册）
+- 前端构建测试：✓ 通过（vite build成功）
 
 ## 七、版本 v2.0.1 - 用户登出与头像功能 (2026-07-15)
 

@@ -160,7 +160,11 @@ export default defineComponent({
   cursor: pointer;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   background-color: var(--bg-secondary-color);
+  border-radius: 12px;
+  overflow: hidden;
   animation: cardFadeInUp 0.5s ease-out forwards;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes cardFadeInUp {
@@ -175,8 +179,9 @@ export default defineComponent({
 }
 
 .video-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  border-color: rgba(236, 72, 153, 0.15);
 }
 
 .video-thumbnail.landscape {
@@ -204,7 +209,7 @@ export default defineComponent({
 }
 
 .video-card:hover .video-thumbnail img {
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 .video-thumbnail img.blurred {
@@ -253,25 +258,24 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.5) 100%);
   opacity: 0;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(0px);
 }
 
 .play-overlay .el-icon {
   color: white;
   opacity: 0;
-  transform: scale(0.8);
+  transform: scale(0.6);
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
 }
 
 .video-card:hover .play-overlay {
   opacity: 1;
-  backdrop-filter: blur(2px);
 }
 
 .video-card:hover .play-overlay .el-icon {
@@ -287,7 +291,8 @@ export default defineComponent({
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -305,30 +310,31 @@ export default defineComponent({
 }
 
 .favorite-btn:hover {
-  background-color: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.7);
   transform: scale(1.15) !important;
 }
 
 .favorite-btn.is-favorited {
   opacity: 1;
   transform: scale(1);
-  background-color: rgba(255, 71, 87, 0.85);
+  background: rgba(255, 71, 87, 0.85);
   color: #fff;
 }
 
 .favorite-btn.is-favorited:hover {
-  background-color: rgba(255, 71, 87, 1);
+  background: rgba(255, 71, 87, 1);
   transform: scale(1.15) !important;
 }
 
-/* 时长、点赞率和播放次数徽章的共同样式 */
+/* 时长、点赞率和播放次数徽章 */
 .video-duration,
 .video-views-badge,
 .video-like-badge {
   position: absolute;
-  background-color: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   color: white;
-  padding: 2px 4px;
+  padding: 2px 6px;
   border-radius: 4px;
   font-size: 10px;
   z-index: 2;
@@ -375,19 +381,19 @@ export default defineComponent({
 }
 
 .video-info {
-  padding: 10px;
+  padding: 10px 10px 12px;
 }
 
 .video-title {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-color);
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 .video-title.single-line {
@@ -422,24 +428,16 @@ export default defineComponent({
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .video-title {
-    font-size: 13px;
-  }
-
-  .video-studio {
-    font-size: 11px;
-  }
+  .video-card { border-radius: 10px; }
+  .video-title { font-size: 13px; }
+  .video-studio { font-size: 11px; }
 }
 
 @media (max-width: 480px) {
-  .video-title {
-    font-size: 12px;
-  }
-
-  .video-studio {
-    font-size: 10px;
-  }
-
+  .video-card { border-radius: 8px; }
+  .video-title { font-size: 12px; }
+  .video-studio { font-size: 10px; }
+  .video-info { padding: 8px 8px 10px; }
   .video-duration,
   .video-like-badge,
   .video-views-badge {

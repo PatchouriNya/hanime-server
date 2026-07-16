@@ -577,7 +577,7 @@ class VideoService:
 
         except Exception as e:
             logger.error(f"获取视频详情错误: {str(e)}")
-            return VideoDetail(video_id=video_id, title="")
+            raise
 
     async def get_video_comments(self, video_id: str) -> List[VideoComment]:
         """获取视频播放评论"""
@@ -676,7 +676,7 @@ class VideoService:
             return video_comments
         except Exception as e:
             logger.error(f"获取视频评论错误: {str(e)}")
-            return []
+            raise
 
     async def get_comment_replies(self, comment_id: str) -> List[CommentReply]:
         """获取视频评论的相关回复"""
@@ -768,7 +768,7 @@ class VideoService:
 
         except Exception as e:
             logger.exception("获取视频评论回复错误")
-            return []
+            raise
 
     def _extract_video_id(self, url: str) -> str:
         """从URL中提取视频ID"""
@@ -939,7 +939,7 @@ class VideoService:
 
         except Exception as e:
             logger.exception(f"获取日历数据错误: {str(e)}")
-            return CalendarData(error=str(e))
+            raise
 
     async def get_search_combination(self) -> SearchCombination:
         """获取搜索组合"""
