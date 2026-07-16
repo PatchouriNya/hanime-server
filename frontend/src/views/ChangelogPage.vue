@@ -8,6 +8,33 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v2.3.3</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化改进</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>下载进度实时更新：修复下载页面进度条不自动更新的问题，加入 WebSocket 自动重连和5秒轮询兜底机制，无需手动刷新即可看到实时进度</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>手机端设置页适配：修复“清除数据”对话框在手机上文字溢出问题，弹窗宽度自适应，按钮改为纵向排列</span>
+            </li>
+          </ul>
+          <h3 class="section-title">体验优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>删除冗余提示：移除全局 API 响应成功提示、下载开始提示、刷新提示等无意义弹窗，仅保留用户需要确认操作的提示（如保存设置、收藏操作、清空数据等）</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v2.3.2</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>

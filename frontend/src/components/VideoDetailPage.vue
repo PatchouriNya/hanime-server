@@ -402,7 +402,6 @@ export default defineComponent({
         const result = await downloadStore.startDownload(videoDetail.value.video_id, force);
         
         if (result === true) {
-      ElMessage.success('开始下载视频');
           // 创建可点击通知
           ElNotification({
             title: '下载已开始',
@@ -433,7 +432,6 @@ export default defineComponent({
             }
           ).then(async () => {
             await downloadStore.startDownload(videoDetail.value.video_id, true);
-            ElMessage.success('开始重新下载');
           }).catch(() => {
             ElMessage.info('已取消下载');
           });

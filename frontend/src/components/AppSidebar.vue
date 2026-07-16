@@ -22,6 +22,9 @@
         <router-link to="/settings" class="nav-item" @click="closeSidebar">
           <el-icon :size="20"><Setting /></el-icon> 设置
         </router-link>
+        <router-link to="/changelog" class="nav-item" @click="closeSidebar">
+          <el-icon :size="20"><Document /></el-icon> 更新记录
+        </router-link>
         <div class="nav-item" @click="toggleTheme">
           <el-icon :size="20">
             <component :is="currentTheme === 'dark' ? 'Sunny' : 'Moon'" />
@@ -129,7 +132,8 @@ import {
   Download,
   SwitchButton,
   Picture,
-  Check
+  Check,
+  Document
 } from '@element-plus/icons-vue';
 
 interface DownloadedCover {
@@ -151,7 +155,8 @@ export default defineComponent({
     Download,
     SwitchButton,
     Picture,
-    Check
+    Check,
+    Document
   },
   props: {
     isOpen: {

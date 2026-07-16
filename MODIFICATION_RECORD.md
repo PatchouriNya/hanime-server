@@ -3,6 +3,61 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十三、版本 v2.3.3 - 下载进度实时更新 + 冗余提示清理 + 手机端适配 (2026-07-16)
+
+### 修改原因
+1. 下载添加后进度条不实时更新，需手动刷新才能看到进度变化
+2. 全站有很多无意义的成功提示弹窗（如搜索完弹"操作成功"），体验冗余
+3. 手机端设置页"清除数据"区域文字溢出边框
+
+### 修改内容
+
+**修复1：下载进度实时更新**
+
+**文件：frontend/src/stores/download.ts**
+- `initializeDownloads`：移除"已初始化则跳过"的幂等检查，改为始终从API拉取最新数据，仅保留WebSocket连接的去重
+- `refreshDownloads`：增加WebSocket自动重连逻辑（`if (!this.wsConnected) this.connectWebSocket()`）
+- 新增 `startPolling()`/`stopPolling()` 方法：5秒间隔轮询作为WebSocket兜底
+- 新增模块级 `_pollTimer` 变量
+
+**文件：frontend/src/views/Downloads.vue**
+- `onMounted` 中调用 `downloadStore.startPolling()`
+- `onUnmounted` 中调用 `downloadStore.stopPolling()`
+
+**修复2：删除冗余成功提示**
+
+**文件：frontend/src/utils/request.ts**
+- 移除全局响应拦截器中的 `ElMessage.success(response.data.message || '操作成功')`（所有API调用不再自动弹提示）
+
+**文件：frontend/src/stores/download.ts**
+- 删除 `startDownload` 中的 `ElMessage.success('开始下载')`
+- 删除 `pauseAllDownloads` 中的 `ElMessage.success('已暂停所有下载')`
+- 删除 `resumeAllDownloads` 中的 `ElMessage.success('已恢复所有下载')`
+
+**文件：frontend/src/views/Downloads.vue**
+- 删除 `refreshDownloadList` 中的 `ElMessage.success('已刷新')`
+
+**文件：frontend/src/views/Settings.vue**
+- 删除 `openDownloadDir` 中成功时的 `ElMessage.success('目录路径: ...')`
+
+**文件：frontend/src/components/VideoDetailPage.vue**
+- 删除下载开始时的 `ElMessage.success('开始下载视频')`
+- 删除重下载时的 `ElMessage.success('开始重新下载')`
+
+**修复3：手机端设置页适配**
+
+**文件：frontend/src/views/Settings.vue**
+- 清空数据确认弹窗 `width` 从固定的 `"30%"` 改为 `:width="isMobile ? '90%' : '480px'"`
+- 新增 `isMobile` ref 和 resize 监听
+- `.data-actions` 移动端CSS从 `flex-direction: row; flex-wrap: wrap` 改为 `flex-direction: column`
+- `.data-actions .el-button` 移动端从 `flex: 1; min-width: 0` 改为 `width: 100%; margin-left: 0`
+
+### 版本号更新
+- `backend/app/config.py`：APP_VERSION 2.3.2 → 2.3.3
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.3.3
+- `frontend/src/views/Settings.vue`：版本号 v2.3.3
+- `CHANGELOG.md`、`ChangelogPage.vue`：新增 v2.3.3 条目
+
 ## 十二、版本 v2.3.2 - 用户数据持久化 (2026-07-16)
 
 ### 修改原因

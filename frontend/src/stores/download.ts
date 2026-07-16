@@ -221,6 +221,9 @@ class DownloadSpeedSmoother {
   }
 }
 
+// WebSocket 兜底轮询定时器（模块级变量，避免响应式序列化问题）
+let _pollTimer: ReturnType<typeof setInterval> | null = null;
+
 /**
  * 下载状态Store
  */
@@ -314,24 +317,25 @@ export const useDownloadStore = defineStore('download', {
      * 初始化下载列表和WebSocket连接
      */
     async initializeDownloads() {
-      // 如果已经初始化过，则不重复初始化
-      if (Object.keys(this.downloads).length > 0 && this.wsConnected) {
-        return;
-      }
-      
       this.isLoading = true;
       
       try {
-        // 从API获取下载历史
+        // 从API获取下载历史（始终刷新，不跳过）
         const history = await DownloadApi.getDownloadHistory();
         
         // 初始化状态
         history.forEach(item => {
+          const existing = this.downloads[item.video_id];
+          if (existing && existing.status === 'downloading' && existing.speed > 0) {
+            return; // 保留 WebSocket 实时进度
+          }
           this.downloads[item.video_id] = item;
         });
         
-        // 初始化WebSocket连接
-        this.connectWebSocket();
+        // 初始化WebSocket连接（仅当未连接时）
+        if (!this.wsConnected) {
+          this.connectWebSocket();
+        }
       } catch (error) {
         console.error('加载下载历史失败:', error);
         ElMessage.error('加载下载历史失败');
@@ -364,10 +368,34 @@ export const useDownloadStore = defineStore('download', {
             delete this.downloads[id];
           }
         }
+        // 确保WebSocket连接（如果断开则重连）
+        if (!this.wsConnected) {
+          this.connectWebSocket();
+        }
       } catch (error) {
         console.error('刷新下载列表失败:', error);
       }
       this.lastUpdated = Date.now();
+    },
+
+    /**
+     * 启动周期性轮询（WebSocket的兜底保障，每5秒检查一次）
+     */
+    startPolling() {
+      if (_pollTimer) return;
+      _pollTimer = setInterval(() => {
+        this.refreshDownloads();
+      }, 5000);
+    },
+
+    /**
+     * 停止周期性轮询
+     */
+    stopPolling() {
+      if (_pollTimer) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+      }
     },
 
     /**
@@ -431,7 +459,6 @@ export const useDownloadStore = defineStore('download', {
         const result = await DownloadApi.startDownload(videoId, force);
 
         if (result.status === 'success') {
-          ElMessage.success('开始下载');
           // 主动刷新下载列表，确保新下载项立即显示
           this.refreshDownloads();
           return true;
@@ -573,11 +600,6 @@ export const useDownloadStore = defineStore('download', {
         const result = await this.pauseDownload(id);
         if (!result) success = false;
       }
-      
-      if (success) {
-        ElMessage.success('已暂停所有下载');
-      }
-      
       return success;
     },
     
@@ -598,11 +620,6 @@ export const useDownloadStore = defineStore('download', {
         const result = await this.resumeDownload(id);
         if (!result) success = false;
       }
-      
-      if (success) {
-        ElMessage.success('已恢复所有下载');
-      }
-      
       return success;
     },
     

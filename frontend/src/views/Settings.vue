@@ -1,197 +1,220 @@
 <template>
   <div class="settings-page">
     <div class="page-header">
-      <h1 class="page-title">设置</h1>
+      <h1 class="page-title">
+        <span class="title-accent"></span>
+        设置
+      </h1>
+      <p class="page-subtitle">管理你的应用偏好与账户</p>
     </div>
 
     <div class="settings-container">
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>下载设置</span>
+      <!-- 下载设置 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><Download /></el-icon> 下载
+        </div>
+        <el-card class="settings-card" shadow="never">
+          <el-form :model="downloadForm" label-width="120px">
+            <el-form-item label="下载目录">
+              <div class="download-dir-row">
+                <el-input
+                  v-model="downloadForm.downloadPath"
+                  placeholder="输入绝对路径，Docker环境: /app/downloads，本地: D:\Downloads"
+                >
+                  <template #append>
+                    <el-button @click="openDownloadDir" title="打开目录">
+                      <el-icon><FolderOpened /></el-icon>
+                    </el-button>
+                  </template>
+                </el-input>
+              </div>
+            </el-form-item>
+          </el-form>
+          <div class="card-footer">
+            <el-button type="primary" @click="saveDownloadDir">保存设置</el-button>
+            <el-button @click="openDownloadDir">
+              <el-icon><FolderOpened /></el-icon> 打开目录
+            </el-button>
           </div>
-        </template>
-        <el-form :model="downloadForm" label-width="120px">
-          <el-form-item label="下载目录">
-            <div class="download-dir-row">
-              <el-input
-                v-model="downloadForm.downloadPath"
-                placeholder="输入绝对路径，Docker环境: /app/downloads，本地: D:\Downloads"
-              >
-                <template #append>
-                  <el-button @click="openDownloadDir" title="打开目录">
-                    <el-icon><FolderOpened /></el-icon>
-                  </el-button>
-                </template>
-              </el-input>
-            </div>
-          </el-form-item>
-        </el-form>
-        <div class="card-footer">
-          <el-button type="primary" @click="saveDownloadDir">保存设置</el-button>
-          <el-button @click="openDownloadDir">
-            <el-icon><FolderOpened /></el-icon> 打开目录
-          </el-button>
-        </div>
-        <div class="download-dir-hint">
-          <el-icon><InfoFilled /></el-icon>
-          <span>每部番剧将自动创建以番剧名命名的文件夹，视频和封面保存在同一文件夹内</span>
-        </div>
-        <div class="download-dir-hint docker-hint">
-          <el-icon><Warning /></el-icon>
-          <span>Docker 环境下仅支持 Linux 格式路径，且只能访问容器内或已挂载的目录。如需保存到宿主机，请在 docker-compose.yml 中添加卷挂载（如 - /your/host/path:/data/downloads），然后设置路径为 /data/downloads</span>
-        </div>
-      </el-card>
-
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>代理设置</span>
-          </div>
-        </template>
-        <el-form :model="proxyForm" label-width="120px">
-          <el-form-item label="使用代理">
-            <el-switch
-              v-model="proxyForm.useProxy"
-              @change="handleProxyChange"
-            />
-          </el-form-item>
-          <el-form-item label="代理地址" :disabled="!proxyForm.useProxy">
-            <el-input
-              v-model="proxyForm.proxyUrl"
-              placeholder="例如: localhost:7890"
-              :disabled="!proxyForm.useProxy"
-              @blur="handleProxyUrlBlur"
-            />
-          </el-form-item>
-          <div class="proxy-hint">
+          <div class="download-dir-hint">
             <el-icon><InfoFilled /></el-icon>
-            <span>Docker 环境下如需代理宿主机本地服务，请使用 <code>host.docker.internal</code> 代替 <code>127.0.0.1</code>，例如：<code>http://host.docker.internal:7890</code></span>
+            <span>每部番剧将自动创建以番剧名命名的文件夹，视频和封面保存在同一文件夹内</span>
           </div>
-        </el-form>
-        <div class="card-footer">
-          <el-button type="primary" @click="saveProxySettings">保存设置</el-button>
-          <el-button
-            :loading="testingProxy"
-            :disabled="!proxyForm.useProxy || !proxyForm.proxyUrl"
-            @click="testProxyConnection"
-          >
-            <el-icon><Connection /></el-icon> 测试代理
-          </el-button>
-        </div>
-        
-        <div v-if="proxyTestResult" class="proxy-test-result" :class="{ success: proxyTestResult.success, error: !proxyTestResult.success }">
-          <el-icon v-if="proxyTestResult.success"><CircleCheck /></el-icon>
-          <el-icon v-else><CircleClose /></el-icon>
-          <span>{{ proxyTestResult.message }}</span>
-          <span v-if="proxyTestResult.latency_ms" class="latency">延迟: {{ proxyTestResult.latency_ms }}ms</span>
-        </div>
-      </el-card>
+          <div class="download-dir-hint docker-hint">
+            <el-icon><Warning /></el-icon>
+            <span>Docker 环境下仅支持 Linux 格式路径，且只能访问容器内或已挂载的目录。如需保存到宿主机，请在 docker-compose.yml 中添加卷挂载（如 - /your/host/path:/data/downloads），然后设置路径为 /data/downloads</span>
+          </div>
+        </el-card>
+      </div>
 
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>数据管理</span>
-          </div>
-        </template>
-        <div class="data-actions">
-          <el-button type="danger" plain @click="showClearDialog = true">
-            <el-icon><Delete /></el-icon> 清空所有本地数据
-          </el-button>
-          <el-button @click="exportData">
-            <el-icon><Download /></el-icon> 导出数据
-          </el-button>
-          <el-button @click="importData">
-            <el-icon><Upload /></el-icon> 导入数据
-          </el-button>
+      <!-- 代理设置 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><Connection /></el-icon> 代理
         </div>
-      </el-card>
-
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>内容屏蔽</span>
-          </div>
-        </template>
-        <el-form :model="contentForm" label-width="120px">
-          <el-form-item label="屏蔽敏感图片">
-            <el-switch
-              v-model="contentForm.enableBlur"
-              @change="handleBlurChange"
-            />
-          </el-form-item>
-          <el-form-item label="屏蔽方式" :disabled="!contentForm.enableBlur">
-            <el-select
-              v-model="contentForm.blurMode"
-              :disabled="!contentForm.enableBlur"
-              style="width: 100%;"
+        <el-card class="settings-card" shadow="never">
+          <el-form :model="proxyForm" label-width="120px">
+            <el-form-item label="使用代理">
+              <el-switch
+                v-model="proxyForm.useProxy"
+                @change="handleProxyChange"
+              />
+            </el-form-item>
+            <el-form-item label="代理地址" :disabled="!proxyForm.useProxy">
+              <el-input
+                v-model="proxyForm.proxyUrl"
+                placeholder="例如: localhost:7890"
+                :disabled="!proxyForm.useProxy"
+                @blur="handleProxyUrlBlur"
+              />
+            </el-form-item>
+            <div class="proxy-hint">
+              <el-icon><InfoFilled /></el-icon>
+              <span>Docker 环境下如需代理宿主机本地服务，请使用 <code>host.docker.internal</code> 代替 <code>127.0.0.1</code>，例如：<code>http://host.docker.internal:7890</code></span>
+            </div>
+          </el-form>
+          <div class="card-footer">
+            <el-button type="primary" @click="saveProxySettings">保存设置</el-button>
+            <el-button
+              :loading="testingProxy"
+              :disabled="!proxyForm.useProxy || !proxyForm.proxyUrl"
+              @click="testProxyConnection"
             >
-              <el-option label="毛玻璃打码" value="blur" />
-              <el-option label="不显示图片" value="hide" />
-            </el-select>
-          </el-form-item>
-        </el-form>
-        <div class="card-footer">
-          <el-button type="primary" @click="saveContentSettings">保存设置</el-button>
-        </div>
-      </el-card>
-
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>账号安全</span>
+              <el-icon><Connection /></el-icon> 测试代理
+            </el-button>
           </div>
-        </template>
-        <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="120px">
-          <el-form-item label="旧密码" prop="oldPassword">
-            <el-input
-              v-model="passwordForm.oldPassword"
-              type="password"
-              show-password
-              placeholder="请输入旧密码"
-            />
-          </el-form-item>
-          <el-form-item label="新密码" prop="newPassword">
-            <el-input
-              v-model="passwordForm.newPassword"
-              type="password"
-              show-password
-              placeholder="请输入新密码（至少6位）"
-            />
-          </el-form-item>
-          <el-form-item label="确认新密码" prop="confirmPassword">
-            <el-input
-              v-model="passwordForm.confirmPassword"
-              type="password"
-              show-password
-              placeholder="请再次输入新密码"
-            />
-          </el-form-item>
-        </el-form>
-        <div class="card-footer">
-          <el-button type="primary" @click="handleChangePassword" :loading="changingPassword">保存密码</el-button>
-        </div>
-      </el-card>
-
-      <el-card class="settings-card">
-        <template #header>
-          <div class="card-header">
-            <span>关于</span>
+          
+          <div v-if="proxyTestResult" class="proxy-test-result" :class="{ success: proxyTestResult.success, error: !proxyTestResult.success }">
+            <el-icon v-if="proxyTestResult.success"><CircleCheck /></el-icon>
+            <el-icon v-else><CircleClose /></el-icon>
+            <span>{{ proxyTestResult.message }}</span>
+            <span v-if="proxyTestResult.latency_ms" class="latency">延迟: {{ proxyTestResult.latency_ms }}ms</span>
           </div>
-        </template>
-        <div class="about-info">
-          <p><strong>版本:</strong> v2.3.2</p>
-          <p><strong>描述:</strong> Hanime视频聚合平台</p>
-          <p><strong>功能:</strong> 视频浏览、收藏、下载、播放清单</p>
-          <p><strong>更新日志:</strong> <a href="/changelog" class="changelog-link">查看更新记录</a></p>
+        </el-card>
+      </div>
+
+      <!-- 内容屏蔽 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><Hide /></el-icon> 内容屏蔽
         </div>
-      </el-card>
+        <el-card class="settings-card" shadow="never">
+          <el-form :model="contentForm" label-width="120px">
+            <el-form-item label="屏蔽敏感图片">
+              <el-switch
+                v-model="contentForm.enableBlur"
+                @change="handleBlurChange"
+              />
+            </el-form-item>
+            <el-form-item label="屏蔽方式" :disabled="!contentForm.enableBlur">
+              <el-select
+                v-model="contentForm.blurMode"
+                :disabled="!contentForm.enableBlur"
+                style="width: 100%;"
+              >
+                <el-option label="毛玻璃打码" value="blur" />
+                <el-option label="不显示图片" value="hide" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <div class="card-footer">
+            <el-button type="primary" @click="saveContentSettings">保存设置</el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <!-- 数据管理 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><FolderOpened /></el-icon> 数据管理
+        </div>
+        <el-card class="settings-card" shadow="never">
+          <div class="data-actions">
+            <el-button type="danger" plain @click="showClearDialog = true">
+              <el-icon><Delete /></el-icon> 清空所有本地数据
+            </el-button>
+            <el-button @click="exportData">
+              <el-icon><Download /></el-icon> 导出数据
+            </el-button>
+            <el-button @click="importData">
+              <el-icon><Upload /></el-icon> 导入数据
+            </el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <!-- 账号安全 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><Lock /></el-icon> 账号安全
+        </div>
+        <el-card class="settings-card" shadow="never">
+          <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="120px">
+            <el-form-item label="旧密码" prop="oldPassword">
+              <el-input
+                v-model="passwordForm.oldPassword"
+                type="password"
+                show-password
+                placeholder="请输入旧密码"
+              />
+            </el-form-item>
+            <el-form-item label="新密码" prop="newPassword">
+              <el-input
+                v-model="passwordForm.newPassword"
+                type="password"
+                show-password
+                placeholder="请输入新密码（至少6位）"
+              />
+            </el-form-item>
+            <el-form-item label="确认新密码" prop="confirmPassword">
+              <el-input
+                v-model="passwordForm.confirmPassword"
+                type="password"
+                show-password
+                placeholder="请再次输入新密码"
+              />
+            </el-form-item>
+          </el-form>
+          <div class="card-footer">
+            <el-button type="primary" @click="handleChangePassword" :loading="changingPassword">保存密码</el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <!-- 关于 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><InfoFilled /></el-icon> 关于
+        </div>
+        <el-card class="settings-card" shadow="never">
+          <div class="about-info">
+            <div class="about-row">
+              <span class="about-key">版本</span>
+              <span class="about-value">v2.3.3</span>
+            </div>
+            <div class="about-row">
+              <span class="about-key">描述</span>
+              <span class="about-value">Hanime视频聚合平台</span>
+            </div>
+            <div class="about-row">
+              <span class="about-key">功能</span>
+              <span class="about-value">视频浏览、收藏、下载、播放清单</span>
+            </div>
+            <div class="about-row">
+              <span class="about-key">更新</span>
+              <router-link to="/changelog" class="changelog-link">查看更新记录 →</router-link>
+            </div>
+          </div>
+        </el-card>
+      </div>
     </div>
 
     <el-dialog
       v-model="showClearDialog"
       title="清空数据"
-      width="30%"
+      width="480px"
+      :width="isMobile ? '90%' : '480px'"
     >
       <span>确定要清空所有本地数据吗？此操作将清除收藏、稍后观看、播放清单和观看历史，且不可撤销。</span>
       <template #footer>
@@ -216,7 +239,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { AccountApi } from '../api/account';
 import request from '../utils/request';
-import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning } from '@element-plus/icons-vue';
+import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning, Hide, Lock } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useContentSettings } from '../composables/useContentSettings';
@@ -245,6 +268,7 @@ const contentForm = reactive({
 });
 
 const showClearDialog = ref(false);
+const isMobile = ref(window.innerWidth <= 480);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const testingProxy = ref(false);
 const proxyTestResult = ref<ProxyTestResult | null>(null);
@@ -497,6 +521,9 @@ const handleFileSelect = async (event: Event) => {
 onMounted(() => {
   loadSettings();
   loadDownloadDir();
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 480;
+  });
 });
 
 const loadDownloadDir = async () => {
@@ -515,9 +542,7 @@ const selectDownloadDir = () => {
 const openDownloadDir = async () => {
   try {
     const response = await request.post('/settings/open-dir');
-    if (response.data.success) {
-      ElMessage.success(`目录路径: ${response.data.path}`);
-    } else {
+    if (!response.data.success) {
       ElMessage.warning(response.data.message || '无法打开目录，请手动访问: ' + downloadForm.downloadPath);
     }
   } catch (error) {
@@ -550,66 +575,99 @@ const saveDownloadDir = async () => {
 <style scoped>
 .settings-page {
   width: 100%;
-  padding: 20px;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
 }
 
+/* ========== 页头 ========== */
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: 32px;
+  text-align: center;
 }
 
 .page-title {
-  font-size: 24px;
-  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 6px;
   color: var(--text-color);
-}
-
-.settings-container {
-  max-width: 600px;
-}
-
-.settings-card {
-  margin-bottom: 20px;
-}
-
-.card-header {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.card-footer {
-  margin-top: 15px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.data-actions {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  align-items: center;
   gap: 10px;
 }
 
-.about-info {
+.title-accent {
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #409EFF, #a855f7);
+}
+
+.page-subtitle {
+  margin: 0;
   font-size: 14px;
   color: var(--text-secondary-color);
+  opacity: 0.7;
 }
 
-.about-info p {
-  margin: 8px 0;
+/* ========== 分区 ========== */
+.settings-section {
+  margin-bottom: 24px;
 }
 
-.changelog-link {
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--primary-color);
-  text-decoration: none;
+  margin-bottom: 8px;
+  padding-left: 2px;
 }
 
-.changelog-link:hover {
-  text-decoration: underline;
+/* ========== 卡片 ========== */
+.settings-card {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+  background-color: var(--card-bg, rgba(255,255,255,0.03)) !important;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  overflow: visible;
 }
 
-.hidden-input {
+.settings-card:hover {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.15);
+}
+
+:global(.light) .settings-card {
+  background-color: #ffffff !important;
+}
+
+:global(.light) .settings-card:hover {
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.2), 0 4px 16px rgba(0,0,0,0.06);
+}
+
+:deep(.el-card__header) {
   display: none;
 }
 
+:deep(.el-card__body) {
+  padding: 20px 24px;
+}
+
+/* ========== 表单 ========== */
+.card-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ========== 下载设置 ========== */
 .download-dir-row {
   width: 100%;
 }
@@ -617,26 +675,31 @@ const saveDownloadDir = async () => {
 .download-dir-hint {
   margin-top: 12px;
   padding: 10px 14px;
-  border-radius: 6px;
-  background-color: rgba(64, 158, 255, 0.1);
+  border-radius: 8px;
+  background-color: rgba(64, 158, 255, 0.08);
+  border: 1px solid rgba(64, 158, 255, 0.12);
   color: #409eff;
   font-size: 13px;
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  line-height: 1.6;
 }
 
 .download-dir-hint.docker-hint {
-  background-color: rgba(230, 162, 60, 0.1);
+  background-color: rgba(230, 162, 60, 0.08);
+  border-color: rgba(230, 162, 60, 0.15);
   color: #e6a23c;
   margin-top: 8px;
 }
 
+/* ========== 代理 ========== */
 .proxy-hint {
   margin-top: 8px;
   padding: 10px 14px;
-  border-radius: 6px;
-  background-color: rgba(64, 158, 255, 0.1);
+  border-radius: 8px;
+  background-color: rgba(64, 158, 255, 0.08);
+  border: 1px solid rgba(64, 158, 255, 0.12);
   color: var(--text-secondary-color);
   font-size: 13px;
   display: flex;
@@ -646,17 +709,17 @@ const saveDownloadDir = async () => {
 }
 
 .proxy-hint code {
-  background-color: rgba(255, 255, 255, 0.15);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-family: monospace;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 12px;
 }
 
 .proxy-test-result {
-  margin-top: 15px;
+  margin-top: 16px;
   padding: 12px 16px;
-  border-radius: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -664,31 +727,86 @@ const saveDownloadDir = async () => {
 }
 
 .proxy-test-result.success {
-  background-color: rgba(25, 135, 84, 0.1);
+  background-color: rgba(25, 135, 84, 0.08);
+  border: 1px solid rgba(25, 135, 84, 0.15);
   color: #198754;
 }
 
 .proxy-test-result.error {
-  background-color: rgba(220, 53, 69, 0.1);
+  background-color: rgba(220, 53, 69, 0.08);
+  border: 1px solid rgba(220, 53, 69, 0.15);
   color: #dc3545;
 }
 
 .proxy-test-result .latency {
   margin-left: auto;
   opacity: 0.7;
+  font-size: 12px;
 }
 
+/* ========== 数据管理 ========== */
+.data-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ========== 关于 ========== */
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.about-key {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary-color);
+  min-width: 48px;
+  opacity: 0.8;
+}
+
+.about-value {
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.changelog-link {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.changelog-link:hover {
+  opacity: 0.8;
+}
+
+/* ========== 其他 ========== */
+.hidden-input {
+  display: none;
+}
+
+/* ========== 响应式 ========== */
 @media (max-width: 768px) {
   .settings-page {
-    padding: 10px;
+    padding: 16px 10px 40px;
   }
 
   .page-title {
-    font-size: 20px;
+    font-size: 22px;
   }
 
-  .settings-container {
-    max-width: 100%;
+  :deep(.el-card__body) {
+    padding: 16px;
   }
 
   :deep(.el-form-item__label) {
@@ -699,11 +817,19 @@ const saveDownloadDir = async () => {
 
 @media (max-width: 480px) {
   .settings-page {
-    padding: 5px;
+    padding: 10px 6px 40px;
   }
 
   .page-title {
-    font-size: 18px;
+    font-size: 20px;
+  }
+
+  .page-subtitle {
+    font-size: 12px;
+  }
+
+  :deep(.el-card__body) {
+    padding: 14px;
   }
 
   :deep(.el-form-item__label) {
@@ -719,16 +845,26 @@ const saveDownloadDir = async () => {
   .download-dir-hint,
   .proxy-hint {
     font-size: 11px;
+    padding: 8px 10px;
   }
 
   .data-actions {
-    flex-direction: row;
-    flex-wrap: wrap;
+    flex-direction: column;
   }
 
   .data-actions .el-button {
-    flex: 1;
-    min-width: 0;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .about-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .settings-section {
+    margin-bottom: 16px;
   }
 }
 </style>

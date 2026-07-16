@@ -41,12 +41,7 @@ instance.interceptors.request.use(
 )
 
 instance.interceptors.response.use(
-    (response: AxiosResponse): AxiosResponse =>{
-        if (response.data && response.data.success) {
-            ElMessage.success(response.data.message || '操作成功');
-        }
-        return response
-    },
+    (response: AxiosResponse): AxiosResponse => response,
     (error: any): Promise<never> =>{
         // 超时错误单独处理
         if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {

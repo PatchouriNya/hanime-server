@@ -233,7 +233,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
@@ -435,7 +435,6 @@ const resumeAllDownloads = async () => {
 const refreshDownloadList = async () => {
   await downloadStore.initializeDownloads();
   if (viewMode.value === 'group') await loadGroups();
-  ElMessage.success('已刷新');
 };
 
 // 播放视频
@@ -455,6 +454,11 @@ const closeVideoPlayer = () => {
 // 初始化
 onMounted(async () => {
   await downloadStore.initializeDownloads();
+  downloadStore.startPolling();
+});
+
+onUnmounted(() => {
+  downloadStore.stopPolling();
 });
 </script>
 
