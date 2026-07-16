@@ -83,6 +83,11 @@ watch(theme, () => {
   setTheme();
 });
 
+// 侧边栏打开时锁定body滚动
+watch(sidebarOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : '';
+});
+
 // 组件挂载时设置主题
 onMounted(async () => {
   // 从后端加载用户主题设置

@@ -3,6 +3,35 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十五、版本 v2.3.5 - 浅色模式Banner适配 + 侧边栏底部空缺修复 (2026-07-16)
+
+### 修改原因
+1. 浅色模式下 Banner 阴影太重、空状态背景色太暗
+2. 手机端打开侧边栏后滚动页面，侧边栏底部出现空隙
+
+### 修改内容
+
+**修复1：浅色模式 Banner 适配**
+
+**文件：frontend/src/components/BannerSlider.vue**
+- 新增 `html.light .banner-container`：阴影改为 `rgba(0,0,0,0.1)`
+- 新增 `html.light .banner-content`：空状态背景 `#e5e7eb`
+- 新增 `html.light .banner-skeleton`：骨架屏背景 `#e5e7eb`
+
+**修复2：侧边栏底部空缺**
+
+**文件：frontend/src/App.vue**
+- 新增 `watch(sidebarOpen)`：打开时设 `document.body.style.overflow = 'hidden'`，关闭时恢复
+
+**文件：frontend/src/components/AppSidebar.vue**
+- `.sidebar-container` 新增 `height: 100dvh`（动态视口高度，兼容手机浏览器地址栏变化）
+
+### 版本号更新
+- `backend/app/config.py`：APP_VERSION 2.3.4 → 2.3.5
+- `frontend/src/components/AppHeader.vue`：版本徽章 v2.3.5
+- `frontend/src/views/Settings.vue`：版本号 v2.3.5
+- `CHANGELOG.md`、`ChangelogPage.vue`：新增 v2.3.5 条目
+
 ## 十四、版本 v2.3.4 - 深浅模式切换bug修复 + 设置页UI升级 + Header浅色适配 (2026-07-16)
 
 ### 修改原因

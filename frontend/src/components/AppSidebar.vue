@@ -364,6 +364,7 @@ export default defineComponent({
   left: 0;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   z-index: 1000;
   pointer-events: none;
 }

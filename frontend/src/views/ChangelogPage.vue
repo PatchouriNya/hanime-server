@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="warning" size="large">v2.3.5</el-tag>
+          <span class="version-date">2026-07-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>浅色模式 Banner 未适配：阴影减弱、空状态背景改为浅灰</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>手机端侧边栏底部空缺：打开菜单栏时自动锁定页面滚动，避免背景内容滑动露出空隙</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v2.3.4</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>

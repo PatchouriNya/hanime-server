@@ -476,6 +476,17 @@ export default defineComponent({
   .capsule-indicators { bottom: 8px; gap: 4px; padding: 4px 8px; }
   .capsule { width: 6px; height: 6px; }
   .capsule.active { width: 18px; }
-  .banner-container { border-radius: 10px; margin-bottom: 16px; }
+  .banner-container { border-radius: 10px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+}
+
+/* 亮色模式适配 */
+html.light .banner-container {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+}
+html.light .banner-content {
+  background-color: #e5e7eb;
+}
+html.light .banner-skeleton {
+  background-color: #e5e7eb;
 }
 </style>
