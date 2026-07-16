@@ -10,7 +10,12 @@
    - 支持通过 `DATA_ROOT` 环境变量自定义数据根目录
    - 旧部署配置中的 `DB_PATH`、`DOWNLOAD_PATH` 环境变量仍然有效，兼容旧配置
 
-2. **自动数据迁移**：
+2. **代理设置持久化**：
+   - 代理设置（USE_PROXY/PROXY_URL）通过设置页面修改后，现在会自动写入 `proxy_settings.json` 持久化文件
+   - 服务重启后自动从文件恢复代理设置，不再丢失
+   - 用户设置（图片屏蔽/模糊模式）存储在 `user.db` 的 `user_settings` 表中，同样在挂载范围内持久化
+
+3. **自动数据迁移**：
    - 首次启动时自动检测旧路径（`/app/backend/db`、`/app/backend/downloads`），如有数据自动迁移到新路径（`/app/backend/data/db`、`/app/backend/data/downloads`），无需手动操作
 
 3. **部署配置简化**：

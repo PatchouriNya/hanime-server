@@ -20,7 +20,11 @@
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span>自动迁移：首次启动时自动将旧路径（/app/backend/db、/app/backend/downloads）的数据迁移到新路径（/app/backend/data/db、/app/backend/data/downloads），无需手动操作</span>
+              <span>代理设置持久化：通过设置页面修改的代理配置会自动保存到文件，重启后自动恢复，不再丢失</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span>自动迁移：首次启动时自动将旧路径的数据迁移到新路径，无需手动操作</span>
             </li>
           </ul>
         </div>

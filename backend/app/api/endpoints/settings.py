@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from app.config import settings, logger
+from app.config import settings, logger, save_proxy_settings_to_file
 from app.utils.cloudflare_bypass import cf_bypasser
 import httpx
 import time
@@ -41,6 +41,7 @@ async def set_proxy_settings(settings_data: ProxySettings):
     
     if success:
         logger.info(f"代理设置已更新: use_proxy={settings_data.use_proxy}, proxy_url={settings_data.proxy_url}")
+        save_proxy_settings_to_file()
         return {
             "success": True,
             "message": "代理设置已更新",

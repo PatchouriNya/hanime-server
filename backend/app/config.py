@@ -1,5 +1,6 @@
 from pydantic import BaseModel, model_validator
 from typing import Optional
+import json as _json
 from loguru import logger
 from pathlib import Path
 import logging
@@ -88,6 +89,19 @@ if settings.USE_DOWNLOAD_PROXY and not settings.DOWNLOAD_PROXY_URL:
     logger.warning("USE_DOWNLOAD_PROXY=true 但 DOWNLOAD_PROXY_URL 未配置，自动禁用下载代理")
     settings.USE_DOWNLOAD_PROXY = False
 
+# 从持久化文件恢复代理设置（覆盖 .env 默认值）
+_proxy_file = settings.DB_PATH / "proxy_settings.json"
+if _proxy_file.exists():
+    try:
+        _data = _json.loads(_proxy_file.read_text(encoding="utf-8"))
+        if _data.get("use_proxy") is not None:
+            settings.USE_PROXY = bool(_data["use_proxy"])
+        if _data.get("proxy_url") is not None:
+            settings.PROXY_URL = _data["proxy_url"]
+        logger.info(f"已从持久化文件恢复代理设置: USE_PROXY={settings.USE_PROXY}")
+    except Exception as e:
+        logger.warning(f"恢复代理设置失败: {e}")
+
 # 打印下载目录信息
 logger.info(f"数据根目录: {settings.DATA_ROOT}")
 logger.info(f"下载目录: {settings.DOWNLOAD_PATH}")
@@ -172,3 +186,17 @@ logging.basicConfig(handlers=[InterceptHandler()], level=0)
 for _log in ['uvicorn', 'uvicorn.error', 'uvicorn.access', 'fastapi']:
     _logger = logging.getLogger(_log)
     _logger.handlers = [InterceptHandler()]
+
+
+def save_proxy_settings_to_file():
+    """将当前代理设置持久化到文件，重启后自动恢复"""
+    try:
+        _proxy_file = settings.DB_PATH / "proxy_settings.json"
+        _proxy_file.parent.mkdir(parents=True, exist_ok=True)
+        _proxy_file.write_text(_json.dumps({
+            "use_proxy": settings.USE_PROXY,
+            "proxy_url": settings.PROXY_URL or ""
+        }, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"代理设置已持久化: USE_PROXY={settings.USE_PROXY}")
+    except Exception as e:
+        logger.error(f"持久化代理设置失败: {e}")
