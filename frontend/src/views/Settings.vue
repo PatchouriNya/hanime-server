@@ -191,7 +191,7 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v2.4.3</span>
+              <span class="about-value">v2.5.0</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
