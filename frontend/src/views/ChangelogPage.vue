@@ -8,6 +8,38 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag size="large" type="warning">v2.5.1</el-tag>
+          <span class="version-date">2026-07-17</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>数据库表重建：</strong>品牌共用表更名为 ld_user，外键统一改为 ld_user_id，严格遵循 LibraryDream 命名规范</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>用户表字段专业化：</strong>新增 email、phone、nickname、real_name、avatar_url、gender、birth_date、bio 等完整用户画像字段</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>枚举规范化：</strong>user_type（10=普通/20=管理员/30=超级管理员）、status（10=正常/20=禁用/30=封禁），step 10 递进</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>登录追踪：</strong>新增 last_login_at（最后登录时间）和 last_login_ip（最后登录IP）字段</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>全字段 COMMENT：</strong>所有表和字段均有注释，状态/类型字段列出完整枚举值</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag size="large" type="danger">v2.5.0</el-tag>
           <span class="version-date">2026-07-17</span>
         </div>

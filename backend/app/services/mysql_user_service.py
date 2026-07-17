@@ -1,6 +1,6 @@
 """
 MySQL 用户服务 — 管理收藏、稍后观看、播放清单、观看历史、用户设置
-用于云数据库模式，支持多项目共用 user 表
+用于云数据库模式，支持多项目共用 ld_user 表
 """
 import json
 import uuid
@@ -51,34 +51,34 @@ class MySQLUserService:
     # ---- 用户认证相关 ----
 
     async def authenticate_user(self, username: str, password: str) -> tuple[bool, Optional[int]]:
-        """验证用户凭据，返回 (是否成功, user_id)"""
+        """验证用户凭据，返回 (是否成功, ld_user_id)"""
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT id, password_hash FROM user WHERE username = %s AND is_active = 1 AND is_deleted = 0",
+                        "SELECT id, password_hash FROM ld_user WHERE username = %s AND status = 10 AND is_deleted = 0",
                         (username,)
                     )
                     row = await cursor.fetchone()
             if row is None:
                 return False, None
-            user_id, password_hash = row
+            ld_user_id, password_hash = row
             if pbkdf2_sha256.verify(password, password_hash):
-                return True, user_id
+                return True, ld_user_id
             return False, None
         except Exception as e:
             logger.error(f"MySQL 验证用户失败: {e}")
             raise
 
-    async def change_password(self, user_id: int, old_password: str, new_password: str) -> bool:
+    async def change_password(self, ld_user_id: int, old_password: str, new_password: str) -> bool:
         """修改密码"""
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT password_hash FROM user WHERE id = %s", (user_id,)
+                        "SELECT password_hash FROM ld_user WHERE id = %s", (ld_user_id,)
                     )
                     row = await cursor.fetchone()
                 if not row:
@@ -88,8 +88,8 @@ class MySQLUserService:
                 new_hash = pbkdf2_sha256.hash(new_password)
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "UPDATE user SET password_hash = %s WHERE id = %s",
-                        (new_hash, user_id)
+                        "UPDATE ld_user SET password_hash = %s WHERE id = %s",
+                        (new_hash, ld_user_id)
                     )
             return True
         except Exception as e:
@@ -97,23 +97,22 @@ class MySQLUserService:
             return False
 
     async def get_or_create_user(self, username: str) -> Optional[int]:
-        """获取用户ID，用户不存在则创建（用于从SQLite导入）"""
+        """获取用户ID，用户不存在则创建"""
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT id FROM user WHERE username = %s AND is_deleted = 0",
+                        "SELECT id FROM ld_user WHERE username = %s AND is_deleted = 0",
                         (username,)
                     )
                     row = await cursor.fetchone()
                 if row:
                     return row[0]
-                # 创建新用户
                 password_hash = pbkdf2_sha256.hash("666666")
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "INSERT INTO user (username, password_hash) VALUES (%s, %s)",
+                        "INSERT INTO ld_user (username, password_hash, user_type, status) VALUES (%s, %s, 10, 10)",
                         (username, password_hash)
                     )
                     return cursor.lastrowid
@@ -123,44 +122,44 @@ class MySQLUserService:
 
     # ---- 收藏 ----
 
-    async def add_favorite(self, user_id: int, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_favorite(self, ld_user_id: int, video_id: str, title: str, cover_url: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        """INSERT INTO hanime_user_favorite (user_id, video_id, title, cover_url)
+                        """INSERT INTO hanime_user_favorite (ld_user_id, video_id, title, cover_url)
                            VALUES (%s, %s, %s, %s)
                            ON DUPLICATE KEY UPDATE title = VALUES(title), cover_url = VALUES(cover_url), created_at = CURRENT_TIMESTAMP""",
-                        (user_id, video_id, title, cover_url)
+                        (ld_user_id, video_id, title, cover_url)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 添加收藏失败: {e}")
             return False
 
-    async def remove_favorite(self, user_id: int, video_id: str) -> bool:
+    async def remove_favorite(self, ld_user_id: int, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM hanime_user_favorite WHERE user_id = %s AND video_id = %s",
-                        (user_id, video_id)
+                        "DELETE FROM hanime_user_favorite WHERE ld_user_id = %s AND video_id = %s",
+                        (ld_user_id, video_id)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 移除收藏失败: {e}")
             return False
 
-    async def get_favorites(self, user_id: int) -> List[UserFavoriteItem]:
+    async def get_favorites(self, ld_user_id: int) -> List[UserFavoriteItem]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT video_id, title, cover_url, created_at FROM hanime_user_favorite WHERE user_id = %s ORDER BY created_at DESC",
-                        (user_id,)
+                        "SELECT video_id, title, cover_url, created_at FROM hanime_user_favorite WHERE ld_user_id = %s ORDER BY created_at DESC",
+                        (ld_user_id,)
                     )
                     rows = await cursor.fetchall()
             return [UserFavoriteItem(
@@ -171,14 +170,14 @@ class MySQLUserService:
             logger.error(f"MySQL 获取收藏列表失败: {e}")
             return []
 
-    async def is_favorite(self, user_id: int, video_id: str) -> bool:
+    async def is_favorite(self, ld_user_id: int, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT COUNT(*) FROM hanime_user_favorite WHERE user_id = %s AND video_id = %s",
-                        (user_id, video_id)
+                        "SELECT COUNT(*) FROM hanime_user_favorite WHERE ld_user_id = %s AND video_id = %s",
+                        (ld_user_id, video_id)
                     )
                     row = await cursor.fetchone()
             return row[0] > 0
@@ -188,44 +187,44 @@ class MySQLUserService:
 
     # ---- 稍后观看 ----
 
-    async def add_watch_later(self, user_id: int, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_watch_later(self, ld_user_id: int, video_id: str, title: str, cover_url: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        """INSERT INTO hanime_user_watch_later (user_id, video_id, title, cover_url)
+                        """INSERT INTO hanime_user_watch_later (ld_user_id, video_id, title, cover_url)
                            VALUES (%s, %s, %s, %s)
                            ON DUPLICATE KEY UPDATE title = VALUES(title), cover_url = VALUES(cover_url), created_at = CURRENT_TIMESTAMP""",
-                        (user_id, video_id, title, cover_url)
+                        (ld_user_id, video_id, title, cover_url)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 添加稍后观看失败: {e}")
             return False
 
-    async def remove_watch_later(self, user_id: int, video_id: str) -> bool:
+    async def remove_watch_later(self, ld_user_id: int, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM hanime_user_watch_later WHERE user_id = %s AND video_id = %s",
-                        (user_id, video_id)
+                        "DELETE FROM hanime_user_watch_later WHERE ld_user_id = %s AND video_id = %s",
+                        (ld_user_id, video_id)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 移除稍后观看失败: {e}")
             return False
 
-    async def get_watch_later(self, user_id: int) -> List[UserWatchLaterItem]:
+    async def get_watch_later(self, ld_user_id: int) -> List[UserWatchLaterItem]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT video_id, title, cover_url, created_at FROM hanime_user_watch_later WHERE user_id = %s ORDER BY created_at DESC",
-                        (user_id,)
+                        "SELECT video_id, title, cover_url, created_at FROM hanime_user_watch_later WHERE ld_user_id = %s ORDER BY created_at DESC",
+                        (ld_user_id,)
                     )
                     rows = await cursor.fetchall()
             return [UserWatchLaterItem(
@@ -236,14 +235,14 @@ class MySQLUserService:
             logger.error(f"MySQL 获取稍后观看列表失败: {e}")
             return []
 
-    async def is_watch_later(self, user_id: int, video_id: str) -> bool:
+    async def is_watch_later(self, ld_user_id: int, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT COUNT(*) FROM hanime_user_watch_later WHERE user_id = %s AND video_id = %s",
-                        (user_id, video_id)
+                        "SELECT COUNT(*) FROM hanime_user_watch_later WHERE ld_user_id = %s AND video_id = %s",
+                        (ld_user_id, video_id)
                     )
                     row = await cursor.fetchone()
             return row[0] > 0
@@ -253,7 +252,7 @@ class MySQLUserService:
 
     # ---- 播放清单 ----
 
-    async def create_playlist(self, user_id: int, name: str) -> Optional[UserPlaylist]:
+    async def create_playlist(self, ld_user_id: int, name: str) -> Optional[UserPlaylist]:
         try:
             playlist_id = str(uuid.uuid4())[:12]
             now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
@@ -261,8 +260,8 @@ class MySQLUserService:
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "INSERT INTO hanime_user_playlist (user_id, playlist_id, name) VALUES (%s, %s, %s)",
-                        (user_id, playlist_id, name)
+                        "INSERT INTO hanime_user_playlist (ld_user_id, playlist_id, name) VALUES (%s, %s, %s)",
+                        (ld_user_id, playlist_id, name)
                     )
             return UserPlaylist(
                 playlist_id=playlist_id, name=name, videos=[],
@@ -272,28 +271,28 @@ class MySQLUserService:
             logger.error(f"MySQL 创建播放清单失败: {e}")
             return None
 
-    async def delete_playlist(self, user_id: int, playlist_id: str) -> bool:
+    async def delete_playlist(self, ld_user_id: int, playlist_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM hanime_user_playlist WHERE user_id = %s AND playlist_id = %s",
-                        (user_id, playlist_id)
+                        "DELETE FROM hanime_user_playlist WHERE ld_user_id = %s AND playlist_id = %s",
+                        (ld_user_id, playlist_id)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 删除播放清单失败: {e}")
             return False
 
-    async def get_playlists(self, user_id: int) -> List[UserPlaylist]:
+    async def get_playlists(self, ld_user_id: int) -> List[UserPlaylist]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT playlist_id, name, created_at, updated_at FROM hanime_user_playlist WHERE user_id = %s ORDER BY created_at DESC",
-                        (user_id,)
+                        "SELECT playlist_id, name, created_at, updated_at FROM hanime_user_playlist WHERE ld_user_id = %s ORDER BY created_at DESC",
+                        (ld_user_id,)
                     )
                     playlist_rows = await cursor.fetchall()
 
@@ -321,14 +320,14 @@ class MySQLUserService:
             logger.error(f"MySQL 获取播放清单列表失败: {e}")
             return []
 
-    async def get_playlist(self, user_id: int, playlist_id: str) -> Optional[UserPlaylist]:
+    async def get_playlist(self, ld_user_id: int, playlist_id: str) -> Optional[UserPlaylist]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT playlist_id, name, created_at, updated_at FROM hanime_user_playlist WHERE user_id = %s AND playlist_id = %s",
-                        (user_id, playlist_id)
+                        "SELECT playlist_id, name, created_at, updated_at FROM hanime_user_playlist WHERE ld_user_id = %s AND playlist_id = %s",
+                        (ld_user_id, playlist_id)
                     )
                     prow = await cursor.fetchone()
                 if not prow:
@@ -352,7 +351,7 @@ class MySQLUserService:
             logger.error(f"MySQL 获取播放清单失败: {e}")
             return None
 
-    async def add_video_to_playlist(self, user_id: int, playlist_id: str, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_video_to_playlist(self, ld_user_id: int, playlist_id: str, video_id: str, title: str, cover_url: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
@@ -373,7 +372,7 @@ class MySQLUserService:
             logger.error(f"MySQL 添加视频到播放清单失败: {e}")
             return False
 
-    async def remove_video_from_playlist(self, user_id: int, playlist_id: str, video_id: str) -> bool:
+    async def remove_video_from_playlist(self, ld_user_id: int, playlist_id: str, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
@@ -392,25 +391,24 @@ class MySQLUserService:
             logger.error(f"MySQL 从播放清单移除视频失败: {e}")
             return False
 
-    async def update_playlist_name(self, user_id: int, playlist_id: str, name: str) -> bool:
+    async def update_playlist_name(self, ld_user_id: int, playlist_id: str, name: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "UPDATE hanime_user_playlist SET name = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s AND playlist_id = %s",
-                        (name, user_id, playlist_id)
+                        "UPDATE hanime_user_playlist SET name = %s, updated_at = CURRENT_TIMESTAMP WHERE ld_user_id = %s AND playlist_id = %s",
+                        (name, ld_user_id, playlist_id)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 更新播放清单名称失败: {e}")
             return False
 
-    async def move_video_between_playlists(self, user_id: int, from_playlist_id: str, to_playlist_id: str, video_id: str) -> bool:
+    async def move_video_between_playlists(self, ld_user_id: int, from_playlist_id: str, to_playlist_id: str, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
-                # 查找视频信息
                 async with conn.cursor() as cursor:
                     await cursor.execute(
                         "SELECT video_id, title, cover_url FROM hanime_user_playlist_video WHERE playlist_id = %s AND video_id = %s",
@@ -419,13 +417,11 @@ class MySQLUserService:
                     video = await cursor.fetchone()
                 if not video:
                     return False
-                # 从源清单移除
                 async with conn.cursor() as cursor:
                     await cursor.execute(
                         "DELETE FROM hanime_user_playlist_video WHERE playlist_id = %s AND video_id = %s",
                         (from_playlist_id, video_id)
                     )
-                # 添加到目标清单
                 async with conn.cursor() as cursor:
                     await cursor.execute(
                         """INSERT INTO hanime_user_playlist_video (playlist_id, video_id, title, cover_url)
@@ -433,7 +429,6 @@ class MySQLUserService:
                            ON DUPLICATE KEY UPDATE title = VALUES(title), cover_url = VALUES(cover_url)""",
                         (to_playlist_id, video[0], video[1], video[2])
                     )
-                # 更新两个清单的时间
                 async with conn.cursor() as cursor:
                     await cursor.execute(
                         "UPDATE hanime_user_playlist SET updated_at = CURRENT_TIMESTAMP WHERE playlist_id IN (%s, %s)",
@@ -446,31 +441,31 @@ class MySQLUserService:
 
     # ---- 观看历史 ----
 
-    async def add_watch_history(self, user_id: int, video_id: str, title: str, cover_url: str, progress: int = 0, duration: str = "") -> bool:
+    async def add_watch_history(self, ld_user_id: int, video_id: str, title: str, cover_url: str, progress: int = 0, duration: str = "") -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        """INSERT INTO hanime_user_watch_history (user_id, video_id, title, cover_url, progress, duration)
+                        """INSERT INTO hanime_user_watch_history (ld_user_id, video_id, title, cover_url, progress, duration)
                            VALUES (%s, %s, %s, %s, %s, %s)
                            ON DUPLICATE KEY UPDATE title = VALUES(title), cover_url = VALUES(cover_url),
                            progress = VALUES(progress), duration = VALUES(duration), watched_at = CURRENT_TIMESTAMP""",
-                        (user_id, video_id, title, cover_url, progress, duration)
+                        (ld_user_id, video_id, title, cover_url, progress, duration)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 添加观看历史失败: {e}")
             return False
 
-    async def get_watch_history(self, user_id: int) -> List[WatchHistoryItem]:
+    async def get_watch_history(self, ld_user_id: int) -> List[WatchHistoryItem]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT video_id, title, cover_url, progress, duration, watched_at FROM hanime_user_watch_history WHERE user_id = %s ORDER BY watched_at DESC",
-                        (user_id,)
+                        "SELECT video_id, title, cover_url, progress, duration, watched_at FROM hanime_user_watch_history WHERE ld_user_id = %s ORDER BY watched_at DESC",
+                        (ld_user_id,)
                     )
                     rows = await cursor.fetchall()
             return [WatchHistoryItem(
@@ -482,28 +477,28 @@ class MySQLUserService:
             logger.error(f"MySQL 获取观看历史失败: {e}")
             return []
 
-    async def clear_watch_history(self, user_id: int) -> bool:
+    async def clear_watch_history(self, ld_user_id: int) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM hanime_user_watch_history WHERE user_id = %s",
-                        (user_id,)
+                        "DELETE FROM hanime_user_watch_history WHERE ld_user_id = %s",
+                        (ld_user_id,)
                     )
             return True
         except Exception as e:
             logger.error(f"MySQL 清空观看历史失败: {e}")
             return False
 
-    async def remove_watch_history(self, user_id: int, video_id: str) -> bool:
+    async def remove_watch_history(self, ld_user_id: int, video_id: str) -> bool:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "DELETE FROM hanime_user_watch_history WHERE user_id = %s AND video_id = %s",
-                        (user_id, video_id)
+                        "DELETE FROM hanime_user_watch_history WHERE ld_user_id = %s AND video_id = %s",
+                        (ld_user_id, video_id)
                     )
             return True
         except Exception as e:
@@ -512,14 +507,14 @@ class MySQLUserService:
 
     # ---- 用户设置 ----
 
-    async def get_user_settings(self, user_id: int) -> Dict[str, Any]:
+    async def get_user_settings(self, ld_user_id: int) -> Dict[str, Any]:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT settings_data FROM hanime_user_setting WHERE user_id = %s",
-                        (user_id,)
+                        "SELECT settings_data FROM hanime_user_setting WHERE ld_user_id = %s",
+                        (ld_user_id,)
                     )
                     row = await cursor.fetchone()
             if row and row[0]:
@@ -531,19 +526,19 @@ class MySQLUserService:
             logger.error(f"MySQL 获取用户设置失败: {e}")
             return {}
 
-    async def save_user_settings(self, user_id: int, new_settings: Dict[str, Any]) -> bool:
+    async def save_user_settings(self, ld_user_id: int, new_settings: Dict[str, Any]) -> bool:
         try:
-            existing = await self.get_user_settings(user_id)
+            existing = await self.get_user_settings(ld_user_id)
             existing.update(new_settings)
             settings_json = json.dumps(existing)
             pool = await self._get_pool()
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        """INSERT INTO hanime_user_setting (user_id, settings_data)
+                        """INSERT INTO hanime_user_setting (ld_user_id, settings_data)
                            VALUES (%s, %s)
                            ON DUPLICATE KEY UPDATE settings_data = VALUES(settings_data), updated_at = CURRENT_TIMESTAMP""",
-                        (user_id, settings_json)
+                        (ld_user_id, settings_json)
                     )
             return True
         except Exception as e:

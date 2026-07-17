@@ -3,6 +3,50 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十、数据库表按命名规范重建 + 用户表专业化 — v2.5.0 → v2.5.1 (2026-07-17)
+
+### 修改原因
+用户指出初版设计未严格遵循 LibraryDream 命名规范，且 `user` 表字段过于简陋、不够专业。
+
+### 修改内容
+
+#### 1. 表名修正（遵循 `{namespace}_{entity}` 格式）
+- `user` → `ld_user`：品牌共用表使用 `ld_` 前缀
+- 外键列 `user_id` → `ld_user_id`：FK 列名与引用表名严格一致
+- 索引名统一：`uk_ld_user_username`、`fk_hanime_user_favorite_ld_user` 等
+
+#### 2. ld_user 表字段专业化扩展
+新增字段：
+- `email` VARCHAR(100) — 邮箱（唯一索引）
+- `phone` VARCHAR(20) — 手机号
+- `nickname` VARCHAR(50) — 昵称
+- `real_name` VARCHAR(50) — 真实姓名
+- `gender` TINYINT UNSIGNED — 性别: 1=男, 2=女, 3=其他
+- `birth_date` DATE — 出生日期
+- `bio` VARCHAR(200) — 个人简介
+- `last_login_at` TIMESTAMP — 最后登录时间
+- `last_login_ip` VARCHAR(45) — 最后登录IP（IPv6兼容）
+- `user_type` TINYINT UNSIGNED, step 10 — 用户类型: 10=普通/20=管理员/30=超级管理员
+- `status` TINYINT UNSIGNED, step 10 — 状态: 10=正常/20=禁用/30=封禁
+
+移除字段：
+- `is_active` — 由 `status` 统一管理（正常=10即代表激活）
+- 保留 `avatar_url`、`is_deleted`、`deleted_at`
+
+#### 3. 代码同步更新
+- `mysql_user_service.py`：SQL 中 `user` → `ld_user`，`user_id` → `ld_user_id`，`is_active` → `status = 10`
+- `config.py`：版本号 2.5.1
+- 前端 `AppHeader.vue` / `Settings.vue`：版本 2.5.1
+
+#### 4. 文档更新
+- `CHANGELOG.md` / `ChangelogPage.vue`：新增 v2.5.1 条目
+
+### 设计决策
+- **枚举 step 10**：`user_type` 和 `status` 都从 10 开始，步进 10，便于未来在中间插入新类型
+- **status 替代 is_active**：不使用独立的 `is_active` 布尔字段，状态字段统一表达激活/禁用/封禁
+- **FK 名与表名一致**：`ld_user_id` 引用 `ld_user(id)`，让 SQL 自文档化
+- **IPv6 兼容**：`last_login_ip` 使用 VARCHAR(45)，可以存储完整 IPv6 地址
+
 ## 十九、MySQL云数据库支持 — v2.4.3 → v2.5.0 大版本更新 (2026-07-17)
 
 ### 修改原因

@@ -1,5 +1,24 @@
 # 更新日志
 
+## v2.5.1 (2026-07-17)
+
+### 修复
+
+1. **数据库表重建，严格遵循 LibraryDream 命名规范**：
+   - 品牌共用表 `user` 更名为 `ld_user`，使用 `ld_` 品牌前缀
+   - 所有关联表外键从 `user_id` 改为 `ld_user_id`，与引用表名一致
+   - 索引名统一使用 `{prefix}_{table}_{columns}` 格式
+
+2. **用户表字段专业化设计**：
+   - 完整用户画像字段：`email`、`phone`、`nickname`、`real_name`、`avatar_url`
+   - 新增 `gender`（TINYINT: 1=男/2=女/3=其他）、`birth_date`、`bio`
+   - 用户类型 `user_type`（TINYINT, step 10: 10=普通/20=管理员/30=超级管理员）
+   - 状态 `status`（TINYINT, step 10: 10=正常/20=禁用/30=封禁）
+   - `is_active` 移除，由 `status` 字段统一管理
+   - 新增 `last_login_at`、`last_login_ip` 登录追踪字段
+
+3. **所有字段强制 COMMENT 注释**：状态/类型字段均列出完整枚举值
+
 ## v2.5.0 (2026-07-17)
 
 ### 新功能
