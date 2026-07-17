@@ -3,6 +3,60 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十八、创建 LibraryDream 命名规范文档 — v1.0.0 → v2.0.0 重大升级 (2026-07-17)
+
+### 创建原因
+用户需要一套专业且有个性的命名规范，完全跳脱于现有项目，作为 LibraryDream 品牌的核心技术资产跨所有项目使用。用户明确指出不应参考现有项目代码风格。
+
+### 第一版 (v1.0.0) — 初始创建
+包含 15 章节，覆盖 MySQL、Python、TypeScript、Vue、CSS、文件、API、Git、魔数禁止、常量管理、版本号。
+
+### 第二版 (v2.0.0) — 重大升级
+根据用户反馈进行以下改进：
+
+**1. 完全去项目化**
+- 移除所有 hanime-server 特定引用
+- 版本号同步位置改为通用描述（不再写具体文件路径）
+- 示例从项目特定改为通用场景（如 `ld_blog` 代替 `ld_hanime`）
+
+**2. 新增 4 个章节**
+- **Redis 命名规范（第 5 章）**：Key 格式 `ld:{project}:{category}:{entity}:{id}`，13 种 Key 分类模板、数据结构选择指南、TTL 强制约定表、5 大禁用项
+- **Docker 命名规范（第 12 章）**：镜像 `librarydream/{service}:{version}`、容器/网络/卷命名 `ld-{project}-{name}`、Compose 服务名、Dockerfile stage 命名
+- **环境变量命名规范（第 13 章）**：格式 `LD_{SERVICE}_{KEY}`、通用变量、数据库变量、`.env` 文件约定
+- **日志命名规范（第 14 章）**：文件命名 `{project}_{date}.log`、结构化日志 JSON 格式、字段命名约定
+
+**3. 细节增强**
+- 字段 COMMENT 强制规范（状态字段必须列出所有可能值）
+- 数据库迁移文件命名 `{YYYYMMDDHHMMSS}_{description}.sql`
+- Redis Key 命名规则（禁止动态前缀、禁止用户输入直接拼接、长度 ≤512）
+- Redis Hash vs String 选择决策树
+- 缩写列表新增 `ttl`、`rpc`，禁用列表新增 `mod`、`img`
+
+**4. 目录结构更新**
+- 从 15 章扩展到 19 章
+
+### 创建内容（第二版新增）
+
+**文件：NAMING_CONVENTION_AI.md**（新建，约 300 行）
+
+AI 专用浓缩版命名规范，设计目标：
+- **极致省 token**：约为人版的 20%，每一条都是纯规则指令
+- **零解释**：没有"为什么"、没有"原因"、没有"说明"，只有"是什么"和"怎么做"
+- **AI 友好格式**：严格结构化、紧凑表格、规则列表、代码模板
+- **可直接作为 System Prompt 片段**：按章节注入 AI 上下文
+
+AI 版文档包含 17 个紧凑板块，与人版完全对应：
+Universal Rules → MySQL → Redis → Python → TypeScript → Vue → CSS → Files/Dirs → API → Docker → Env Vars → Logging → Git → No Magic Numbers → Constants → Versioning → Anti-Patterns
+
+### 关键设计决策（不变）
+- 数据库表名单数、`ld_` 品牌前缀
+- API URL kebab-case 复数、JSON key camelCase
+- 布尔 `is_`、时间 `_at`、主键 `BIGINT UNSIGNED`
+- 金额 `DECIMAL`、状态枚举禁 MySQL ENUM
+- 枚举值间隔 10，品牌前缀贯穿 MySQL (`ld_`)、Redis (`ld:`)、Docker (`ld-`)、环境变量 (`LD_`)
+
+---
+
 ## 十七、版本 v2.4.1 - Banner浅色遮罩大幅减淡 (2026-07-16)
 
 ### 修改原因
