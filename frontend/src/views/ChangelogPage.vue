@@ -8,6 +8,46 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag size="large" type="danger">v2.5.0</el-tag>
+          <span class="version-date">2026-07-17</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>MySQL云数据库支持：</strong>用户数据可存储在远程 MySQL 服务器，登录页面新增本地/云数据库切换按钮，用户可自由选择数据源</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>多项目共用用户表：</strong>设计共用 user 表，支持多个 LibraryDream 项目共用同一套用户账号和密码</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>项目特色数据关联表：</strong>收藏、稍后观看、播放清单、观看历史、用户设置通过 hanime_ 前缀的关联表存储，与共用用户表解耦</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>播放清单表规范化：</strong>MySQL模式下播放清单拆分为 hanime_user_playlist 和 hanime_user_playlist_video 两张表，视频不再存为JSON</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>双数据源架构：</strong>UserService 支持 SQLite/MySQL 双数据源自动路由，JWT Token 包含 db_type 字段区分数据来源</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>全API适配：</strong>收藏、稍后观看、播放清单、观看历史、用户设置、认证、修改密码等所有用户相关API均已适配双数据源</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>部署配置：</strong>Docker Compose 新增 MySQL 环境变量配置，.env.example 新增云数据库配置项，requirements.txt 新增 aiomysql 依赖</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag size="large">v2.4.3</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>

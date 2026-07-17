@@ -10,11 +10,19 @@ from app.config import settings, logger
 
 
 class UserService:
-    """用户服务 - 管理收藏、稍后观看、播放清单、观看历史"""
+    """用户服务 - 管理收藏、稍后观看、播放清单、观看历史（支持SQLite本地和MySQL云数据库）"""
     
     def __init__(self):
         self.db_path = settings.DB_PATH / "user.db"
         self._initialized = False
+        self._mysql = None
+    
+    def _get_mysql_service(self):
+        """懒加载MySQL服务"""
+        if self._mysql is None:
+            from app.services.mysql_user_service import mysql_user_service
+            self._mysql = mysql_user_service
+        return self._mysql
     
     async def initialize(self):
         """初始化数据库 - 在应用启动时调用"""
@@ -171,8 +179,10 @@ class UserService:
             await conn.execute(f"INSERT INTO playlists (username, {old_cols}) SELECT 'admin', {old_cols} FROM playlists_old")
             await conn.execute("DROP TABLE playlists_old")
     
-    async def add_favorite(self, username: str, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_favorite(self, username: str, video_id: str, title: str, cover_url: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """添加收藏"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().add_favorite(db_user_id, video_id, title, cover_url)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
@@ -185,8 +195,10 @@ class UserService:
             logger.error(f"添加收藏失败: {e}")
             return False
     
-    async def remove_favorite(self, username: str, video_id: str) -> bool:
+    async def remove_favorite(self, username: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """移除收藏"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().remove_favorite(db_user_id, video_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("DELETE FROM favorites WHERE username = ? AND video_id = ?", (username, video_id))
@@ -196,8 +208,10 @@ class UserService:
             logger.error(f"移除收藏失败: {e}")
             return False
     
-    async def get_favorites(self, username: str) -> List[UserFavoriteItem]:
+    async def get_favorites(self, username: str, db_type: str = "local", db_user_id: int = None) -> List[UserFavoriteItem]:
         """获取收藏列表"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_favorites(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT * FROM favorites WHERE username = ? ORDER BY added_at DESC", (username,))
@@ -213,8 +227,10 @@ class UserService:
             logger.error(f"获取收藏列表失败: {e}")
             return []
     
-    async def is_favorite(self, username: str, video_id: str) -> bool:
+    async def is_favorite(self, username: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """检查是否已收藏"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().is_favorite(db_user_id, video_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT COUNT(*) FROM favorites WHERE username = ? AND video_id = ?", (username, video_id))
@@ -224,8 +240,10 @@ class UserService:
             logger.error(f"检查收藏状态失败: {e}")
             return False
     
-    async def add_watch_later(self, username: str, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_watch_later(self, username: str, video_id: str, title: str, cover_url: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """添加稍后观看"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().add_watch_later(db_user_id, video_id, title, cover_url)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
@@ -238,8 +256,10 @@ class UserService:
             logger.error(f"添加稍后观看失败: {e}")
             return False
     
-    async def remove_watch_later(self, username: str, video_id: str) -> bool:
+    async def remove_watch_later(self, username: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """移除稍后观看"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().remove_watch_later(db_user_id, video_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("DELETE FROM watch_later WHERE username = ? AND video_id = ?", (username, video_id))
@@ -249,8 +269,10 @@ class UserService:
             logger.error(f"移除稍后观看失败: {e}")
             return False
     
-    async def get_watch_later(self, username: str) -> List[UserWatchLaterItem]:
+    async def get_watch_later(self, username: str, db_type: str = "local", db_user_id: int = None) -> List[UserWatchLaterItem]:
         """获取稍后观看列表"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_watch_later(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT * FROM watch_later WHERE username = ? ORDER BY added_at DESC", (username,))
@@ -266,8 +288,10 @@ class UserService:
             logger.error(f"获取稍后观看列表失败: {e}")
             return []
     
-    async def is_watch_later(self, username: str, video_id: str) -> bool:
+    async def is_watch_later(self, username: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """检查是否在稍后观看列表"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().is_watch_later(db_user_id, video_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT COUNT(*) FROM watch_later WHERE username = ? AND video_id = ?", (username, video_id))
@@ -277,8 +301,10 @@ class UserService:
             logger.error(f"检查稍后观看状态失败: {e}")
             return False
     
-    async def create_playlist(self, username: str, name: str) -> Optional[UserPlaylist]:
+    async def create_playlist(self, username: str, name: str, db_type: str = "local", db_user_id: int = None) -> Optional[UserPlaylist]:
         """创建播放清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().create_playlist(db_user_id, name)
         try:
             playlist_id = str(int(time.time()))
             now = datetime.now().isoformat()
@@ -301,8 +327,10 @@ class UserService:
             logger.error(f"创建播放清单失败: {e}")
             return None
     
-    async def delete_playlist(self, username: str, playlist_id: str) -> bool:
+    async def delete_playlist(self, username: str, playlist_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """删除播放清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().delete_playlist(db_user_id, playlist_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("DELETE FROM playlists WHERE username = ? AND playlist_id = ?", (username, playlist_id))
@@ -312,8 +340,10 @@ class UserService:
             logger.error(f"删除播放清单失败: {e}")
             return False
     
-    async def get_playlists(self, username: str) -> List[UserPlaylist]:
+    async def get_playlists(self, username: str, db_type: str = "local", db_user_id: int = None) -> List[UserPlaylist]:
         """获取所有播放清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_playlists(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT * FROM playlists WHERE username = ? ORDER BY created_at DESC", (username,))
@@ -335,8 +365,10 @@ class UserService:
             logger.error(f"获取播放清单列表失败: {e}")
             return []
     
-    async def get_playlist(self, username: str, playlist_id: str) -> Optional[UserPlaylist]:
+    async def get_playlist(self, username: str, playlist_id: str, db_type: str = "local", db_user_id: int = None) -> Optional[UserPlaylist]:
         """获取单个播放清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_playlist(db_user_id, playlist_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT * FROM playlists WHERE username = ? AND playlist_id = ?", (username, playlist_id))
@@ -358,8 +390,10 @@ class UserService:
             logger.error(f"获取播放清单失败: {e}")
             return None
     
-    async def add_video_to_playlist(self, username: str, playlist_id: str, video_id: str, title: str, cover_url: str) -> bool:
+    async def add_video_to_playlist(self, username: str, playlist_id: str, video_id: str, title: str, cover_url: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """添加视频到播放清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().add_video_to_playlist(db_user_id, playlist_id, video_id, title, cover_url)
         try:
             playlist = await self.get_playlist(username, playlist_id)
             if not playlist:
@@ -387,8 +421,10 @@ class UserService:
             logger.error(f"添加视频到播放清单失败: {e}")
             return False
     
-    async def remove_video_from_playlist(self, username: str, playlist_id: str, video_id: str) -> bool:
+    async def remove_video_from_playlist(self, username: str, playlist_id: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """从播放清单移除视频"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().remove_video_from_playlist(db_user_id, playlist_id, video_id)
         try:
             playlist = await self.get_playlist(username, playlist_id)
             if not playlist:
@@ -407,8 +443,10 @@ class UserService:
             logger.error(f"从播放清单移除视频失败: {e}")
             return False
     
-    async def update_playlist_name(self, username: str, playlist_id: str, name: str) -> bool:
+    async def update_playlist_name(self, username: str, playlist_id: str, name: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """更新播放清单名称"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().update_playlist_name(db_user_id, playlist_id, name)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
@@ -420,8 +458,10 @@ class UserService:
             logger.error(f"更新播放清单名称失败: {e}")
             return False
 
-    async def move_video_between_playlists(self, username: str, from_playlist_id: str, to_playlist_id: str, video_id: str) -> bool:
+    async def move_video_between_playlists(self, username: str, from_playlist_id: str, to_playlist_id: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """将视频从一个清单移动到另一个清单"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().move_video_between_playlists(db_user_id, from_playlist_id, to_playlist_id, video_id)
         try:
             # 从源清单获取视频信息
             source = await self.get_playlist(username, from_playlist_id)
@@ -438,8 +478,10 @@ class UserService:
             logger.error(f"移动视频失败: {e}")
             return False
 
-    async def add_watch_history(self, username: str, video_id: str, title: str, cover_url: str, progress: int = 0, duration: str = "") -> bool:
+    async def add_watch_history(self, username: str, video_id: str, title: str, cover_url: str, progress: int = 0, duration: str = "", db_type: str = "local", db_user_id: int = None) -> bool:
         """添加观看历史"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().add_watch_history(db_user_id, video_id, title, cover_url, progress, duration)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("""
@@ -452,8 +494,10 @@ class UserService:
             logger.error(f"添加观看历史失败: {e}")
             return False
     
-    async def get_watch_history(self, username: str) -> List[WatchHistoryItem]:
+    async def get_watch_history(self, username: str, db_type: str = "local", db_user_id: int = None) -> List[WatchHistoryItem]:
         """获取观看历史"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_watch_history(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT * FROM watch_history WHERE username = ? ORDER BY added_at DESC", (username,))
@@ -471,8 +515,10 @@ class UserService:
             logger.error(f"获取观看历史失败: {e}")
             return []
     
-    async def clear_watch_history(self, username: str) -> bool:
+    async def clear_watch_history(self, username: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """清空观看历史"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().clear_watch_history(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("DELETE FROM watch_history WHERE username = ?", (username,))
@@ -482,8 +528,10 @@ class UserService:
             logger.error(f"清空观看历史失败: {e}")
             return False
     
-    async def remove_watch_history(self, username: str, video_id: str) -> bool:
+    async def remove_watch_history(self, username: str, video_id: str, db_type: str = "local", db_user_id: int = None) -> bool:
         """从观看历史移除单个视频"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().remove_watch_history(db_user_id, video_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 await conn.execute("DELETE FROM watch_history WHERE username = ? AND video_id = ?", (username, video_id))
@@ -493,8 +541,10 @@ class UserService:
             logger.error(f"移除观看历史失败: {e}")
             return False
     
-    async def get_user_settings(self, username: str) -> Dict[str, Any]:
+    async def get_user_settings(self, username: str, db_type: str = "local", db_user_id: int = None) -> Dict[str, Any]:
         """获取用户设置"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_user_settings(db_user_id)
         try:
             async with aiosqlite.connect(self.db_path) as conn:
                 cursor = await conn.execute("SELECT settings FROM user_settings WHERE username = ?", (username,))
@@ -507,8 +557,10 @@ class UserService:
             logger.error(f"获取用户设置失败: {e}")
             return {}
     
-    async def save_user_settings(self, username: str, settings: Dict[str, Any]) -> bool:
+    async def save_user_settings(self, username: str, settings: Dict[str, Any], db_type: str = "local", db_user_id: int = None) -> bool:
         """保存用户设置（合并模式：只更新传入的字段，不覆盖未传入的字段）"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().save_user_settings(db_user_id, settings)
         try:
             # 读取现有设置，与传入的设置合并
             existing = await self.get_user_settings(username)

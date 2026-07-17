@@ -1,5 +1,35 @@
 # 更新日志
 
+## v2.5.0 (2026-07-17)
+
+### 新功能
+
+1. **MySQL云数据库支持**：
+   - 新增云数据库模式，用户数据可存储在远程 MySQL 服务器
+   - 登录页面新增本地/云数据库切换按钮，用户可自由选择数据源
+   - 共用用户表 `user` 设计，支持多个 LibraryDream 项目共用同一套用户账号
+   - 项目特色数据（收藏、稍后观看、播放清单、观看历史、用户设置）通过关联表存储，以 `hanime_` 前缀区分
+
+2. **数据库表结构设计**：
+   - `user` — 多项目共用用户表（含软删除、激活状态）
+   - `hanime_user_favorite` — 收藏关联表
+   - `hanime_user_watch_later` — 稍后观看关联表
+   - `hanime_user_playlist` / `hanime_user_playlist_video` — 播放清单（规范化设计，视频存储独立表）
+   - `hanime_user_watch_history` — 观看历史关联表
+   - `hanime_user_setting` — 用户设置（JSON字段）
+
+3. **后端架构升级**：
+   - 新增 `MySQLUserService` 服务类，基于 `aiomysql` 连接池
+   - `UserService` 支持 SQLite/MySQL 双数据源路由
+   - JWT Token 包含 `db_type` 和 `db_user_id` 字段
+   - 所有用户数据 API（收藏、稍后观看、播放清单、观看历史、设置）均已适配双数据源
+   - 登录认证、修改密码均支持本地和云数据库
+
+4. **部署配置更新**：
+   - `docker-compose.yml` 新增 MySQL 环境变量：`MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`
+   - `.env.example` 新增 MySQL 配置项
+   - `requirements.txt` 新增 `aiomysql` 依赖
+
 ## v2.4.3 (2026-07-16)
 
 ### 优化改进

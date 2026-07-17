@@ -7,6 +7,11 @@ services:
     environment:
       - USE_PROXY=${USE_PROXY:-false}
       - PROXY_URL=${PROXY_URL:-}
+      - MYSQL_HOST=${MYSQL_HOST:-127.0.0.1}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-librarydream}
       - PYTHONOPTIMIZE=2
       - PYTHONDONTWRITEBYTECODE=1
     volumes:

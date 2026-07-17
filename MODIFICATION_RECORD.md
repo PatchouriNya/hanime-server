@@ -3,6 +3,75 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 十九、MySQL云数据库支持 — v2.4.3 → v2.5.0 大版本更新 (2026-07-17)
+
+### 修改原因
+用户需要将项目从纯本地 SQLite 数据库升级为支持远程 MySQL 云数据库，实现多项目共用同一套用户账号体系。
+
+### 修改内容
+
+#### 1. MySQL 数据库表结构创建（MCP MySQL）
+在 `librarydream` 数据库中创建 7 张表：
+- **`user`** — 多项目共用用户表：`id`(BIGINT PK)、`username`、`password_hash`、`nickname`、`avatar_url`、`is_active`、`is_deleted`、`created_at`、`updated_at`、`deleted_at`
+- **`hanime_user_favorite`** — 收藏关联表：`user_id`(FK→user.id)、`video_id`、`title`、`cover_url`、`created_at`、唯一键(user_id, video_id)
+- **`hanime_user_watch_later`** — 稍后观看关联表：同收藏表结构
+- **`hanime_user_playlist`** — 播放清单表：`user_id`(FK)、`playlist_id`(UNIQUE)、`name`、`created_at`、`updated_at`
+- **`hanime_user_playlist_video`** — 清单影片表：`playlist_id`(FK→playlist.playlist_id)、`video_id`、`title`、`cover_url`、`sort_order`、`created_at`、唯一键(playlist_id, video_id)
+- **`hanime_user_watch_history`** — 观看历史表：`user_id`(FK)、`video_id`、`title`、`cover_url`、`progress`、`duration`、`watched_at`
+- **`hanime_user_setting`** — 用户设置表：`user_id`(FK, UNIQUE)、`settings_data`(JSON)、`created_at`、`updated_at`
+
+所有表使用 InnoDB 引擎、utf8mb4 字符集，外键级联删除，TIMESTAMP 字段有合适的默认值，状态字段使用 TINYINT UNSIGNED 而非 ENUM。
+
+#### 2. 新增文件：`backend/app/services/mysql_user_service.py`
+- `MySQLUserService` 类，基于 `aiomysql` 异步连接池
+- 实现了与 `UserService` 完全对应的所有方法：认证、修改密码、收藏、稍后观看、播放清单（含视频管理）、观看历史、用户设置
+- 播放清单在 MySQL 中拆分为清单表 + 清单视频表（规范化设计，不再存 JSON）
+- 用户设置使用 JSON 类型字段，合并模式保存
+- 使用 `ON DUPLICATE KEY UPDATE` 实现 upsert 语义
+
+#### 3. 修改：`backend/app/config.py`
+- 新增 5 个 MySQL 配置环境变量：`MYSQL_HOST`(默认127.0.0.1)、`MYSQL_PORT`(3306)、`MYSQL_USER`(root)、`MYSQL_PASSWORD`(空)、`MYSQL_DATABASE`(librarydream)
+- 版本号更新至 2.5.0
+
+#### 4. 修改：`backend/app/utils/auth.py`
+- `get_current_user()` 返回值新增 `db_type`(默认"local") 和 `db_user_id` 字段
+- JWT Token 在生成时包含 `db_type`，在验证时提取
+
+#### 5. 修改：`backend/app/api/endpoints/auth.py`
+- `LoginRequest` 模型新增 `db_type` 字段（默认"local"）
+- `/login` 端点：`db_type=="cloud"` 时调用 `mysql_user_service.authenticate_user()`，`db_type=="local"` 时使用原有 SQLite 认证；云数据库认证失败时返回 503 而非 401
+- `/change-password` 端点：根据 `user["db_type"]` 路由到对应的密码修改方法
+
+#### 6. 修改：`backend/app/services/user_service.py`
+- 所有方法添加 `db_type` 和 `db_user_id` 可选参数
+- 每个方法开头检查：如果 `db_type=="cloud"` 且有 `db_user_id`，委托给 `mysql_user_service` 处理
+- 原有 SQLite 逻辑不变，完全向后兼容
+- 懒加载 `MySQLUserService` 实例
+
+#### 7. 修改：`backend/app/api/endpoints/accounts.py`
+- 新增 `_get_db_params(user)` 辅助函数提取 `db_type` 和 `db_user_id`
+- 所有 19 个 API 端点在调用 `user_service` 方法时传入 `db_type` 和 `db_user_id`
+
+#### 8. 修改：`frontend/src/views/LoginPage.vue`
+- 表单上方新增数据库类型选择器：两个按钮（Monitor图标 + "本地数据库" / Cloudy图标 + "云数据库"），粉色高亮选中态
+- 登录请求新增 `db_type` 字段
+- 导入 `Monitor` 和 `Cloudy` 图标组件
+- 选择器样式：圆角按钮组、毛玻璃背景、hover/active 状态过渡动画
+
+#### 9. 配置更新
+- `requirements.txt`：新增 `aiomysql~=0.2.0`
+- `docker-compose.yml`：environment 新增 5 个 MySQL 变量映射
+- `backend/.env.example`：新增 MySQL 配置段
+- `CHANGELOG.md`：新增 v2.5.0 条目
+- `ChangelogPage.vue`：新增 v2.5.0 条目（红色标签）
+
+### 设计决策
+- **FK字段命名**：所有外键列名与引用表名一致（如 `user_id` → `user.id`），遵循命名规范
+- **共用用户表**：`user` 表不含任何项目特定字段，所有项目特色数据通过关联表存储，以项目前缀区分（如 `hanime_`）
+- **双数据源并行**：不破坏原有 SQLite 功能，本地模式使用完全相同的 API，云模式透明切换
+- **JWT 承载数据源信息**：token 中包含 `db_type` 和 `db_user_id`，后续请求自动路由到正确的数据库
+- **aiomysql 连接池**：使用连接池管理 MySQL 连接，避免每次请求都创建新连接
+
 ## 十八、创建 LibraryDream 命名规范文档 — v1.0.0 → v2.0.0 重大升级 (2026-07-17)
 
 ### 创建原因

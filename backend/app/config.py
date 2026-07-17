@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "2.4.2")
+    APP_VERSION: str = os.getenv("APP_VERSION", "2.5.0")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -70,6 +70,13 @@ class Settings(BaseModel):
     DOWNLOAD_PROXY_URL: Optional[str] = os.getenv("DOWNLOAD_PROXY_URL", os.getenv("PROXY_URL"))
 
     CLOUDFLARE_BYPASS_SERVICE_URL: str = os.getenv("CLOUDFLARE_BYPASS_SERVICE_URL", "")
+
+    # MySQL 设置（云数据库）
+    MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
+    MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", "3306"))
+    MYSQL_USER: str = os.getenv("MYSQL_USER", "root")
+    MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "")
+    MYSQL_DATABASE: str = os.getenv("MYSQL_DATABASE", "librarydream")
 
     # 日志设置
     LOG_PATH: Path = Path(os.getenv("LOG_PATH", str(backend_root / "logs")))

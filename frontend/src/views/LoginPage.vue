@@ -11,6 +11,29 @@
       </div>
 
       <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
+        <el-form-item>
+          <div class="db-type-selector">
+            <button
+              type="button"
+              class="db-type-btn"
+              :class="{ active: dbType === 'local' }"
+              @click="dbType = 'local'"
+            >
+              <el-icon :size="16"><Monitor /></el-icon>
+              <span>本地数据库</span>
+            </button>
+            <button
+              type="button"
+              class="db-type-btn"
+              :class="{ active: dbType === 'cloud' }"
+              @click="dbType = 'cloud'"
+            >
+              <el-icon :size="16"><Cloudy /></el-icon>
+              <span>云数据库</span>
+            </button>
+          </div>
+        </el-form-item>
+
         <el-form-item prop="username">
           <el-input
             v-model="loginForm.username"
@@ -73,7 +96,7 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Star, User, Lock, ArrowRight, CircleClose } from '@element-plus/icons-vue';
+import { Star, User, Lock, ArrowRight, CircleClose, Monitor, Cloudy } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import request from '../utils/request';
 
@@ -90,6 +113,7 @@ const loading = ref(false);
 const errorMessage = ref('');
 const rememberUsername = ref(false);
 const rememberPassword = ref(false);
+const dbType = ref('local');  // 本地数据库 or 云数据库
 
 const rules = {
   username: [
@@ -130,7 +154,8 @@ const handleArrowRight = async () => {
     try {
       const response = await request.post('/login', {
         username: loginForm.username,
-        password: loginForm.password
+        password: loginForm.password,
+        db_type: dbType.value
       });
 
       if (response.data && response.data.access_token) {
@@ -269,6 +294,40 @@ const handleArrowRight = async () => {
 
 .login-form {
   margin-bottom: 20px;
+}
+
+.db-type-selector {
+  display: flex;
+  gap: 12px;
+}
+
+.db-type-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.db-type-btn:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.db-type-btn.active {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.15);
+  color: #ec4899;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.2);
 }
 
 .login-input {

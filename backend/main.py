@@ -54,6 +54,12 @@ async def lifespan(app: FastAPI):
     # 应用关闭时清理资源
     logger.info("应用关闭，清理 CF Bypass 连接...")
     await cf_bypasser.close()
+    # 尝试关闭 MySQL 连接池（如果已初始化）
+    try:
+        from app.services.mysql_user_service import mysql_user_service
+        await mysql_user_service.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(

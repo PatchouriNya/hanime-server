@@ -73,12 +73,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     token = credentials.credentials
     payload = verify_token(token)
     username = payload.get("sub")
+    db_type = payload.get("db_type", "local")
+    db_user_id = payload.get("db_user_id")
     if username is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
         )
-    return {"username": username}
+    return {"username": username, "db_type": db_type, "db_user_id": db_user_id}
 
 
 async def authenticate_user(username: str, password: str) -> bool:
