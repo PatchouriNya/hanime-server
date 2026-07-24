@@ -347,8 +347,9 @@ class ScrapeService:
                 except (ValueError, TypeError):
                     pass
 
-        year_elem = ET.SubElement(root, "year")
+        # 年份（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if earliest_date:
+            year_elem = ET.SubElement(root, "year")
             year_elem.text = str(earliest_date.year)
 
         # 排序标题（取前4个字符作为缩写，对齐参考格式：sorttitle 在 year 之后）
@@ -359,11 +360,11 @@ class ScrapeService:
         mpaa_elem = ET.SubElement(root, "mpaa")
         mpaa_elem.text = MPAA_ADULT_RATING
 
-        # 首播日期和发布日期
-        premiered_elem = ET.SubElement(root, "premiered")
-        releasedate_elem = ET.SubElement(root, "releasedate")
+        # 首播日期和发布日期（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if earliest_date:
+            premiered_elem = ET.SubElement(root, "premiered")
             premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
+            releasedate_elem = ET.SubElement(root, "releasedate")
             releasedate_elem.text = earliest_date.strftime("%Y-%m-%d")
 
         # 结束日期（如果有最新日期且与首播日期不同）
@@ -575,14 +576,15 @@ class ScrapeService:
         rating_elem = ET.SubElement(root, "rating")
         rating_elem.text = rating_value
 
-        # 年份
-        year_elem = ET.SubElement(root, "year")
+        # 年份（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
                 if isinstance(video_detail.upload_date, (datetime, date)):
-                    year_elem.text = str(video_detail.upload_date.year)
+                    ep_year = str(video_detail.upload_date.year)
                 else:
-                    year_elem.text = str(video_detail.upload_date)[:4]
+                    ep_year = str(video_detail.upload_date)[:4]
+                year_elem = ET.SubElement(root, "year")
+                year_elem.text = ep_year
             except (ValueError, TypeError):
                 pass
 
@@ -613,14 +615,15 @@ class ScrapeService:
         season_elem = ET.SubElement(root, "season")
         season_elem.text = str(season_number)
 
-        # 播出日期
-        aired_elem = ET.SubElement(root, "aired")
+        # 播出日期（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
                 if isinstance(video_detail.upload_date, (datetime, date)):
-                    aired_elem.text = video_detail.upload_date.strftime("%Y-%m-%d")
+                    aired_str = video_detail.upload_date.strftime("%Y-%m-%d")
                 else:
-                    aired_elem.text = str(video_detail.upload_date)[:10]
+                    aired_str = str(video_detail.upload_date)[:10]
+                aired_elem = ET.SubElement(root, "aired")
+                aired_elem.text = aired_str
             except (ValueError, TypeError):
                 pass
 
@@ -693,14 +696,15 @@ class ScrapeService:
         rating_elem = ET.SubElement(root, "rating")
         rating_elem.text = rating_value
 
-        # 年份
-        year_elem = ET.SubElement(root, "year")
+        # 年份（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
                 if isinstance(video_detail.upload_date, (datetime, date)):
-                    year_elem.text = str(video_detail.upload_date.year)
+                    movie_year = str(video_detail.upload_date.year)
                 else:
-                    year_elem.text = str(video_detail.upload_date)[:4]
+                    movie_year = str(video_detail.upload_date)[:4]
+                year_elem = ET.SubElement(root, "year")
+                year_elem.text = movie_year
             except (ValueError, TypeError):
                 pass
 
@@ -712,9 +716,7 @@ class ScrapeService:
         mpaa_elem = ET.SubElement(root, "mpaa")
         mpaa_elem.text = MPAA_ADULT_RATING
 
-        # 首播日期和发布日期
-        premiered_elem = ET.SubElement(root, "premiered")
-        releasedate_elem = ET.SubElement(root, "releasedate")
+        # 首播日期和发布日期（仅在有日期时创建，避免空标签导致绿联显示 1970）
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
                 if isinstance(video_detail.upload_date, (datetime, date)):
@@ -722,7 +724,9 @@ class ScrapeService:
                 else:
                     date_str = str(video_detail.upload_date)[:10]
                     date_val = datetime.strptime(date_str, "%Y-%m-%d")
+                premiered_elem = ET.SubElement(root, "premiered")
                 premiered_elem.text = date_val.strftime("%Y-%m-%d")
+                releasedate_elem = ET.SubElement(root, "releasedate")
                 releasedate_elem.text = date_val.strftime("%Y-%m-%d")
             except (ValueError, TypeError):
                 pass
@@ -928,6 +932,96 @@ class ScrapeService:
 
         return False
 
+    def _find_video_file(self, series_dir: Path) -> Optional[Path]:
+        """
+        在番剧目录中查找第一个可用的视频文件
+
+        扫描顺序：Season 子目录 → 根目录
+        :return: 视频文件 Path，无则 None
+        """
+        # 优先扫描 Season 子目录
+        for sub in series_dir.iterdir():
+            if sub.is_dir() and sub.name.startswith(SEASON_DIR_PREFIX):
+                for f in sorted(sub.iterdir()):
+                    if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                        return f
+
+        # 回退扫描根目录
+        for f in sorted(series_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                return f
+
+        return None
+
+    async def _extract_frame_from_video(
+        self,
+        video_path: Path,
+        output_path: Path,
+        seek_pct: float = 0.5
+    ) -> bool:
+        """
+        用 ffmpeg 从视频文件截取一帧画面
+
+        :param video_path: 视频文件路径
+        :param output_path: 输出 jpg 路径
+        :param seek_pct: 截取位置百分比（0.0~1.0），例如 0.5 表示视频中间
+        :return: 成功 True，失败 False
+        """
+        try:
+            # 先用 ffprobe 获取视频时长（秒）
+            probe = await asyncio.create_subprocess_exec(
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await probe.communicate()
+            duration_str = stdout.decode().strip() if stdout else ""
+
+            try:
+                duration = float(duration_str)
+            except (ValueError, TypeError):
+                logger.warning(f"无法解析视频时长: {duration_str}，默认使用 600 秒")
+                duration = 600.0
+
+            if duration <= 0:
+                duration = 600.0
+
+            # 计算截取时间点（避开片头片尾 10%）
+            seek_seconds = max(duration * 0.1, min(duration * seek_pct, duration * 0.9))
+
+            # 用 ffmpeg 截取一帧（-ss 在 -i 前更快，是关键帧定位）
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{seek_seconds:.2f}",
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-q:v", "2",
+                str(output_path),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+
+            success = output_path.exists() and output_path.stat().st_size > 0
+            if success:
+                logger.info(f"从视频截取帧成功: {video_path.name} @ {seek_seconds:.1f}s -> {output_path.name}")
+            else:
+                logger.warning(f"从视频截取帧失败: {video_path.name}")
+            return success
+
+        except FileNotFoundError:
+            logger.warning("ffmpeg/ffprobe 未安装，无法从视频截取帧")
+            return False
+        except Exception as e:
+            logger.warning(f"从视频截取帧异常: {e}")
+            return False
+
     async def generate_backdrop(
         self,
         series_dir: Path,
@@ -937,10 +1031,11 @@ class ScrapeService:
         生成 backdrop.jpg（高分辨率横版背景图）
 
         策略（优先级从高到低）：
-        1. 优先从横向 thumbnail URL 下载（1024x576，源站原生横版）
-        2. 回退：从 poster.jpg 裁剪 16:9 横条
-        3. 回退：从 cover_url 下载并裁剪
-        下载后放大到 1920x1080 标准尺寸
+        1. 优先从已下载视频文件截取真实画面（随机时间点，避开片头片尾）
+        2. 回退：从横向 thumbnail URL 下载（1024x576，源站原生横版）
+        3. 回退：从 poster.jpg 裁剪 16:9 横条
+        4. 回退：从 cover_url 下载并裁剪
+        下载/截取后放大到 1920x1080 标准尺寸
         """
         backdrop_path = series_dir / BACKDROP_FILENAME
 
@@ -948,7 +1043,24 @@ class ScrapeService:
             logger.info(f"backdrop.jpg 已存在: {backdrop_path}")
             return True
 
-        # 优先从横向 thumbnail URL 下载高分辨率横版图
+        # 优先：从已下载视频文件截取真实画面
+        video_file = self._find_video_file(series_dir)
+        if video_file:
+            try:
+                success = await self._extract_frame_from_video(
+                    video_file, backdrop_path, seek_pct=0.5
+                )
+                if success:
+                    # 调整到标准尺寸 1920x1080（裁剪+缩放）
+                    self._resize_to_standard(
+                        backdrop_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
+                    )
+                    logger.info(f"backdrop.jpg 从视频截取: {backdrop_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"backdrop 从视频截取失败: {e}")
+
+        # 回退：从横向 thumbnail URL 下载高分辨率横版图
         thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
         if thumbnail_url:
             try:
@@ -1057,8 +1169,8 @@ class ScrapeService:
         生成 landscape.jpg（横版缩略图，列表页用）
 
         绿联影视中心列表页使用此图做缩略图。
-        优先从 thumbnail URL 下载（原生 1024x576 横版），
-        回退复制 backdrop.jpg，最后从 poster 裁剪。
+        优先从已下载视频截取真实画面（与 backdrop 不同的时间点），
+        回退从 thumbnail URL 下载，再回退复制 backdrop.jpg，最后从 poster 裁剪。
         """
         landscape_path = series_dir / LANDSCAPE_FILENAME
 
@@ -1066,7 +1178,24 @@ class ScrapeService:
             logger.info(f"landscape.jpg 已存在: {landscape_path}")
             return True
 
-        # 优先从 thumbnail URL 下载
+        # 优先：从已下载视频文件截取真实画面（取 70% 位置，与 backdrop 的 50% 不同）
+        video_file = self._find_video_file(series_dir)
+        if video_file:
+            try:
+                success = await self._extract_frame_from_video(
+                    video_file, landscape_path, seek_pct=0.7
+                )
+                if success:
+                    # 调整到标准尺寸 1000x562（裁剪+缩放）
+                    self._resize_to_standard(
+                        landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT
+                    )
+                    logger.info(f"landscape.jpg 从视频截取: {landscape_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"landscape 从视频截取失败: {e}")
+
+        # 回退：从 thumbnail URL 下载
         thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
         if thumbnail_url:
             try:
@@ -1250,7 +1379,7 @@ class ScrapeService:
 
         文件名格式：番剧名 - S01E01 - 第 1 集.jpg
         与视频文件同名（.jpg），绿联自动识别。
-        优先使用 thumbnail URL（横版 1024x576），回退使用 cover URL。
+        优先从同名视频文件截取真实画面，回退使用 thumbnail URL，最后使用 cover URL。
         """
         safe_name = self._sanitize_filename(series_name) if series_name else ""
         season_str = f"S{season_number:02d}"
@@ -1265,7 +1394,29 @@ class ScrapeService:
         if thumb_path.exists():
             return True
 
-        # 优先使用 thumbnail URL（横版高分辨率）
+        # 优先：从同名视频文件截取真实画面
+        # 视频文件名 = 缩略图文件名去掉 .jpg 后缀 + 视频扩展名
+        video_base_name = thumb_filename[:-4]  # 去掉 ".jpg"
+        for ext in VIDEO_EXTENSIONS:
+            video_candidate = season_dir / f"{video_base_name}{ext}"
+            if video_candidate.exists():
+                try:
+                    # 截取该集视频 50% 位置的画面
+                    success = await self._extract_frame_from_video(
+                        video_candidate, thumb_path, seek_pct=0.5
+                    )
+                    if success:
+                        # 调整到标准尺寸 1920x1080（裁剪+缩放）
+                        self._resize_to_standard(
+                            thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
+                        )
+                        logger.info(f"单集缩略图从视频截取: {thumb_path}")
+                        return True
+                except Exception as e:
+                    logger.warning(f"单集缩略图从视频截取失败: {e}")
+                break  # 只尝试第一个匹配的视频文件
+
+        # 回退：使用 thumbnail URL（横版高分辨率）
         thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
         if thumbnail_url:
             try:
@@ -1278,7 +1429,7 @@ class ScrapeService:
             except Exception as e:
                 logger.warning(f"单集缩略图从 thumbnail 下载失败: {e}")
 
-        # 回退：使用原 cover_url
+        # 最后回退：使用原 cover_url
         if cover_url:
             try:
                 success = await self._download_cover_as_jpg(cover_url, thumb_path)

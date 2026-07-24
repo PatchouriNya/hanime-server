@@ -1,5 +1,33 @@
 # 更新日志
 
+## v3.1.8 (2026-07-25)
+
+### 修复
+
+1. **修复绿联影视中心显示 1970 年的问题**：
+   - 根因：NFO 文件中当日期字段值为空时，仍创建了空标签（如 `<premiered/>`、`<year/>`、`<aired/>`）
+   - 绿联影视中心将空标签解析为 Unix 纪元 1970-01-01
+   - 修复：日期值为空时不再创建对应 XML 标签
+   - 涉及 6 处：tvshow.nfo 的 year/premiered/releasedate、episode.nfo 的 year/aired、movie.nfo 的 year/premiered/releasedate
+
+## v3.1.7 (2026-07-25)
+
+### 新增
+
+1. **预览图从视频真实画面截取**：
+   - 刮削时 `backdrop.jpg`、`landscape.jpg`、单集缩略图优先从已下载的视频文件用 ffmpeg 截取真实画面
+   - 不再使用源站预览图作为横版背景图，海报（poster.jpg）仍使用源站竖版封面
+   - `backdrop.jpg` 取视频 50% 位置画面（1920x1080）
+   - `landscape.jpg` 取视频 70% 位置画面（1000x562），与 backdrop 画面不重复
+   - 单集缩略图从同名视频文件 50% 位置截取（1920x1080）
+   - `fanart.jpg` / `thumb.jpg` / `banner.jpg` 自动跟随 backdrop / landscape
+   - 回退策略：视频文件不存在时仍使用源站 thumbnail URL → poster 裁剪
+
+### 优化
+
+1. **Docker 镜像集成 ffmpeg**：
+   - 基础镜像（python:3.10-alpine）新增 ffmpeg 安装，支持视频截帧功能
+
 ## v3.1.6 (2026-07-25)
 
 ### 修复

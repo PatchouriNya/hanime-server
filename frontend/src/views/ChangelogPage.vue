@@ -8,6 +8,45 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.1.8</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复绿联影视中心显示 1970 年的问题：</strong>NFO 文件中当日期字段（year/premiered/releasedate/aired）值为空时，不再创建空标签（如 &lt;premiered/&gt;），避免绿联将空值解析为 1970-01-01。涉及 tvshow.nfo、episode.nfo、movie.nfo 共 6 处</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.1.7</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>预览图从视频真实画面截取：</strong>刮削时 backdrop.jpg / landscape.jpg / 单集缩略图优先从已下载的视频文件用 ffmpeg 截取真实画面，不再使用源站预览图。backdrop 取视频 50% 位置，landscape 取 70% 位置，确保画面不重复</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>Docker 镜像集成 ffmpeg：</strong>基础镜像新增 ffmpeg 安装，支持视频截帧功能</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.1.6</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

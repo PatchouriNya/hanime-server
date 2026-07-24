@@ -25,7 +25,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN set -ex && \
     apk update && \
-    apk add --no-cache nginx curl && \
+    apk add --no-cache nginx curl ffmpeg && \
     rm -rf /var/cache/apk/*
 
 WORKDIR /app
