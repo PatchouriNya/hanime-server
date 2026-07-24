@@ -1,5 +1,19 @@
 # 更新日志
 
+## v3.0.5 (2026-07-24)
+
+### 修复
+
+1. **下载封面按钮导入错误**：
+   - `POST /downloads/cover` 接口中 `from app.services.video_service import video_service` 报错，video_service.py 没有导出实例
+   - scrape_service.py 中 `self.video_service.cf_bypasser` 同样的错误
+   - 改为 `from app.utils.cloudflare_bypass import cf_bypasser`
+
+2. **下载管理页面按钮改回grid布局**：
+   - 手机端按钮从 flex 流式布局改回 grid 等宽排列
+   - 768px以下左边4个按钮 `repeat(4, 1fr)`，右边2个 `repeat(2, 1fr)`
+   - 480px以下全部 `repeat(2, 1fr)`
+
 ## v3.0.4 (2026-07-24)
 
 ### 新功能

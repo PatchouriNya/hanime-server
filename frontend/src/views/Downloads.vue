@@ -928,14 +928,17 @@ onUnmounted(() => {
   .header-toolbar { justify-content: space-between; }
   .search-input { flex: 1; }
   .actions-row { flex-direction: column; }
-  .left-actions, .right-actions {
+  .left-actions {
     width: 100%;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
   }
-  .left-actions .el-button, .right-actions .el-button {
-    flex: 1 1 auto;
-    min-width: 0;
+  .right-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
   }
   .download-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .stat-card { min-width: 0; flex: none; }
@@ -951,11 +954,8 @@ onUnmounted(() => {
   .stat-card { padding: 8px; }
   .stat-value { font-size: 16px; }
   .stat-label { font-size: 12px; }
-  .left-actions, .right-actions { flex-wrap: wrap; gap: 5px; }
-  .left-actions .el-button, .right-actions .el-button {
-    flex: 1 1 calc(50% - 5px);
-    font-size: 12px;
-  }
+  .left-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
+  .right-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .group-title { font-size: 13px; }
 }

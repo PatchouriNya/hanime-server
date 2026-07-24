@@ -146,8 +146,8 @@ async def download_cover(
         covers_dir.mkdir(parents=True, exist_ok=True)
 
         # 使用 cf_bypasser 下载封面（绕过 Cloudflare）
-        from app.services.video_service import video_service
-        response = await video_service.cf_bypasser.get_request(cover_url)
+        from app.utils.cloudflare_bypass import cf_bypasser
+        response = await cf_bypasser.get_request(cover_url)
 
         if not response or response.status_code != 200:
             return {"success": False, "message": f"封面下载失败: HTTP {response.status_code if response else 'N/A'}"}

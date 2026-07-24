@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v3.0.5</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>下载封面按钮导入错误：</strong>video_service模块无实例导出，改为直接导入cf_bypasser</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>下载管理页面按钮改回grid布局：</strong>等宽排列更整齐，768px四列/480px两列</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v3.0.4</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>

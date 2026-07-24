@@ -1246,7 +1246,8 @@ class ScrapeService:
                     continue
                 try:
                     # 使用 cf_bypasser 下载（绕过 Cloudflare 防护）
-                    response = await self.video_service.cf_bypasser.get_request(url)
+                    from app.utils.cloudflare_bypass import cf_bypasser
+                    response = await cf_bypasser.get_request(url)
                     if not response or response.status_code != 200:
                         continue
 
