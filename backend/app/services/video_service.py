@@ -497,7 +497,27 @@ class VideoService:
             soup = BeautifulSoup(page_content, 'lxml')
 
             video_elem = soup.find('video', id='player')
-            cover_url = video_elem.get('poster', '') if video_elem else ''
+            # video poster 是播放预览截图，不是封面海报
+            video_poster_url = video_elem.get('poster', '') if video_elem else ''
+
+            # 尝试从详情页提取真正的封面海报（优先级高于 video poster）
+            # 1. 查找 main-thumb 类的 img（和列表页一致的封面图）
+            cover_img_elem = soup.find('img', class_=lambda x: x and 'main-thumb' in x)
+            cover_url = cover_img_elem.get('src', '') if cover_img_elem else ''
+
+            # 2. 如果没找到，查找 data-src（懒加载）
+            if not cover_url and cover_img_elem:
+                cover_url = cover_img_elem.get('data-src', '')
+
+            # 3. 如果还是没找到，查找番剧信息区的封面
+            if not cover_url:
+                info_cover = soup.find('img', class_=lambda x: x and 'cover' in (x or ''))
+                if info_cover:
+                    cover_url = info_cover.get('src', '') or info_cover.get('data-src', '')
+
+            # 4. 兜底：使用 video poster（虽然不是封面，但比没有好）
+            if not cover_url:
+                cover_url = video_poster_url
 
             stream_urls_list = self._extract_stream_urls(video_elem)
             if not stream_urls_list:

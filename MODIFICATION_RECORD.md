@@ -3,44 +3,42 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
-## 二十二、v3.0.0 多项bug修复 — v3.0.0 → v3.0.1 (2026-07-24)
+## 二十三、刮削封面模糊修复 — v3.0.1 → v3.0.2 (2026-07-24)
 
 ### 修改原因
-用户反馈5个问题：绿联影视中心列表封面模糊、登录页选择框换行、登出后头像不消失、图片屏蔽设置不记忆、下载目录设置不记忆。
+绿联影视中心列表页封面模糊，且封面图和主页浏览到的不一样（用的是播放预览图而非封面海报）。
 
 ### 修改内容
 
-#### 1. 刮削封面模糊修复
-
-**问题**：绿联影视中心预览列表封面模糊，点进详情才清楚。原因有两层：
-1. 列表页将竖版 poster.jpg 压扁为横版缩略图显示，分辨率损失
-2. 从网站下载的封面URL可能指向低分辨率缩略图
+**文件：backend/app/services/video_service.py**
+- `get_video_detail()` 修改封面提取逻辑：
+  1. 优先查找 `main-thumb` 类的 `<img>` 的 `src`（和列表页一致的封面图）
+  2. 查找 `data-src`（懒加载）
+  3. 查找 `cover` 类的 `<img>`
+  4. 兜底使用 video poster
 
 **文件：backend/app/services/scrape_service.py**
-- tvshow.nfo 和 movie.nfo 中新增 `thumb aspect="landscape"` 声明，指向 `landscape.jpg`
-- 新增 `generate_landscape()` 方法：生成横版缩略图
-- 新增 `_crop_landscape_from_poster()` 方法：从竖版海报裁剪16:9中部横条
-  - 竖版图：取中部16:9区域裁剪
-  - 横版图：直接复制
-- `_generate_tv_show_files()` 和 `_generate_movie_files()` 中新增调用 `generate_landscape()`
-- `_download_cover_as_jpg()` 重写：
-  - 新增 `_get_high_res_cover_urls()` 方法：从原始URL推断高分辨率版本（4种策略）
-    - 策略1: /preview/ → /poster/
-    - 策略2: /thumbnail/ → /
-    - 策略3: 去掉URL尺寸参数（?w=320&h=180）
-    - 策略4: 替换 _thumb/_small 后缀
-  - 按优先级尝试高分辨率URL → 原始URL，选择分辨率最高的
-  - 新增 `_get_image_resolution()` 方法：用Pillow检查图片分辨率
-- `generate_poster()` 增强：
-  - 检查已有 poster.jpg 分辨率，低于600px时尝试重新下载高分辨率版本
-  - 兜底逻辑：URL下载失败时仍使用本地低分辨率封面
+- tvshow.nfo 和 movie.nfo 中新增 `thumb aspect="landscape"` 声明
+- 新增 `generate_landscape()` / `_crop_landscape_from_poster()` 横版缩略图生成
+- `_download_cover_as_jpg()` 重写：高分辨率URL推断 + 多URL优先级尝试 + 分辨率检查
+- `_get_high_res_cover_urls()` 4种高分辨率URL推断策略
+- `_get_image_resolution()` 图片分辨率检测
+- `generate_poster()` 增强：检查已有封面分辨率，太低则重新下载
+- JPG输出质量提升至100（quality=100, subsampling=0），最高保真无压缩
 
-#### 2. 登录页选择框换行修复
+## 二十二、多项bug修复 — v3.0.0 → v3.0.1 (2026-07-24)
+
+### 修改原因
+用户反馈4个问题：登录页选择框换行、登出后头像不消失、图片屏蔽设置不记忆、下载目录设置不记忆。
+
+### 修改内容
+
+#### 1. 登录页选择框换行修复
 
 **文件：frontend/src/views/LoginPage.vue**
 - `.db-type-btn` 添加 `white-space: nowrap`，防止"本地数据库"文字换行
 
-#### 3. 登出后头像不消失修复
+#### 2. 登出后头像不消失修复
 
 **文件：frontend/src/App.vue**
 - `handleLogout()` 中添加 `window.dispatchEvent(new Event('user-logout'))`，通知所有组件
@@ -49,7 +47,7 @@
 - 新增 `handleUserLogout()` 函数：登出时立即清除 `currentUsername`、`avatarUrl`、`selectedCoverId`
 - `onMounted` 中监听 `user-logout` 事件
 
-#### 4. 图片屏蔽设置不记忆修复
+#### 3. 图片屏蔽设置不记忆修复
 
 **问题**：`useContentSettings.ts` 中 `isInitialized` 是模块级变量，一旦为 true 就不再 `fetchSettings`。换设备或重新登录后不重新获取设置。
 
@@ -60,7 +58,7 @@
 - 监听 `user-logout` 事件：重置为默认值
 - 监听 `storage` 事件：跨标签页切换登录时同步
 
-#### 5. 下载目录设置不记忆修复
+#### 4. 下载目录设置不记忆修复
 
 **问题**：`set_download_dir` 只修改运行时 `settings.DOWNLOAD_PATH`，没有持久化到文件。重启/更新版本后恢复默认。
 

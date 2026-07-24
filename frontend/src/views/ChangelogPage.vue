@@ -8,7 +8,7 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.1</el-tag>
+          <el-tag type="danger" size="large">v3.0.2</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -16,8 +16,20 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span><strong>刮削封面模糊：</strong>绿联影视中心列表页封面模糊，新增landscape.jpg横版缩略图+自动推断高分辨率URL+分辨率检查，优先下载高分辨率版本</span>
+              <span><strong>刮削封面模糊：</strong>根因1-封面用了播放预览图而非番剧海报（已修复提取逻辑）；根因2-缺少横版缩略图（已添加landscape.jpg）；高分辨率URL推断+JPG最高质量输出</span>
             </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="danger" size="large">v3.0.1</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
               <span><strong>登录页选择框换行：</strong>"本地数据库"文字在小屏幕上换行，添加nowrap防止换行</span>

@@ -654,7 +654,7 @@ class ScrapeService:
                 # 如果已经是横版，直接保存
                 if width >= height:
                     rgb_img = img.convert("RGB") if img.mode != "RGB" else img
-                    rgb_img.save(landscape_path, "JPEG", quality=95)
+                    rgb_img.save(landscape_path, "JPEG", quality=100, subsampling=0)
                     return True
 
                 # 竖版图：从中间裁剪 16:9 横条
@@ -675,7 +675,7 @@ class ScrapeService:
 
                 cropped = img.crop(box)
                 rgb_img = cropped.convert("RGB") if cropped.mode != "RGB" else cropped
-                rgb_img.save(landscape_path, "JPEG", quality=95)
+                rgb_img.save(landscape_path, "JPEG", quality=100, subsampling=0)
                 return True
 
         except ImportError:
@@ -1357,7 +1357,7 @@ class ScrapeService:
                 elif img.mode != "RGB":
                     img = img.convert("RGB")
 
-                img.save(target_path, "JPEG", quality=95)
+                img.save(target_path, "JPEG", quality=100, subsampling=0)
                 return True
 
         except ImportError:
