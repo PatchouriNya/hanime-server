@@ -326,6 +326,12 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
+        # 系列标识（绿联影视中心通过此字段关联同一系列的所有集）
+        # 使用系列标题的哈希作为系列ID，确保同系列不同集指向同一ID
+        series_id = str(abs(hash(series_title)) % (10 ** 8))  # 8位正整数
+        tmdbid_elem = ET.SubElement(root, "tmdbid")
+        tmdbid_elem.text = series_id
+
         # 海报图（竖版，详情页用）
         thumb_elem = ET.SubElement(root, "thumb")
         thumb_elem.set("aspect", "poster")
@@ -1149,11 +1155,43 @@ class ScrapeService:
                 continue
             try:
                 detail = await self.video_service.get_video_detail(video_id)
+
+                # 通过搜索接口获取正确的封面海报URL
+                # 详情页的 cover_url 可能是 video poster（播放预览截图），不是封面海报
+                # 搜索接口返回的是列表页的缩略图，才是真正的封面
+                if detail and detail.title:
+                    search_cover_url = await self._get_cover_from_search(detail.title, video_id)
+                    if search_cover_url:
+                        detail.cover_url = search_cover_url
+                        logger.info(f"从搜索接口获取到正确封面URL: {detail.title}")
+
                 metadata_list.append(detail)
             except Exception as e:
                 logger.warning(f"获取视频元数据失败 video_id={video_id}: {e}")
                 metadata_list.append(None)
         return metadata_list
+
+    async def _get_cover_from_search(self, title: str, video_id: str) -> str:
+        """
+        通过搜索接口获取视频的封面海报URL
+
+        搜索接口返回的封面是列表页的 main-thumb，是真正的番剧封面海报。
+        详情页的 cover_url 可能是 video poster（播放预览截图）。
+        """
+        try:
+            # 用标题搜索，取第一个匹配 video_id 的结果
+            search_results = await self.video_service.search_videos(title, page=1)
+            if search_results and hasattr(search_results, 'detailed_videos'):
+                for video in search_results.detailed_videos:
+                    if video.video_id == video_id and video.cover_url:
+                        return video.cover_url
+            if search_results and hasattr(search_results, 'basic_videos'):
+                for video in search_results.basic_videos:
+                    if video.video_id == video_id and video.cover_url:
+                        return video.cover_url
+        except Exception as e:
+            logger.warning(f"搜索封面URL失败: {e}")
+        return ""
 
     def _find_existing_cover(self, series_dir: Path) -> Optional[Path]:
         """在番剧目录中查找已有的封面文件"""

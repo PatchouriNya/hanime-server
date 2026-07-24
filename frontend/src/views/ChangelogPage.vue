@@ -8,6 +8,30 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v3.0.3</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>刮削封面图错误：</strong>用的是播放预览截图而非番剧封面海报，改为通过搜索接口获取正确封面URL</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>同系列番剧未识别为合集：</strong>tvshow.nfo新增tmdbid系列标识，绿联影视中心可正确识别合集</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>视频详情页手机端按钮不齐：</strong>改为flex流式布局，自动换行不再不齐</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v3.0.2</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>

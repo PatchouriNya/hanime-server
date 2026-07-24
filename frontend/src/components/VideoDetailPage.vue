@@ -1332,13 +1332,14 @@ export default defineComponent({
   .video-actions {
     margin-top: 10px;
     gap: 8px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     width: 100%;
   }
 
   .video-actions .el-button {
-    width: 100%;
+    flex: 1 1 calc(33.33% - 8px);
+    min-width: 0;
     justify-content: center;
     font-size: 13px;
     padding: 8px 4px;
@@ -1357,10 +1358,10 @@ export default defineComponent({
 
   .video-actions {
     gap: 6px;
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .video-actions .el-button {
+    flex: 1 1 calc(50% - 6px);
     font-size: 12px;
     padding: 6px 4px;
   }

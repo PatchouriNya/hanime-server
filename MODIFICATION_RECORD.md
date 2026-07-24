@@ -3,6 +3,36 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十四、封面图/合集/按钮修复 — v3.0.2 → v3.0.3 (2026-07-24)
+
+### 修改原因
+1. 刮削封面依然用的是视频播放预览截图而非番剧封面海报（详情页HTML中无main-thumb元素）
+2. 同系列番剧未被绿联影视中心识别为合集
+3. 视频详情页手机端按钮样式不齐
+
+### 修改内容
+
+#### 1. 封面图修复
+
+**文件：backend/app/services/scrape_service.py**
+- `_fetch_metadata()` 增强：获取 video detail 后，额外调用搜索接口获取正确封面URL
+- 新增 `_get_cover_from_search()` 方法：用标题搜索，匹配 video_id 获取列表页封面URL
+- 搜索接口返回的封面是 `main-thumb`，才是真正的番剧封面海报
+
+#### 2. 同系列合集识别
+
+**文件：backend/app/services/scrape_service.py**
+- `generate_tvshow_nfo()` 中新增 `<tmdbid>` 字段
+- 使用系列标题的哈希值（8位正整数）作为系列ID
+- 确保同系列不同集指向同一ID，绿联影视中心可正确识别合集
+
+#### 3. 视频详情页手机端按钮
+
+**文件：frontend/src/components/VideoDetailPage.vue**
+- 768px以下：从固定3列 grid 改为 flex 流式布局，`flex: 1 1 calc(33.33% - 8px)`
+- 480px以下：`flex: 1 1 calc(50% - 6px)`，每2个一行
+- 按钮自然换行，不再因行内数量不等而不齐
+
 ## 二十三、刮削封面模糊修复 — v3.0.1 → v3.0.2 (2026-07-24)
 
 ### 修改原因
