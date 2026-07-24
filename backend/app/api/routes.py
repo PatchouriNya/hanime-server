@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.api.endpoints import videos, downloads, accounts, settings, auth
+from app.api.endpoints import videos, downloads, accounts, settings, auth, scrape
 from app.services.download_service import download_manager
 from app.config import logger
 from app.utils.auth import get_current_user
@@ -48,6 +48,14 @@ api_router.include_router(
     settings.router,
     prefix="/settings",
     tags=["设置"],
+    dependencies=[Depends(get_current_user)]
+)
+
+# 刮削相关路由（需要登录）
+api_router.include_router(
+    scrape.router,
+    prefix="/scrape",
+    tags=["刮削"],
     dependencies=[Depends(get_current_user)]
 )
 

@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "2.5.1")
+    APP_VERSION: str = os.getenv("APP_VERSION", "3.0.0")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -71,6 +71,13 @@ class Settings(BaseModel):
 
     CLOUDFLARE_BYPASS_SERVICE_URL: str = os.getenv("CLOUDFLARE_BYPASS_SERVICE_URL", "")
 
+    # 刮削设置（NFO元数据生成，使绿联NAS影视中心能识别）
+    SCRAPE_MODE: str = os.getenv("SCRAPE_MODE", "tv_show")
+    AUTO_SCRAPE_AFTER_DOWNLOAD: bool = os.getenv("AUTO_SCRAPE_AFTER_DOWNLOAD", "True").lower() in ("true", "1", "t")
+    SCRAPE_RENAME_FILE: bool = os.getenv("SCRAPE_RENAME_FILE", "True").lower() in ("true", "1", "t")
+    SCRAPE_REORGANIZE_DIRECTORY: bool = os.getenv("SCRAPE_REORGANIZE_DIRECTORY", "True").lower() in ("true", "1", "t")
+    SCRAPE_CONVERT_COVER_JPG: bool = os.getenv("SCRAPE_CONVERT_COVER_JPG", "True").lower() in ("true", "1", "t")
+
     # MySQL 设置（云数据库）
     MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
     MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", "3306"))
@@ -108,6 +115,25 @@ if _proxy_file.exists():
         logger.info(f"已从持久化文件恢复代理设置: USE_PROXY={settings.USE_PROXY}")
     except Exception as e:
         logger.warning(f"恢复代理设置失败: {e}")
+
+# 从持久化文件恢复刮削设置（覆盖 .env 默认值）
+_scrape_file = settings.DB_PATH / "scrape_settings.json"
+if _scrape_file.exists():
+    try:
+        _sdata = _json.loads(_scrape_file.read_text(encoding="utf-8"))
+        if _sdata.get("scrape_mode") is not None:
+            settings.SCRAPE_MODE = _sdata["scrape_mode"]
+        if _sdata.get("is_auto_scrape") is not None:
+            settings.AUTO_SCRAPE_AFTER_DOWNLOAD = bool(_sdata["is_auto_scrape"])
+        if _sdata.get("is_rename_file") is not None:
+            settings.SCRAPE_RENAME_FILE = bool(_sdata["is_rename_file"])
+        if _sdata.get("is_reorganize_directory") is not None:
+            settings.SCRAPE_REORGANIZE_DIRECTORY = bool(_sdata["is_reorganize_directory"])
+        if _sdata.get("is_convert_cover_to_jpg") is not None:
+            settings.SCRAPE_CONVERT_COVER_JPG = bool(_sdata["is_convert_cover_to_jpg"])
+        logger.info(f"已从持久化文件恢复刮削设置: SCRAPE_MODE={settings.SCRAPE_MODE}")
+    except Exception as e:
+        logger.warning(f"恢复刮削设置失败: {e}")
 
 # 打印下载目录信息
 logger.info(f"数据根目录: {settings.DATA_ROOT}")

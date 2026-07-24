@@ -3,6 +3,46 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十一、里番自动刮削功能 — v2.5.1 → v3.0.0 (2026-07-24)
+
+### 修改原因
+用户使用绿联4800plus NAS，下载的里番需要在影视中心中正确显示海报、简介、标签等元数据。绿联影视中心默认使用TMDB刮削，但TMDB对里番/成人动画覆盖极差，几乎无法识别。需要在下载完成后自动生成NFO元数据文件和JPG封面图片，让绿联影视中心通过读取本地NFO来显示完整的影片信息。
+
+### 修改内容
+
+#### 1. 新增文件
+
+- `backend/app/models/scrape.py`：刮削相关Pydantic模型（ScrapeMode、ScrapeConfig、ScrapeRequest、BatchScrapeRequest、ScrapeResult、ScrapableSeries、NfoPreview）
+- `backend/app/services/scrape_service.py`：刮削核心服务，包含：
+  - NFO XML生成（tvshow.nfo / movie.nfo / episodedetails）
+  - 封面图片下载和JPG格式转换
+  - 文件重命名为S01E01格式
+  - 目录重组为Season结构
+  - 自动/手动/批量刮削流程
+- `backend/app/api/endpoints/scrape.py`：刮削API端点（config/series/batch/preview/scan）
+- `frontend/src/api/scrape.ts`：刮削前端API调用和TypeScript类型定义
+
+#### 2. 修改文件
+
+- `backend/app/config.py`：新增5个刮削配置项（SCRAPE_MODE、AUTO_SCRAPE_AFTER_DOWNLOAD、SCRAPE_RENAME_FILE、SCRAPE_REORGANIZE_DIRECTORY、SCRAPE_CONVERT_COVER_JPG）+ 刮削配置持久化恢复逻辑 + 版本号3.0.0
+- `backend/app/api/routes.py`：注册 /api/scrape 路由
+- `backend/app/services/download_service.py`：分段下载和单线程下载完成后触发自动刮削
+- `backend/requirements.txt`：新增 Pillow~=10.4.0
+- `frontend/src/views/Settings.vue`：新增"刮削"设置分区（模式选择、自动刮削、重命名、目录重组、封面转换、重要提示）
+- `frontend/src/views/Downloads.vue`：新增"批量刮削"按钮和单个番剧"刮削"按钮
+- `frontend/src/components/AppHeader.vue`：版本号3.0.0
+- `CHANGELOG.md`：新增v3.0.0条目
+- `ChangelogPage.vue`：新增v3.0.0条目
+
+#### 3. 核心设计决策
+
+- **利用项目自身数据**：项目已从hanime1.me获取完整元数据，无需额外外部数据源作为必须依赖
+- **NFO兼容格式**：生成Kodi/Emby/Jellyfin兼容的NFO XML，绿联影视中心可读取
+- **JPG强制转换**：绿联影视中心仅识别JPG格式封面（PNG不被识别），使用Pillow转换
+- **NC-17分级**：成人内容自动标记，避免影视中心误归类
+- **电视剧模式为默认**：里番通常为多集系列，最适合TV Show模式
+- **文件重命名S01E01**：绿联影视中心依赖标准命名识别季集信息
+
 ## 二十、数据库表按命名规范重建 + 用户表专业化 — v2.5.0 → v2.5.1 (2026-07-17)
 
 ### 修改原因

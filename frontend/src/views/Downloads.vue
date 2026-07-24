@@ -42,6 +42,9 @@
           <el-button size="small" @click="handleScanRestore" :loading="isScanning">
             <el-icon><FolderOpened /></el-icon> 扫描恢复
           </el-button>
+          <el-button size="small" @click="handleBatchScrape" :loading="isBatchScraping">
+            <el-icon><Film /></el-icon> 批量刮削
+          </el-button>
           <el-button size="small" @click="confirmClearCompleted" :disabled="!completedDownloads?.length">
             <el-icon><Delete /></el-icon> 清除已完成
           </el-button>
@@ -164,6 +167,11 @@
                 :show-text="false"
                 :color="group.downloading_count > 0 ? '#409EFF' : group.failed_count > 0 ? '#F56C6C' : '#67C23A'"
               />
+              <div class="group-actions" v-if="group.completed_count > 0">
+                <el-button size="small" text type="primary" @click.stop="handleScrapeSeries(group.series_name)">
+                  <el-icon><Film /></el-icon> 刮削
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -238,9 +246,10 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
+import { ScrapeApi } from '../api/scrape';
 import { useContentSettings } from '../composables/useContentSettings';
 
 const downloadStore = useDownloadStore();
@@ -272,6 +281,9 @@ const currentVideo = ref<{ video_id: string; url: string; title: string; cover_u
 
 // 扫描状态
 const isScanning = ref(false);
+
+// 刮削状态
+const isBatchScraping = ref(false);
 
 // 搜索过滤
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -361,6 +373,54 @@ const handleEpisodeClick = (dl: any) => {
   } else {
     // 跳转到视频详情页
     window.open(`/video/${dl.video_id}`, '_blank');
+  }
+};
+
+// 批量刮削
+const handleBatchScrape = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将对所有已下载的番剧目录生成NFO元数据文件（tvshow.nfo/movie.nfo）和封面图片，便于绿联NAS影视中心识别。是否继续？',
+      '批量刮削',
+      { confirmButtonText: '开始刮削', cancelButtonText: '取消', type: 'info' }
+    );
+  } catch { return; }
+
+  isBatchScraping.value = true;
+  try {
+    const results = await ScrapeApi.batchScrape([], 'tv_show');
+    const successCount = results.filter(r => r.is_success).length;
+    const failCount = results.filter(r => !r.is_success).length;
+    if (successCount > 0) {
+      ElMessage.success(`刮削完成: ${successCount} 个成功${failCount > 0 ? `, ${failCount} 个失败` : ''}`);
+    } else if (results.length === 0) {
+      ElMessage.info('未发现可刮削的番剧目录');
+    } else {
+      ElMessage.error('刮削全部失败');
+    }
+  } catch (e) {
+    ElMessage.error('批量刮削失败');
+  } finally {
+    isBatchScraping.value = false;
+  }
+};
+
+// 单个番剧刮削
+const handleScrapeSeries = async (seriesName: string) => {
+  try {
+    const result = await ScrapeApi.scrapeSeries({
+      series_name: seriesName,
+      scrape_mode: 'tv_show',
+      is_rename_file: true,
+      is_reorganize_directory: true
+    });
+    if (result.is_success) {
+      ElMessage.success(`刮削完成: ${seriesName}`);
+    } else {
+      ElMessage.error(`刮削失败: ${result.error_message || '未知错误'}`);
+    }
+  } catch (e) {
+    ElMessage.error('刮削失败');
   }
 };
 

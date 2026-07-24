@@ -493,6 +493,14 @@ class DownloadManager:
                     if len(self.bandwidth_samples) > 10:
                         self.bandwidth_samples.pop(0)
                 
+                # 下载完成后自动刮削
+                if settings.AUTO_SCRAPE_AFTER_DOWNLOAD:
+                    try:
+                        from app.services.scrape_service import scrape_service
+                        asyncio.create_task(scrape_service.auto_scrape_after_download(video_id))
+                    except Exception as e:
+                        logger.warning(f"自动刮削触发失败: {e}")
+                
             else:
                 # 如果有段下载失败，整体下载失败
                 self.active_downloads[video_id].status = DownloadStatus.ERROR
@@ -745,6 +753,14 @@ class DownloadManager:
                         self.bandwidth_samples.append(bandwidth)
                         if len(self.bandwidth_samples) > 10:
                             self.bandwidth_samples.pop(0)
+                    
+                    # 下载完成后自动刮削
+                    if settings.AUTO_SCRAPE_AFTER_DOWNLOAD:
+                        try:
+                            from app.services.scrape_service import scrape_service
+                            asyncio.create_task(scrape_service.auto_scrape_after_download(video_id))
+                        except Exception as e:
+                            logger.warning(f"自动刮削触发失败: {e}")
                     
                     await self.broadcast_progress(video_id)
                     

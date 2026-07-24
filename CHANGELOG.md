@@ -1,5 +1,50 @@
 # 更新日志
 
+## v3.0.0 (2026-07-24)
+
+### 新功能
+
+1. **里番自动刮削**：
+   - 下载完成后自动生成NFO元数据文件，使绿联4800plus NAS影视中心能正确识别和显示影片信息
+   - 支持电视剧模式（tvshow.nfo + Season目录结构）和电影模式（movie.nfo）
+   - 自动生成Kodi/Emby/Jellyfin兼容的NFO XML文件，包含标题、简介、制作公司、标签、分级等信息
+   - 成人内容自动标记NC-17分级
+
+2. **封面图片JPG转换**：
+   - 自动将封面转换为JPG格式（绿联影视中心仅识别JPG，PNG不被识别）
+   - 使用Pillow库处理RGBA→RGB转换，白色背景填充透明通道
+   - 自动生成poster.jpg（海报）和fanart.jpg（背景图）
+
+3. **文件重命名与目录重组**：
+   - 可选将视频文件重命名为S01E01标准格式（绿联影视中心识别需要）
+   - 可选创建Season 01子目录结构（番剧名/Season 01/S01E01.mp4）
+   - 按文件创建时间自动确定集号
+
+4. **刮削API接口**：
+   - GET /api/scrape/config — 获取刮削配置
+   - PUT /api/scrape/config — 更新刮削配置
+   - POST /api/scrape/series — 手动刮削指定番剧
+   - POST /api/scrape/batch — 批量刮削所有番剧
+   - GET /api/scrape/preview/{series_name} — 预览刮削效果
+   - GET /api/scrape/scan — 扫描可刮削的番剧列表
+
+5. **前端刮削界面**：
+   - 设置页面新增"刮削"分区：刮削模式、自动刮削、文件重命名、目录重组、封面转换JPG开关
+   - 下载页面新增"批量刮削"按钮和单个番剧"刮削"按钮
+   - 重要提示：提醒用户在绿联NAS影视中心开启"优先本地信息"选项
+
+### 配置项
+
+- `SCRAPE_MODE`: 刮削模式，默认 `tv_show`（电视剧/电影）
+- `AUTO_SCRAPE_AFTER_DOWNLOAD`: 下载完成后自动刮削，默认 `True`
+- `SCRAPE_RENAME_FILE`: 重命名文件为S01E01格式，默认 `True`
+- `SCRAPE_REORGANIZE_DIRECTORY`: 重组为Season目录结构，默认 `True`
+- `SCRAPE_CONVERT_COVER_JPG`: 转换封面为JPG格式，默认 `True`
+
+### 依赖
+
+- 新增 `Pillow~=10.4.0`（图片格式转换）
+
 ## v2.5.1 (2026-07-17)
 
 ### 修复

@@ -8,6 +8,38 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="primary" size="large">v3.0.0</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>里番自动刮削：</strong>下载完成后自动生成NFO元数据文件，使绿联4800plus NAS影视中心能正确识别和显示影片信息，支持电视剧模式（tvshow.nfo）和电影模式（movie.nfo）</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>封面图片JPG转换：</strong>自动将封面转换为JPG格式（绿联影视中心仅识别JPG），生成poster.jpg和fanart.jpg</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>文件重命名与目录重组：</strong>可选将视频文件重命名为S01E01标准格式，创建Season 01子目录结构</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削API接口：</strong>提供config/series/batch/preview/scan等完整API，支持手动和批量刮削</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>前端刮削界面：</strong>设置页面新增刮削分区，下载页面新增批量刮削和单个刮削按钮</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag size="large" type="warning">v2.5.1</el-tag>
           <span class="version-date">2026-07-17</span>
         </div>

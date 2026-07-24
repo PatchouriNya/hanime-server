@@ -48,6 +48,46 @@
         </el-card>
       </div>
 
+      <!-- 刮削设置 -->
+      <div class="settings-section">
+        <div class="section-label">
+          <el-icon :size="16"><Film /></el-icon> 刮削
+        </div>
+        <el-card class="settings-card" shadow="never">
+          <el-form :model="scrapeForm" label-width="120px">
+            <el-form-item label="刮削模式">
+              <el-select v-model="scrapeForm.scrapeMode" style="width: 100%;">
+                <el-option label="电视剧模式（推荐，适合多集系列）" value="tv_show" />
+                <el-option label="电影模式（适合单集 OVA）" value="movie" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="自动刮削">
+              <el-switch v-model="scrapeForm.autoScrape" />
+              <span class="form-hint">下载完成后自动生成NFO元数据</span>
+            </el-form-item>
+            <el-form-item label="文件重命名">
+              <el-switch v-model="scrapeForm.renameFile" />
+              <span class="form-hint">重命名为S01E01格式，绿联影视中心识别需要</span>
+            </el-form-item>
+            <el-form-item label="目录重组">
+              <el-switch v-model="scrapeForm.reorganizeDir" />
+              <span class="form-hint">创建Season 01子目录结构</span>
+            </el-form-item>
+            <el-form-item label="封面转换JPG">
+              <el-switch v-model="scrapeForm.convertCover" />
+              <span class="form-hint">绿联影视中心仅识别JPG格式封面</span>
+            </el-form-item>
+          </el-form>
+          <div class="scrape-hint">
+            <el-icon><Warning /></el-icon>
+            <span>绿联NAS影视中心需开启"优先本地信息"选项，否则会使用TMDB在线刮削覆盖本地NFO数据。TMDB对里番覆盖极差，建议务必开启。</span>
+          </div>
+          <div class="card-footer">
+            <el-button type="primary" @click="saveScrapeSettings">保存设置</el-button>
+          </div>
+        </el-card>
+      </div>
+
       <!-- 代理设置 -->
       <div class="settings-section">
         <div class="section-label">
@@ -191,7 +231,7 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v2.5.1</span>
+              <span class="about-value">v3.0.0</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
@@ -238,8 +278,9 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { AccountApi } from '../api/account';
+import { ScrapeApi } from '../api/scrape';
 import request from '../utils/request';
-import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning, Hide, Lock } from '@element-plus/icons-vue';
+import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderOpened, InfoFilled, Warning, Hide, Lock, Film } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useContentSettings } from '../composables/useContentSettings';
@@ -276,6 +317,45 @@ const proxyTestResult = ref<ProxyTestResult | null>(null);
 const downloadForm = reactive({
   downloadPath: ''
 });
+
+// 刮削表单
+const scrapeForm = reactive({
+  scrapeMode: 'tv_show' as 'tv_show' | 'movie',
+  autoScrape: true,
+  renameFile: true,
+  reorganizeDir: true,
+  convertCover: true
+});
+
+const loadScrapeConfig = async () => {
+  try {
+    const config = await ScrapeApi.getConfig();
+    scrapeForm.scrapeMode = config.scrape_mode;
+    scrapeForm.autoScrape = config.is_auto_scrape;
+    scrapeForm.renameFile = config.is_rename_file;
+    scrapeForm.reorganizeDir = config.is_reorganize_directory;
+    scrapeForm.convertCover = config.is_convert_cover_to_jpg;
+  } catch (error) {
+    console.error('加载刮削配置失败:', error);
+  }
+};
+
+const saveScrapeSettings = async () => {
+  try {
+    await ScrapeApi.updateConfig({
+      scrape_mode: scrapeForm.scrapeMode,
+      is_auto_scrape: scrapeForm.autoScrape,
+      is_rename_file: scrapeForm.renameFile,
+      is_reorganize_directory: scrapeForm.reorganizeDir,
+      is_convert_cover_to_jpg: scrapeForm.convertCover,
+      is_generate_fanart: false
+    });
+    ElMessage.success('刮削设置已保存');
+  } catch (error) {
+    console.error('保存刮削设置失败:', error);
+    ElMessage.error('保存刮削设置失败');
+  }
+};
 
 // 修改密码表单
 const passwordFormRef = ref<FormInstance | null>(null);
@@ -519,6 +599,7 @@ const handleFileSelect = async (event: Event) => {
 onMounted(() => {
   loadSettings();
   loadDownloadDir();
+  loadScrapeConfig();
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth <= 480;
   });
@@ -692,6 +773,29 @@ const saveDownloadDir = async () => {
 }
 
 /* ========== 代理 ========== */
+
+/* ========== 刮削 ========== */
+.form-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--text-secondary-color);
+  opacity: 0.7;
+}
+
+.scrape-hint {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background-color: rgba(230, 162, 60, 0.08);
+  border: 1px solid rgba(230, 162, 60, 0.15);
+  color: #e6a23c;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.6;
+}
+
 .proxy-hint {
   margin-top: 8px;
   padding: 10px 14px;
