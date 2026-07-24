@@ -1231,7 +1231,6 @@ class ScrapeService:
             save_path.parent.mkdir(parents=True, exist_ok=True)
 
             import tempfile
-            import httpx
 
             # 尝试推断高分辨率URL
             high_res_urls = self._get_high_res_cover_urls(cover_url)
@@ -1243,24 +1242,18 @@ class ScrapeService:
             best_resolution = 0
 
             for url in urls_to_try:
+                if not url:
+                    continue
                 try:
-                    async with httpx.AsyncClient(
-                        timeout=30.0,
-                        follow_redirects=True,
-                        verify=False
-                    ) as client:
-                        # 设置代理
-                        if settings.USE_DOWNLOAD_PROXY and settings.DOWNLOAD_PROXY_URL:
-                            client._transport = httpx.HTTPTransport(proxy=settings.DOWNLOAD_PROXY_URL)
+                    # 使用 cf_bypasser 下载（绕过 Cloudflare 防护）
+                    response = await self.video_service.cf_bypasser.get_request(url)
+                    if not response or response.status_code != 200:
+                        continue
 
-                        async with client.stream("GET", url) as response:
-                            if response.status_code != 200:
-                                continue
-
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
-                                async for chunk in response.aiter_bytes(8192):
-                                    tmp.write(chunk)
-                                tmp_path = tmp.name
+                    # 写入临时文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
+                        tmp.write(response.content)
+                        tmp_path = tmp.name
 
                     # 检查分辨率
                     resolution = self._get_image_resolution(Path(tmp_path))
@@ -1270,7 +1263,7 @@ class ScrapeService:
                             os.remove(best_tmp_path)
                         best_tmp_path = tmp_path
                         best_resolution = resolution
-                        logger.info(f"封面下载成功: {url}, 分辨率: {resolution}px, 临时文件: {tmp_path}")
+                        logger.info(f"封面下载成功: {url}, 分辨率: {resolution}px")
                         # 如果分辨率已经够高，不需要继续尝试
                         if resolution >= 600:
                             break
@@ -1284,6 +1277,7 @@ class ScrapeService:
                     continue
 
             if not best_tmp_path:
+                logger.warning(f"所有封面URL下载失败: {cover_url}")
                 return False
 
             # 转换为JPG

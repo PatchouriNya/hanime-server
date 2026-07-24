@@ -3,6 +3,23 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十五、刮削封面下载失败修复 — v3.0.3 → v3.0.4 (2026-07-24)
+
+### 修改原因
+刮削只有NFO没有图片（图片0个），封面下载全部失败。
+
+### 根因
+`_download_cover_as_jpg` 使用裸 httpx.AsyncClient 下载封面，无法绕过 Cloudflare 防护，导致CDN返回403。
+此外 `client._transport = httpx.HTTPTransport(proxy=...)` 的代理设置方式也不正确。
+
+### 修改内容
+
+**文件：backend/app/services/scrape_service.py**
+- `_download_cover_as_jpg()` 改为使用 `self.video_service.cf_bypasser.get_request(url)` 下载
+- cf_bypasser 内部已处理 Cloudflare 绕过和代理设置
+- 通过 `response.status_code` 和 `response.content` 获取二进制图片数据
+- 移除裸 httpx 导入和错误的代理设置代码
+
 ## 二十四、封面图/合集/按钮修复 — v3.0.2 → v3.0.3 (2026-07-24)
 
 ### 修改原因

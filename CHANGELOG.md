@@ -1,5 +1,14 @@
 # 更新日志
 
+## v3.0.4 (2026-07-24)
+
+### 修复
+
+1. **刮削封面下载失败（图片0个）**：
+   - `_download_cover_as_jpg` 使用裸 httpx 下载无法绕过 Cloudflare 防护，导致所有封面下载403
+   - 改为使用 `cf_bypasser.get_request()` 下载，正确绕过 Cloudflare
+   - 修复代理设置方式（httpx AsyncClient 不支持后改 _transport）
+
 ## v3.0.3 (2026-07-24)
 
 ### 修复
