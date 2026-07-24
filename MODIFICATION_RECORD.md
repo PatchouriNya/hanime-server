@@ -12,7 +12,9 @@
 
 #### 1. 刮削封面模糊修复
 
-**问题**：绿联影视中心预览列表封面模糊，点进详情才清楚。原因是列表页将竖版 poster.jpg 压扁为横版缩略图显示，分辨率损失严重。
+**问题**：绿联影视中心预览列表封面模糊，点进详情才清楚。原因有两层：
+1. 列表页将竖版 poster.jpg 压扁为横版缩略图显示，分辨率损失
+2. 从网站下载的封面URL可能指向低分辨率缩略图
 
 **文件：backend/app/services/scrape_service.py**
 - tvshow.nfo 和 movie.nfo 中新增 `thumb aspect="landscape"` 声明，指向 `landscape.jpg`
@@ -21,6 +23,17 @@
   - 竖版图：取中部16:9区域裁剪
   - 横版图：直接复制
 - `_generate_tv_show_files()` 和 `_generate_movie_files()` 中新增调用 `generate_landscape()`
+- `_download_cover_as_jpg()` 重写：
+  - 新增 `_get_high_res_cover_urls()` 方法：从原始URL推断高分辨率版本（4种策略）
+    - 策略1: /preview/ → /poster/
+    - 策略2: /thumbnail/ → /
+    - 策略3: 去掉URL尺寸参数（?w=320&h=180）
+    - 策略4: 替换 _thumb/_small 后缀
+  - 按优先级尝试高分辨率URL → 原始URL，选择分辨率最高的
+  - 新增 `_get_image_resolution()` 方法：用Pillow检查图片分辨率
+- `generate_poster()` 增强：
+  - 检查已有 poster.jpg 分辨率，低于600px时尝试重新下载高分辨率版本
+  - 兜底逻辑：URL下载失败时仍使用本地低分辨率封面
 
 #### 2. 登录页选择框换行修复
 

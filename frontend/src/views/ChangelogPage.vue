@@ -16,7 +16,7 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
-              <span><strong>刮削封面模糊：</strong>绿联影视中心列表页封面模糊（竖版poster被压扁），新增landscape.jpg横版缩略图，从海报裁剪16:9横条，列表页不再模糊</span>
+              <span><strong>刮削封面模糊：</strong>绿联影视中心列表页封面模糊，新增landscape.jpg横版缩略图+自动推断高分辨率URL+分辨率检查，优先下载高分辨率版本</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
