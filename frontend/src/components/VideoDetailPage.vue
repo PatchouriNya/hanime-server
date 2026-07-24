@@ -939,22 +939,39 @@ export default defineComponent({
       }
     });
 
-    // 下载封面（从首页数据获取真正的封面海报URL）
+    // 下载封面（通过搜索接口获取 https 首页预览图封面）
     const handleDownloadCover = async () => {
       if (!videoDetail.value.video_id || !videoDetail.value.title) return;
       isDownloadingCover.value = true;
       try {
-        // 调用后端，后端从首页数据中查找 main-thumb 封面URL
+        // 搜索接口现已优先提取 main-thumb 封面（首页预览图）
+        const searchResult = await VideoApi.searchVideos(videoDetail.value.title, 1);
+        let coverUrl = '';
+
+        const findCover = (videos: any[]) => {
+          const match = videos.find((v: any) => v.video_id === videoDetail.value.video_id);
+          return match?.cover_url || '';
+        };
+
+        if (searchResult?.detailed_videos) {
+          coverUrl = findCover(searchResult.detailed_videos);
+        }
+        if (!coverUrl && searchResult?.basic_videos) {
+          coverUrl = findCover(searchResult.basic_videos);
+        }
+
+        if (!coverUrl) {
+          ElMessage.error('未找到封面URL');
+          return;
+        }
+
         const response = await request.post('/downloads/cover', null, {
-          params: {
-            video_id: videoDetail.value.video_id,
-            title: videoDetail.value.title
-          }
+          params: { video_id: videoDetail.value.video_id, cover_url: coverUrl }
         });
         if (response.data?.success) {
           ElMessage.success('封面已下载到 covers 目录');
         } else {
-          ElMessage.error(response.data?.message || '封面下载失败');
+          ElMessage.error(response.data?.message || '下载失败');
         }
       } catch (e: any) {
         ElMessage.error(e.message || '封面下载失败');

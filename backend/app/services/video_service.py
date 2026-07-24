@@ -452,7 +452,10 @@ class VideoService:
             if not video_title:
                 video_title = video_id
 
-            img_elem = link_tag.find('img')
+            # 优先查找 main-thumb 类图片（首页封面海报），兜底任意 img
+            img_elem = link_tag.find('img', class_=lambda x: x and 'main-thumb' in x)
+            if not img_elem:
+                img_elem = link_tag.find('img')
             cover_url = img_elem.get('src', '') if img_elem else ''
 
             return VideoPreview(
