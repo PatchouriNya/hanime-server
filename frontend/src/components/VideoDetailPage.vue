@@ -939,33 +939,16 @@ export default defineComponent({
       }
     });
 
-    // 下载封面（通过搜索接口获取首页预览图URL）
+    // 下载封面（从首页数据获取真正的封面海报URL）
     const handleDownloadCover = async () => {
       if (!videoDetail.value.video_id || !videoDetail.value.title) return;
       isDownloadingCover.value = true;
       try {
-        // 通过搜索接口获取正确的封面URL（首页预览图）
-        const searchResult = await VideoApi.searchVideos(videoDetail.value.title, 1);
-        let coverUrl = videoDetail.value.cover_url; // 兜底
-
-        if (searchResult?.detailed_videos) {
-          const match = searchResult.detailed_videos.find(
-            (v: any) => v.video_id === videoDetail.value.video_id
-          );
-          if (match?.cover_url) coverUrl = match.cover_url;
-        }
-        if (!coverUrl && searchResult?.basic_videos) {
-          const match = searchResult.basic_videos.find(
-            (v: any) => v.video_id === videoDetail.value.video_id
-          );
-          if (match?.cover_url) coverUrl = match.cover_url;
-        }
-
-        // 调用后端下载封面
+        // 调用后端，后端从首页数据中查找 main-thumb 封面URL
         const response = await request.post('/downloads/cover', null, {
           params: {
             video_id: videoDetail.value.video_id,
-            cover_url: coverUrl
+            title: videoDetail.value.title
           }
         });
         if (response.data?.success) {

@@ -134,16 +134,44 @@ cover_router = APIRouter()
 @cover_router.post("/cover")
 async def download_cover(
     video_id: str = Query(...),
-    cover_url: str = Query(...),
+    title: str = Query(...),
     user: dict = Depends(get_current_user)
 ):
     """
     下载封面图片到 covers 目录
-    用于测试封面URL是否正确（必须是首页预览图，不是播放预览截图）
+    从首页数据中提取 main-thumb 封面URL（不是播放预览截图），确保是高清封面海报
     """
     try:
         covers_dir = settings.DOWNLOAD_PATH / "covers"
         covers_dir.mkdir(parents=True, exist_ok=True)
+
+        # 从首页数据中查找正确的封面URL（main-thumb类，是真正的封面海报）
+        from app.services.video_service import VideoService
+        video_service = VideoService()
+        home_data = await video_service.get_home_data()
+
+        cover_url = ""
+        if home_data and home_data.sections:
+            for section in home_data.sections:
+                # 先搜详细视频
+                for video in (section.detailed_videos or []):
+                    if video.video_id == video_id and video.cover_url:
+                        cover_url = video.cover_url
+                        break
+                if cover_url:
+                    break
+                # 再搜基础视频
+                for video in (section.basic_videos or []):
+                    if video.video_id == video_id and video.cover_url:
+                        cover_url = video.cover_url
+                        break
+                if cover_url:
+                    break
+
+        if not cover_url:
+            return {"success": False, "message": f"在首页数据中未找到该视频: {video_id}"}
+
+        logger.info(f"从首页数据获取封面URL: {cover_url}")
 
         # 使用 cf_bypasser 的 direct_client 下载封面（绕过 Cloudflare）
         from app.utils.cloudflare_bypass import cf_bypasser
