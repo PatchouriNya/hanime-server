@@ -465,13 +465,91 @@ class VideoService:
             logger.error(f"提取搜索结果视频错误: {str(e)}")
             return None
 
+    def _find_cover_url_from_page(self, soup: BeautifulSoup, video_id: str, page_content: str = '') -> str:
+        """
+        从视频详情页HTML中查找当前视频的 cover 格式封面海报URL
+        关键：cover 图片的文件名可能是数字ID（如407019）也可能是哈希ID（如OmjQkYr），
+        所以不能通过文件名匹配 video_id，必须通过 <a href="/watch?v={video_id}"> 定位链接，
+        再找链接内的 cover 图片。
+        """
+        # 方法1：在页面中查找指向当前视频的链接，获取链接内的 cover 图片
+        # 这是唯一可靠的方法，因为 cover 文件名可能是哈希ID，不一定等于 video_id
+        for link in soup.find_all('a', href=lambda x: x and f'/watch?v={video_id}' in str(x)):
+            img = link.find('img', src=lambda x: x and '/image/cover/' in str(x))
+            if img:
+                cover_src = img.get('src', '')
+                if cover_src:
+                    logger.info(f"方法1匹配到 cover URL: {cover_src}")
+                    return cover_src
+
+        # 调试信息：列出页面中所有 cover 图片
+        cover_imgs = soup.find_all('img', src=lambda x: x and '/image/cover/' in str(x))
+        cover_filenames = [img.get('src', '').split('/image/cover/')[-1].split('?')[0] for img in cover_imgs[:5]]
+        logger.info(f"页面中共有 {len(cover_imgs)} 个 cover 格式图片，但未匹配到 video_id={video_id} 的链接，前5个: {cover_filenames}")
+
+        return ""
+
+    async def _get_cover_from_related_pages(self, current_soup: BeautifulSoup, video_id: str) -> str:
+        """
+        从相关视频的详情页获取当前视频的 cover 格式封面URL
+        原理：当前视频的详情页通常不会链接到自己，但在同系列/相关视频的详情页中，
+        当前视频会作为相关视频出现，并带有 /image/cover/ 格式的封面图片。
+
+        关键：cover 文件名可能是哈希ID（如 OmjQkYr），不能用正则匹配 video_id，
+        必须用 BeautifulSoup 查找 <a href="/watch?v={video_id}"> 链接内的 cover 图片。
+        """
+        try:
+            # 从当前页面的 soup 提取相关视频ID（避免重复请求当前页面）
+            related_ids = []
+            for link in current_soup.find_all('a', href=lambda x: x and '/watch?v=' in str(x)):
+                href = link.get('href', '')
+                vid = self._extract_video_id(href)
+                if vid and vid != video_id and vid not in related_ids:
+                    related_ids.append(vid)
+
+            if not related_ids:
+                logger.info(f"当前页面未找到相关视频，无法获取 video_id={video_id} 的 cover URL")
+                return ""
+
+            logger.info(f"从当前页面提取到 {len(related_ids)} 个相关视频，将遍历前5个查找 cover: {related_ids[:5]}")
+
+            # 遍历相关视频的详情页，查找指向当前视频的链接及其 cover 图片
+            for related_id in related_ids[:5]:
+                try:
+                    related_page_content = await self.cf_bypasser.get_request(
+                        f"{settings.HANIME_BASE_URL}/watch?v={related_id}"
+                    )
+                    if not related_page_content:
+                        continue
+
+                    related_soup = BeautifulSoup(related_page_content, 'lxml')
+
+                    # 查找指向当前视频的链接
+                    for link in related_soup.find_all('a', href=lambda x: x and f'/watch?v={video_id}' in str(x)):
+                        img = link.find('img', src=lambda x: x and '/image/cover/' in str(x))
+                        if img:
+                            cover_src = img.get('src', '')
+                            if cover_src:
+                                logger.info(f"从相关视频 {related_id} 的详情页找到 cover URL: {cover_src}")
+                                return cover_src
+                except Exception as e:
+                    logger.warning(f"获取相关视频 {related_id} 的详情页失败: {e}")
+                    continue
+
+            logger.info(f"在相关视频详情页中未找到 video_id={video_id} 的 cover URL")
+            return ""
+        except Exception as e:
+            logger.warning(f"从相关视频获取封面失败: {e}")
+            return ""
+
     def _parse_views(self, views_text: str) -> int:
-        """解析观看次数文本"""
+        """解析观看次数文本（兼容繁体萬/千和简体万/千）"""
         if not views_text: return 0
         num_part = views_text
         multiplier = 1
-        if "萬" in views_text:
-            num_part = views_text.split("萬")[0]
+        if "萬" in views_text or "万" in views_text:
+            sep = "萬" if "萬" in views_text else "万"
+            num_part = views_text.split(sep)[0]
             multiplier = 10000
         elif "千" in views_text:
             num_part = views_text.split("千")[0]
@@ -498,6 +576,23 @@ class VideoService:
 
             video_elem = soup.find('video', id='player')
             cover_url = video_elem.get('poster', '') if video_elem else ''
+
+            # 尝试从页面中获取 cover 格式的封面海报URL（竖版，/image/cover/路径）
+            # 优先级：cover 格式 > thumbnail/h 格式（poster）
+            poster_url = self._find_cover_url_from_page(soup, video_id, page_content)
+            if poster_url:
+                logger.info(f"从当前页面找到 cover 海报: {poster_url}，替换 poster: {cover_url}")
+                cover_url = poster_url
+            else:
+                # 回退：从相关视频的详情页查找当前视频的 cover URL
+                # 当前视频自己的页面通常不会链接到自己，但相关视频页面会链接到当前视频
+                try:
+                    related_cover = await self._get_cover_from_related_pages(soup, video_id)
+                    if related_cover:
+                        logger.info(f"从相关视频页面获取到 cover 海报: {related_cover}")
+                        cover_url = related_cover
+                except Exception as e:
+                    logger.warning(f"从相关视频页面获取封面失败: {e}")
 
             stream_urls_list = self._extract_stream_urls(video_elem)
             if not stream_urls_list:
@@ -529,7 +624,7 @@ class VideoService:
             upload_date_str = ""
 
             if video_views_ele:
-                views_match = re.search(r'(\d+(?:\.\d+)?(?:萬|千)?)次\s+(\d{4}-\d{2}-\d{2})', video_views_ele.get_text(strip=True))
+                views_match = re.search(r'(\d+(?:\.\d+)?(?:萬|万|千)?)次\s+(\d{4}-\d{2}-\d{2})', video_views_ele.get_text(strip=True))
 
             if views_match:
                 views_str = views_match.group(1)

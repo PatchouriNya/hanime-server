@@ -224,6 +224,9 @@ class DownloadSpeedSmoother {
 // WebSocket 兜底轮询定时器（模块级变量，避免响应式序列化问题）
 let _pollTimer: ReturnType<typeof setInterval> | null = null;
 
+// 速度平滑处理器（模块级单例，避免放入响应式 state 导致类型推断失败）
+const _speedSmoother = DownloadSpeedSmoother.getInstance();
+
 /**
  * 下载状态Store
  */
@@ -236,9 +239,7 @@ export const useDownloadStore = defineStore('download', {
     // 批量删除模式
     batchDeleteMode: false,
     // 已选中的下载项ID
-    selectedDownloads: new Set<string>(),
-    // 速度平滑处理器
-    speedSmoother: DownloadSpeedSmoother.getInstance()
+    selectedDownloads: new Set<string>()
   }),
   
   getters: {
@@ -422,7 +423,7 @@ export const useDownloadStore = defineStore('download', {
       // 应用速度平滑处理
       if (progress.status === 'downloading') {
         // 平滑处理下载速度
-        const smoothedSpeed = this.speedSmoother.smoothSpeed(
+        const smoothedSpeed = _speedSmoother.smoothSpeed(
           progress.video_id,
           progress.speed,
           progress.downloaded
@@ -432,7 +433,7 @@ export const useDownloadStore = defineStore('download', {
         progress.speed = smoothedSpeed;
       } else if (['completed', 'cancelled', 'error'].includes(progress.status)) {
         // 当下载结束时，清除历史数据
-        this.speedSmoother.clearHistory(progress.video_id);
+        _speedSmoother.clearHistory(progress.video_id);
       }
       
       // 如果状态变化需要特殊处理
@@ -527,7 +528,7 @@ export const useDownloadStore = defineStore('download', {
           // 强制更新一次本地状态
           if (videoId in this.downloads) {
             this.downloads[videoId].status = 'cancelled';
-            this.speedSmoother.clearHistory(videoId);
+            _speedSmoother.clearHistory(videoId);
           }
           
           return true;
@@ -563,10 +564,12 @@ export const useDownloadStore = defineStore('download', {
     
     /**
      * 删除下载记录
+     * @param videoId 视频ID
+     * @param deleteFiles 是否删除源文件（视频+刮削文件），默认 true
      */
-    async deleteDownload(videoId: string) {
+    async deleteDownload(videoId: string, deleteFiles: boolean = true) {
       try {
-        const result = await DownloadApi.handleDownloadAction(videoId, 'delete');
+        const result = await DownloadApi.handleDownloadAction(videoId, 'delete', deleteFiles);
         if (result.status === 'success') {
           delete this.downloads[videoId];
           return true;
@@ -757,24 +760,49 @@ export const useDownloadStore = defineStore('download', {
     
     /**
      * 批量删除选中的下载项
+     * @param deleteFiles 是否删除源文件（视频+刮削文件），默认 true
      */
-    async deleteSelected() {
-      if (this.selectedDownloads.size === 0) return;
-      
+    async deleteSelected(deleteFiles: boolean = true) {
+      if (this.selectedDownloads.size === 0) return false;
+
       try {
-        const deletePromises = Array.from(this.selectedDownloads).map(videoId => 
-          this.deleteDownload(videoId)
-        );
-        
-        await Promise.all(deletePromises);
-        
-        ElMessage.success(`已删除${this.selectedDownloads.size}个下载记录`);
-        this.clearSelection();
-        // 退出批量删除模式
-        this.batchDeleteMode = false;
+        const videoIds = Array.from(this.selectedDownloads);
+        const result = await DownloadApi.batchDelete(videoIds, deleteFiles);
+
+        if (result.status === 'success') {
+          // 从内存中移除已删除的记录（仅移除成功的，保留失败的）
+          const failedIds = new Set(result.failed_ids || []);
+          videoIds.forEach(id => {
+            if (!failedIds.has(id)) {
+              delete this.downloads[id];
+            }
+          });
+
+          const successCount = result.success_count || 0;
+          const failedCount = result.failed_count || 0;
+          if (failedCount > 0) {
+            ElMessage.warning(`成功删除 ${successCount} 条，失败 ${failedCount} 条`);
+            // 仅清除成功的选中项
+            videoIds.forEach(id => {
+              if (!failedIds.has(id)) {
+                this.selectedDownloads.delete(id);
+              }
+            });
+          } else {
+            ElMessage.success(result.message || `已删除 ${successCount} 个下载记录`);
+            this.clearSelection();
+            // 退出批量删除模式
+            this.batchDeleteMode = false;
+          }
+          return true;
+        } else {
+          ElMessage.error(result.message || '批量删除失败');
+          return false;
+        }
       } catch (error) {
         console.error('批量删除失败:', error);
         ElMessage.error('批量删除失败，请稍后重试');
+        return false;
       }
     },
     

@@ -33,6 +33,8 @@ class DownloadAction(BaseModel):
     """下载操作模型"""
     video_id: str
     action: str  # 'pause', 'resume', 'cancel', 'retry', 'delete'
+    # 仅当 action='delete' 时有效：是否删除源文件（视频+刮削文件），默认 True
+    delete_files: bool = True
 
 
 class DownloadProgress(BaseModel):

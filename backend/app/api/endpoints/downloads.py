@@ -2,11 +2,18 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends, H
 from app.services.download_service import download_manager
 from app.models.download import DownloadRequest, DownloadAction
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 from app.config import settings, logger
 from fastapi import APIRouter, Query, Depends
 from fastapi.responses import FileResponse
 from app.utils.auth import get_current_user, verify_token
 import os
+
+
+class BatchDeleteRequest(BaseModel):
+    """批量删除请求"""
+    video_ids: List[str]
+    delete_files: bool = True
 
 router = APIRouter()
 
@@ -80,7 +87,7 @@ async def handle_download_action(action: DownloadAction, user: dict = Depends(ge
     video_id = action.video_id
     action_type = action.action.lower()
     result = {"status": "error", "message": "无效的操作"}
-    
+
     if action_type == "pause":
         success = await download_manager.pause_download(video_id)
         result = {"status": "success" if success else "error", "message": "暂停操作处理完成" if success else "操作失败"}
@@ -94,7 +101,9 @@ async def handle_download_action(action: DownloadAction, user: dict = Depends(ge
         success = await download_manager.retry_download(video_id)
         result = {"status": "success" if success else "error", "message": "重试操作处理完成" if success else "操作失败"}
     elif action_type == "delete":
-        success = await download_manager.delete_download(video_id, user["username"])
+        # 支持可选的 delete_files 参数（通过 action 字段传递，格式为 "delete" 或 "delete_no_files"）
+        delete_files = action.delete_files if hasattr(action, 'delete_files') else True
+        success = await download_manager.delete_download(video_id, user["username"], delete_files=delete_files)
         result = {"status": "success" if success else "error", "message": "删除操作处理完成" if success else "操作失败"}
     elif action_type == "clear_completed":
         count = await download_manager.clear_completed_downloads(user["username"])
@@ -102,8 +111,45 @@ async def handle_download_action(action: DownloadAction, user: dict = Depends(ge
     elif action_type == "clear_failed":
         count = await download_manager.clear_failed_downloads(user["username"])
         result = {"status": "success", "message": f"已清除 {count} 条失败记录"}
-    
+
     return result
+
+
+@router.post("/batch-delete")
+async def batch_delete_downloads(
+    request: BatchDeleteRequest,
+    user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    批量删除下载记录
+
+    - `video_ids`: 要删除的视频ID列表
+    - `delete_files`: 是否删除源文件（视频文件 + 刮削生成的 NFO 和图片文件）
+                      - true: 删除文件和记录
+                      - false: 只删除数据库记录，保留文件
+    """
+    if not request.video_ids:
+        return {
+            "status": "error",
+            "message": "video_ids 不能为空",
+            "success_count": 0,
+            "failed_count": 0,
+            "failed_ids": []
+        }
+
+    result = await download_manager.batch_delete_downloads(
+        video_ids=request.video_ids,
+        username=user["username"],
+        delete_files=request.delete_files
+    )
+
+    return {
+        "status": "success",
+        "message": f"成功删除 {result['success_count']} 条记录"
+                   f"{'，' + str(result['failed_count']) + ' 条失败' if result['failed_count'] > 0 else ''}"
+                   f"{'（已删除源文件）' if request.delete_files else '（保留源文件）'}",
+        **result
+    }
 
 
 @router.get("/file/{video_id}")
@@ -134,14 +180,38 @@ cover_router = APIRouter()
 @cover_router.post("/cover")
 async def download_cover(
     video_id: str = Query(...),
-    cover_url: str = Query(...),
     user: dict = Depends(get_current_user)
 ):
     """
-    下载封面图片到 covers 目录
-    cover_url 来自搜索接口（已修复为 main-thumb 封面海报，非播放预览截图）
+    下载封面到 covers 目录
+    优先下载 /image/cover/ 格式的竖版海报（268x394）
+    如果没有海报格式，回退到 /image/thumbnail/ 格式的横版预览图，并在响应中标注
     """
     try:
+        from app.services.video_service import VideoService
+        video_service = VideoService()
+
+        cover_url = ""
+        is_poster = False  # 标记是否为竖版海报
+
+        # 从视频详情页获取封面URL
+        try:
+            video_detail = await video_service.get_video_detail(video_id)
+            if video_detail and video_detail.cover_url:
+                cover_url = video_detail.cover_url
+                if '/image/cover/' in cover_url:
+                    is_poster = True
+                    logger.info(f"获取到 cover 海报URL: {cover_url}")
+                else:
+                    logger.info(f"该视频没有 cover 海报，使用 thumbnail 预览图: {cover_url}")
+        except Exception as e:
+            logger.warning(f"从视频详情页获取封面URL失败: {e}")
+
+        # 完全获取不到封面URL
+        if not cover_url:
+            logger.warning(f"视频 {video_id} 无法获取任何封面URL")
+            return {"success": False, "message": "无法获取该视频的封面URL"}
+
         covers_dir = settings.DOWNLOAD_PATH / "covers"
         covers_dir.mkdir(parents=True, exist_ok=True)
 
@@ -190,8 +260,13 @@ async def download_cover(
                 pass
 
         file_size = len(content)
-        logger.info(f"封面已下载: {video_id}, 大小: {file_size}字节, URL: {cover_url}")
-        return {"success": True, "message": f"封面已保存到 {covers_dir}", "file_size": file_size}
+        if is_poster:
+            message = f"竖版海报已保存到 {covers_dir}"
+            logger.info(f"海报已下载: {video_id}, 大小: {file_size}字节, URL: {cover_url}")
+        else:
+            message = f"该视频没有竖版海报，已下载横版预览图到 {covers_dir}"
+            logger.info(f"预览图已下载: {video_id}, 大小: {file_size}字节, URL: {cover_url}")
+        return {"success": True, "message": message, "file_size": file_size, "is_poster": is_poster}
 
     except Exception as e:
         logger.error(f"下载封面失败: {e}")
@@ -243,7 +318,7 @@ async def get_cover(video_id: str, token: Optional[str] = Query(None)):
             series_name = download_manager._sanitize_filename(video_detail.title)
             series_dir = settings.DOWNLOAD_PATH / series_name
 
-            # 下载封面
+            # video_detail.cover_url 已由 get_video_detail 优先处理为 /image/cover/ 格式
             await download_manager.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id)
 
             # 再次检查

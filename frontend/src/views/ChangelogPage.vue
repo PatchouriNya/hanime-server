@@ -8,6 +8,240 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.1.6</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复 download.ts 类型推断错误：</strong>将速度平滑处理器（DownloadSpeedSmoother 单例）从 Pinia 响应式 state 移至模块级变量，解决类实例放入 state 导致 TypeScript 无法推断出 downloads 等属性的问题</span>
+            </li>
+          </ul>
+          <h3 class="section-title">清理</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>删除根目录无用测试文件：</strong>移除 test_cover.py ~ test_cover5.py 共5个封面下载调试脚本</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.1.5</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载管理批量删除功能：</strong>新增"批量删除"按钮，进入批量模式后可勾选多条记录，支持全选/取消选择，确认删除时可选是否删除源文件</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>删除时可选是否删除源文件：</strong>删除源文件将删除视频+刮削NFO+图片；仅删记录则保留所有文件。智能清理：番剧目录无视频后自动删除整个目录</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>视频详情页手机端按钮对齐优化：</strong>修复480px断点下按钮宽度不一致、高度不齐、内容不居中等问题，设置固定高度并统一图标文字间距</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载管理手机端按钮布局优化：</strong>768px断点下改为3列网格适配新增按钮，批量操作栏手机端自动切换为垂直布局</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.1.4</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>NFO 字段顺序完全对齐绿联4800plus 参考格式：</strong>参考"Y:\links\电视剧\日番\未来日记 (2011)"，tvshow/episode/movie NFO 字段顺序重新排列，episode NFO 中 episode 字段移到 season 之前</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>新增关键字段：</strong>tvshow.nfo 新增 enddate（最新集日期）、episodeguide、id、season(-1)、episode(-1)、displayorder(aired)；episode.nfo 新增 uniqueid；movie.nfo 新增 id</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>runtime 时长准确解析：</strong>新增 _parse_duration_to_minutes 方法，从源站 duration 字符串（如 "23:45"）解析为分钟数（向上取整到 24），支持 HH:MM:SS/MM:SS/带单位数字/纯数字四种格式，不再固定 24 分钟</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>新增 season01-poster.jpg：</strong>参考格式根目录包含此文件，自动从 poster.jpg 复制生成，绿联NAS通过此文件识别第1季海报</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>mpaa 分级调整：</strong>从 NC-17 改为 TV-MA（对齐参考格式"未来日记"），TV-MA 是电视节目分级，更适合番剧类型</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>_find_existing_cover 排除规则增强：</strong>新增正则排除 season\d+-poster 模式，避免误将 season01-poster.jpg 识别为已有封面导致跳过下载</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.1.3</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>Season 目录命名对齐参考格式：</strong>Season 01 → Season 1（不带前导零），文件名中的 S01E01 格式保持不变</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>图片质量全面提升：</strong>新增 _get_horizontal_thumbnail_url 方法从 cover URL 推导横版缩略图 URL，backdrop/fanart/landscape/thumb 改用 thumbnail URL 下载原生横版 1024x576 图片，poster 放大到 1000x1426，backdrop 放大到 1920x1080，banner 长宽比修正为 5.4:1（1000x185）</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>新增图片处理方法：</strong>_crop_banner_from_landscape（5.4:1 裁剪）、_upscale_to_standard（仅放大）、_resize_to_standard（裁剪+缩放），均使用 PIL LANCZOS 重采样</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>日期处理更健壮：</strong>同时兼容 date 和 datetime 对象（video_service 返回的是 date 对象），所有 NFO 中的 year/premiered/releasedate/aired 字段处理统一</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.1.2</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">重构</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削逻辑完全重写，对齐绿联4800plus NAS影视中心识别格式：</strong>tvshow.nfo/season.nfo/episode NFO/movie.nfo 全部按参考格式生成，plot/outline 用 CDATA 包裹，新增 lockdata/dateadded/sorttitle/rating/year/premiered/releasedate/runtime/country/mpaa/status 等字段，移除 thumb 和 fanart 标签（图片文件直接放目录，绿联自动识别）</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>目录结构对齐参考格式：</strong>番剧目录自动加年份（番剧名 (年份)/），Season 01 目录内含 season.nfo 和复制自根目录的 poster.jpg，单集文件统一命名为"番剧名 - S01E01 - 第 1 集.mp4/.nfo/.jpg"</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>图片生成完整覆盖绿联识别格式：</strong>根目录生成 poster/backdrop/fanart/landscape/thumb/banner 六种图片，backdrop 从 poster 裁剪 16:9 横版，其他优先复制 backdrop；单集缩略图与视频同名 .jpg，绿联自动识别</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>图片下载使用 cf_bypasser：</strong>改用 cf_bypasser.direct_client 下载（带正确 headers 和代理配置），避免裸 httpx 无法绕过 Cloudflare 防护导致 403 错误</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>CDATA 处理：</strong>新增 _wrap_cdata 静态方法，后处理 XML 将 plot/outline 标签内容用 CDATA 包裹，反转义 ET 自动转义的 XML 实体，空标签保持不变</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="danger" size="large">v3.1.1</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>观看次数和上传日期解析失败：</strong>源站部分页面使用简体中文"万"而非繁体"萬"，导致正则匹配失败。改为同时兼容简繁体，video_id=406538 的 155.9万次和 2026-06-05 现在能正确解析</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>没有 cover 海报的视频无法下载封面：</strong>部分视频在源站确实没有 /image/cover/ 格式竖版海报。改为优先下载竖版海报，没有时回退到 thumbnail 横版预览图，提示信息中明确区分</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="danger" size="large">v3.1.0</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>哈希ID封面海报无法获取的问题：</strong>部分视频的 cover 文件名是哈希ID（如 OmjQkYr）而非数字 video_id（如 39306），原正则匹配永远找不到。改为从相关视频详情页用 BeautifulSoup 查找指向当前视频的链接及其 cover 图片，对数字ID和哈希ID均有效</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="danger" size="large">v3.0.9</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>下载封面改为竖版海报：</strong>海报和预览图不再混用。下载封面只下载 /image/cover/ 格式的竖版海报（268x394），获取不到海报时直接返回失败提示，不再用 /image/thumbnail/ 格式的横版预览图冒充海报</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="danger" size="large">v3.0.8</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>下载封面按钮"未找到封面URL"错误：</strong>前端搜索接口调用参数类型错误导致始终搜索失败，已修正；搜索未匹配时回退到视频poster</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.0.7</el-tag>
+          <span class="version-date">2026-07-24</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载封面改为首页海报：</strong>之前下载的是视频详情页poster截图（h后缀），现新增搜索匹配方法获取首页列表海报URL（l后缀），搜索失败时回退到poster</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="warning" size="large">v3.0.6</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>

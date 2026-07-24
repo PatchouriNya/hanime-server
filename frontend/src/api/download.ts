@@ -101,17 +101,45 @@ export const DownloadApi = {
    * 执行下载操作 (暂停/继续/取消/重试/删除)
    * @param videoId 视频ID
    * @param action 操作类型
+   * @param deleteFiles 仅当 action='delete' 时有效：是否删除源文件（视频+刮削文件），默认 true
    */
-  handleDownloadAction: async (videoId: string, action: DownloadActionType) => {
+  handleDownloadAction: async (videoId: string, action: DownloadActionType, deleteFiles: boolean = true) => {
     try {
       const response = await request.post('/downloads/action', {
         video_id: videoId,
-        action
+        action,
+        delete_files: deleteFiles
       });
       return response.data;
     } catch (error) {
       console.error(`${action}操作失败:`, error);
       return { status: 'error', message: `${action}操作失败` };
+    }
+  },
+
+  /**
+   * 批量删除下载记录
+   * @param videoIds 视频ID列表
+   * @param deleteFiles 是否删除源文件（视频文件 + 刮削生成的 NFO 和图片文件）
+   *                     - true: 删除文件和记录
+   *                     - false: 只删除数据库记录，保留文件
+   */
+  batchDelete: async (videoIds: string[], deleteFiles: boolean = true): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/batch-delete', {
+        video_ids: videoIds,
+        delete_files: deleteFiles
+      });
+      return response.data;
+    } catch (error) {
+      console.error('批量删除失败:', error);
+      return {
+        status: 'error',
+        message: '批量删除失败',
+        success_count: 0,
+        failed_count: videoIds.length,
+        failed_ids: videoIds
+      };
     }
   },
 

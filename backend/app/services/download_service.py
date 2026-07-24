@@ -922,8 +922,16 @@ class DownloadManager:
                     return dict(row)
         return None
 
-    async def delete_download(self, video_id: str, username: str) -> bool:
-        """删除下载记录和文件"""
+    async def delete_download(self, video_id: str, username: str, delete_files: bool = True) -> bool:
+        """
+        删除下载记录和文件
+
+        :param video_id: 视频ID
+        :param username: 用户名
+        :param delete_files: 是否删除源文件（视频文件 + 刮削生成的 NFO 和图片）
+                            True: 删除文件和记录（默认，向后兼容）
+                            False: 只删除数据库记录，保留文件
+        """
         try:
             await self.init_db()
             # 先检查下载是否处于活跃状态，如果是，先尝试取消
@@ -932,7 +940,7 @@ class DownloadManager:
                 await self.cancel_download(video_id)
                 # 等待一会儿确保取消操作完成
                 await asyncio.sleep(1)
-            
+
             async with aiosqlite.connect(self.db_path) as db:
                 # 获取文件名
                 async with db.execute(
@@ -942,24 +950,18 @@ class DownloadManager:
                     row = await cursor.fetchone()
                     if not row:
                         return False  # 记录不存在
-                        
+
                     filename = row[0]
                     status = row[1]
-                    
-                    # 删除文件（如果是部分下载的文件也要删除）
-                    file_path = settings.DOWNLOAD_PATH / filename
-                    try:
-                        if await aiofiles.os.path.exists(file_path):
-                            await aiofiles.os.remove(file_path)
-                            logger.info(f"删除文件成功: {file_path}")
-                    except Exception as file_error:
-                        logger.error(f"删除文件失败: {str(file_error)}")
-                        # 继续删除数据库记录，即使文件删除失败
-                
+
+                    # 删除文件（仅当 delete_files=True 时）
+                    if delete_files and filename:
+                        await self._delete_video_and_scrape_files(filename, video_id)
+
                 # 删除数据库记录
                 await db.execute("DELETE FROM downloads WHERE username = ? AND video_id = ?", (username, video_id))
                 await db.commit()
-                logger.info(f"从数据库删除下载记录: {video_id}")
+                logger.info(f"从数据库删除下载记录: {video_id} (delete_files={delete_files})")
 
                 # 清理内存中的记录
                 if video_id in self.active_downloads:
@@ -977,6 +979,136 @@ class DownloadManager:
         except Exception as e:
             logger.error(f"删除下载失败: {str(e)}")
             return False
+
+    async def _delete_video_and_scrape_files(self, filename: str, video_id: str) -> None:
+        """
+        删除视频文件及其关联的刮削文件
+
+        删除范围：
+        1. 视频文件本身（settings.DOWNLOAD_PATH / filename）
+        2. 与视频同名的 .nfo 文件（刮削生成的单集 NFO）
+        3. 与视频同名的 .jpg 文件（刮削生成的单集缩略图）
+        4. 如果番剧目录下没有其他视频文件了，删除整个番剧目录（包括所有 NFO 和图片）
+
+        :param filename: 数据库中存储的文件名（可能包含 series_name/ 前缀）
+        :param video_id: 视频ID（用于查找 video_id.jpg 封面）
+        """
+        if not filename:
+            return
+
+        try:
+            file_path = settings.DOWNLOAD_PATH / filename
+
+            # 1. 删除视频文件
+            try:
+                if await aiofiles.os.path.exists(file_path):
+                    await aiofiles.os.remove(file_path)
+                    logger.info(f"删除视频文件成功: {file_path}")
+            except Exception as file_error:
+                logger.error(f"删除视频文件失败: {str(file_error)}")
+
+            # 2. 删除与视频同名的 .nfo 和 .jpg（刮削生成的单集文件）
+            video_stem = file_path.stem  # 不含扩展名
+            video_parent = file_path.parent  # 视频所在目录（可能是 Season 1 目录）
+
+            scrape_extensions = [".nfo", ".jpg"]
+            for ext in scrape_extensions:
+                scrape_file = video_parent / f"{video_stem}{ext}"
+                try:
+                    if await aiofiles.os.path.exists(scrape_file):
+                        await aiofiles.os.remove(scrape_file)
+                        logger.info(f"删除刮削文件成功: {scrape_file}")
+                except Exception as e:
+                    logger.warning(f"删除刮削文件失败: {scrape_file} - {e}")
+
+            # 3. 删除番剧根目录下的 video_id.jpg 封面（如果有）
+            series_name = filename.split('/')[0] if '/' in filename else None
+            if series_name:
+                series_dir = settings.DOWNLOAD_PATH / series_name
+                cover_file = series_dir / f"{video_id}.jpg"
+                try:
+                    if await aiofiles.os.path.exists(cover_file):
+                        await aiofiles.os.remove(cover_file)
+                        logger.info(f"删除封面文件成功: {cover_file}")
+                except Exception as e:
+                    logger.warning(f"删除封面文件失败: {cover_file} - {e}")
+
+                # 4. 检查番剧目录是否还有其他视频文件，如果没有则删除整个目录
+                await self._cleanup_empty_series_dir(series_dir)
+
+        except Exception as e:
+            logger.error(f"删除视频和刮削文件异常: {filename} - {e}")
+
+    async def _cleanup_empty_series_dir(self, series_dir) -> None:
+        """
+        清理空的番剧目录（或只包含刮削文件但没有视频文件的目录）
+
+        如果番剧目录下没有任何视频文件，则删除整个目录（包括所有 NFO 和图片）。
+        因为没有视频文件，刮削文件也没有意义了。
+        """
+        try:
+            if not await aiofiles.os.path.exists(series_dir):
+                return
+
+            # 检查目录及其所有子目录中是否还有视频文件
+            video_extensions = {'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.ts'}
+            has_video = False
+
+            for root, dirs, files in os.walk(series_dir):
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in video_extensions:
+                        has_video = True
+                        break
+                if has_video:
+                    break
+
+            if not has_video:
+                # 没有视频文件了，删除整个番剧目录
+                try:
+                    shutil.rmtree(series_dir)
+                    logger.info(f"番剧目录已清空（无视频文件），删除整个目录: {series_dir}")
+                except Exception as e:
+                    logger.warning(f"删除空番剧目录失败: {series_dir} - {e}")
+
+        except Exception as e:
+            logger.error(f"清理空番剧目录异常: {series_dir} - {e}")
+
+    async def batch_delete_downloads(
+        self,
+        video_ids: List[str],
+        username: str,
+        delete_files: bool = True
+    ) -> Dict[str, Any]:
+        """
+        批量删除下载记录
+
+        :param video_ids: 要删除的视频ID列表
+        :param username: 用户名
+        :param delete_files: 是否删除源文件（视频文件 + 刮削文件）
+        :return: {"success_count": int, "failed_count": int, "failed_ids": List[str]}
+        """
+        success_count = 0
+        failed_ids: List[str] = []
+
+        for video_id in video_ids:
+            try:
+                success = await self.delete_download(video_id, username, delete_files)
+                if success:
+                    success_count += 1
+                else:
+                    failed_ids.append(video_id)
+            except Exception as e:
+                logger.error(f"批量删除单条失败: {video_id} - {e}")
+                failed_ids.append(video_id)
+
+        result = {
+            "success_count": success_count,
+            "failed_count": len(failed_ids),
+            "failed_ids": failed_ids,
+            "delete_files": delete_files
+        }
+        logger.info(f"批量删除完成: 成功 {success_count}, 失败 {len(failed_ids)}, 删除文件={delete_files}")
+        return result
 
     async def start_download(self, video_id: str, username: str, force: bool = False):
         """
@@ -1029,8 +1161,11 @@ class DownloadManager:
             file_path = settings.DOWNLOAD_PATH / filename
             
             # 预下载封面到番剧目录（不阻塞主流程）
-            # 如果下载失败也不影响视频下载，用户访问时会自动重试
-            asyncio.create_task(self.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id))
+            # video_detail.cover_url 已由 get_video_detail 优先处理为 /image/cover/ 格式
+            async def _download_cover_async():
+                await self.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id)
+
+            asyncio.create_task(_download_cover_async())
             
             # 写入数据库（
             async with aiosqlite.connect(self.db_path) as conn:
@@ -1106,6 +1241,43 @@ class DownloadManager:
             
         return filename
 
+    @staticmethod
+    def _convert_to_poster_url(cover_url: str) -> str:
+        """
+        将缩略图URL转换为首页海报URL（仅用于URL格式推断，实际下载可能因secure token不匹配而403）
+        优先使用 get_video_detail 返回的 cover 格式URL
+        """
+        if not cover_url:
+            return cover_url
+        # /image/thumbnail/407019l.jpg → /image/cover/407019.jpg
+        # /image/thumbnail/407019h.jpg → /image/cover/407019.jpg
+        import re
+        converted = re.sub(
+            r'/image/thumbnail/(\w+)[lh]\.jpg',
+            r'/image/cover/\1.jpg',
+            cover_url
+        )
+        return converted
+
+    async def _get_cover_from_search(self, video_id: str, title: str) -> str:
+        """
+        通过视频详情页获取首页展示的海报封面URL（cover格式，竖版海报）
+        不再使用搜索接口（搜索结果返回的是 thumbnail 格式，secure token 与 cover 格式不通用）
+        :param video_id: 视频ID
+        :param title: 视频标题（未使用，保留接口兼容）
+        :return: cover 格式封面URL，失败时返回空字符串
+        """
+        try:
+            video_detail = await self.video_service.get_video_detail(video_id)
+            if video_detail and video_detail.cover_url and '/image/cover/' in video_detail.cover_url:
+                logger.info(f"从视频详情页获取到 cover 海报: {video_detail.cover_url}")
+                return video_detail.cover_url
+            logger.warning(f"视频详情页未返回 cover 格式URL: {video_detail.cover_url if video_detail else 'N/A'}")
+            return ""
+        except Exception as e:
+            logger.warning(f"通过视频详情页获取封面失败: {e}")
+            return ""
+
     async def download_cover(self, video_id: str, cover_url: str, series_dir=None, filename: str = None) -> bool:
         """
         下载封面图片到番剧目录
@@ -1145,6 +1317,25 @@ class DownloadManager:
 
             async with client.stream("GET", cover_url, timeout=30.0) as response:
                 if response.status_code != 200:
+                    # 如果是cover格式URL但403，尝试用cf_bypasser下载
+                    if response.status_code == 403 and '/image/cover/' in cover_url:
+                        logger.info(f"cover URL 403，尝试用 cf_bypasser 下载")
+                        try:
+                            from app.utils.cloudflare_bypass import cf_bypasser
+                            cf_client = await cf_bypasser.direct_client
+                            cf_response = await cf_client.get(cover_url)
+                            if cf_response and cf_response.status_code == 200:
+                                content = cf_response.content
+                                async with aiofiles.open(cover_path, "wb") as f:
+                                    await f.write(content)
+                                logger.success(f"通过 cf_bypasser 封面下载成功: {cover_path}")
+                                return True
+                            else:
+                                logger.error(f"cf_bypasser 下载封面也失败: HTTP {cf_response.status_code if cf_response else 'N/A'}")
+                                return False
+                        except Exception as cf_e:
+                            logger.error(f"cf_bypasser 下载封面异常: {cf_e}")
+                            return False
                     logger.error(f"下载封面失败，状态码: {response.status_code}")
                     return False
 

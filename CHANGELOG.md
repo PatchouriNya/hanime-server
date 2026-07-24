@@ -1,5 +1,207 @@
 # 更新日志
 
+## v3.1.6 (2026-07-25)
+
+### 修复
+
+1. **修复 download.ts 类型推断错误**：
+   - 将速度平滑处理器（`DownloadSpeedSmoother` 单例）从 Pinia 响应式 `state` 移至模块级变量 `_speedSmoother`
+   - 根因：类实例放入 `state` 会导致 TypeScript 无法正确推断 store 的 `this` 类型，报错"类型上不存在属性 downloads"
+   - 同步修改 actions 中所有 `this.speedSmoother` 引用为 `_speedSmoother`（共3处）
+
+### 清理
+
+1. **删除根目录无用测试文件**：
+   - 移除 `test_cover.py` ~ `test_cover5.py` 共5个封面下载调试脚本
+
+## v3.1.5 (2026-07-25)
+
+### 新增
+
+1. **下载管理批量删除功能**：
+   - 下载管理页面新增"批量删除"按钮，点击进入批量删除模式
+   - 批量模式下可勾选多条下载记录，支持"全选当前列表"和"取消选择"
+   - 批量删除确认对话框，可选是否删除源文件
+   - 后端新增 `POST /downloads/batch-delete` 接口，支持批量删除
+
+2. **删除时可选是否删除源文件**：
+   - **删除源文件**：删除视频文件 + 刮削生成的 NFO 元数据 + 封面/缩略图等图片文件
+   - **仅删除记录**：只删除数据库记录，保留所有文件
+   - 智能清理：当番剧目录下所有视频文件被删除后，自动删除整个番剧目录（包括所有 NFO 和图片）
+   - 后端 `delete_download` 方法新增 `delete_files` 参数，`DownloadAction` 模型新增 `delete_files` 字段
+
+### 优化
+
+1. **视频详情页手机端按钮对齐优化**：
+   - 修复 480px 断点下 `.video-actions .el-button` 缺少 `min-width: 0` 和 `justify-content: center` 导致的按钮宽度不一致问题
+   - 新增 `align-items: center` 确保按钮内容垂直居中
+   - 设置固定 `height`（768px: 36px, 480px: 34px）保证每行按钮等高对齐
+   - 添加 `white-space: nowrap` 防止按钮内文字换行
+   - 统一图标和文字间距（`margin-left: 4px`）
+   - 添加 `margin-left: 0` 移除 el-button 默认间距影响布局
+
+2. **下载管理手机端操作按钮布局优化**：
+   - 768px 断点下 left-actions 从 4 列改为 3 列网格，适配新增的"批量删除"按钮
+   - 480px 断点下保持 2 列网格
+   - 批量操作栏在手机端自动切换为垂直布局
+
+## v3.1.4 (2026-07-25)
+
+### 优化
+
+1. **NFO 字段顺序完全对齐绿联4800plus 参考格式**（参考"Y:\links\电视剧\日番\未来日记 (2011)"）：
+   - **tvshow.nfo**：调整字段顺序为 plot→outline→lockdata→dateadded→title→originaltitle→rating→year→sorttitle→mpaa→premiered→releasedate→enddate→runtime→country→genre→studio→uniqueid→episodeguide→id→season(-1)→episode(-1)→displayorder→status
+   - **episode.nfo**：调整字段顺序为 plot→outline→lockdata→dateadded→title→rating→year→sorttitle→runtime→uniqueid→episode→season→aired（注意 episode 在 season 之前，对齐参考格式）
+   - **movie.nfo**：调整字段顺序为 plot→outline→lockdata→dateadded→title→originaltitle→rating→year→sorttitle→mpaa→premiered→releasedate→runtime→country→genre→studio→uniqueid→id
+
+2. **新增关键字段**：
+   - tvshow.nfo 新增 `enddate`（最新集日期）、`episodeguide`、`id`、`season(-1)`、`episode(-1)`、`displayorder(aired)`
+   - episode.nfo 新增 `uniqueid`（基于 video_id）
+   - movie.nfo 新增 `id` 字段
+
+3. **runtime 时长准确解析**：
+   - 新增 `_parse_duration_to_minutes` 方法，从源站 duration 字符串（如 "23:45"）解析为分钟数（向上取整到 24）
+   - 支持 HH:MM:SS / MM:SS / 带单位数字 / 纯数字四种格式
+   - 新增 `_extract_runtime_minutes` 方法，从元数据列表提取时长
+   - tvshow/episode/movie NFO 的 runtime 字段均改为从 duration 解析，不再固定 24 分钟
+
+4. **新增 season01-poster.jpg 文件**：
+   - 参考格式"未来日记 (2011)"根目录包含 season01-poster.jpg
+   - 自动从根目录 poster.jpg 复制生成，绿联NAS通过此文件识别第1季海报
+   - 新增常量 `SEASON_POSTER_FILENAME_PATTERN = "season{:02d}-poster.jpg"`
+
+5. **mpaa 分级调整**：
+   - 从 NC-17 改为 TV-MA（对齐参考格式"未来日记"）
+   - TV-MA 是电视节目分级，更适合番剧类型
+
+6. **`_find_existing_cover` 排除规则增强**：
+   - 新增正则排除 `season\d+-poster\.(jpg|png|webp)` 模式
+   - 避免误将 season01-poster.jpg 识别为已有封面导致跳过下载
+
+## v3.1.3 (2026-07-25)
+
+### 优化
+
+1. **Season 目录命名对齐参考格式**：
+   - `Season 01` → `Season 1`（不带前导零，对齐 Y:\links 参考格式）
+   - 文件名中的 `S01E01` 格式保持不变（仍带前导零）
+
+2. **图片质量全面提升**：
+   - 新增 `_get_horizontal_thumbnail_url` 方法，从 cover URL 推导横版缩略图 URL（/image/cover/ → /image/thumbnail/）
+   - **backdrop.jpg**：改用 thumbnail URL 下载原生横版 1024x576 图片，放大到 1920x1080（之前从 268x394 竖版 poster 裁剪，画质极差）
+   - **fanart.jpg**：同 backdrop，优先复制 backdrop，回退用 thumbnail URL 下载
+   - **landscape.jpg**：改用 thumbnail URL 下载，调整到标准尺寸 1000x562
+   - **thumb.jpg**：优先复制 landscape，回退用 thumbnail URL 下载
+   - **banner.jpg**：长宽比从 16:9 修正为 5.4:1（1000x185），从横版图裁剪中部横条
+   - **poster.jpg**：下载后用 PIL LANCZOS 重采样放大到标准尺寸 1000x1426
+   - **单集缩略图**：优先用 thumbnail URL 下载横版，放大到 1920x1080
+
+3. **新增图片处理方法**：
+   - `_crop_banner_from_landscape`：从横版图裁剪 5.4:1 banner
+   - `_upscale_to_standard`：仅放大不缩小，比例不一致时先裁剪
+   - `_resize_to_standard`：强制调整到目标尺寸（裁剪+缩放）
+
+4. **日期处理更健壮**：
+   - `isinstance(upload_date, datetime)` → `isinstance(upload_date, (datetime, date))`
+   - 同时兼容 `date` 对象和 `datetime` 对象（video_service 返回的是 `date` 对象）
+   - 所有 NFO 中的 year/premiered/releasedate/aired 字段处理统一
+
+5. **新增常量**：
+   - `POSTER_STANDARD_WIDTH/HEIGHT` = 1000x1426
+   - `BACKDROP_STANDARD_WIDTH/HEIGHT` = 1920x1080
+   - `LANDSCAPE_STANDARD_WIDTH/HEIGHT` = 1000x562
+   - `BANNER_STANDARD_WIDTH/HEIGHT` = 1000x185
+   - `COVER_URL_PATH` / `THUMBNAIL_URL_PATH` 用于 URL 推导
+
+## v3.1.2 (2026-07-25)
+
+### 重构
+
+1. **刮削逻辑完全重写，对齐绿联4800plus NAS影视中心识别格式**：
+   - **tvshow.nfo**：plot/outline 用 CDATA 包裹（标准 XML 转义反转义后包裹），新增 lockdata/dateadded/sorttitle/rating/year/premiered/releasedate/runtime/country/mpaa/status 字段，移除 thumb 和 fanart 标签（图片文件直接放目录，绿联自动识别）
+   - **season.nfo（新增）**：季信息 NFO，包含 plot/outline/lockdata/dateadded/title/year/sorttitle/premiered/releasedate/uniqueid/seasonnumber
+   - **episode NFO**：plot 用 CDATA 包裹，outline 留空，新增 lockdata/dateadded/sorttitle/rating/year/runtime/season/episode/aired 字段，移除 thumb 标签（缩略图与视频同名 .jpg，绿联自动识别）
+   - **movie.nfo**：与 tvshow 同样的字段结构，使用 movie 根标签
+
+2. **目录结构对齐参考格式**：
+   - 番剧目录：`番剧名 (年份)/`（自动从元数据获取年份并加到目录名）
+   - Season 目录：`Season 01/`，内含 season.nfo 和复制自根目录的 poster.jpg
+   - 单集文件命名：`番剧名 - S01E01 - 第 1 集.mp4` / `.nfo` / `.jpg`（与视频同名缩略图，绿联自动识别）
+
+3. **图片生成完整覆盖绿联识别格式**：
+   - 根目录生成：poster.jpg / backdrop.jpg / fanart.jpg / landscape.jpg / thumb.jpg / banner.jpg
+   - backdrop 从 poster 裁剪 16:9 横版（如果 poster 是竖版），横版直接复制
+   - fanart/landscape/thumb/banner 优先复制 backdrop，回退到 poster 裁剪
+   - Season 目录复制 poster.jpg
+   - 单集缩略图命名为 `番剧名 - S01E01 - 第 1 集.jpg`
+
+4. **图片下载使用 cf_bypasser**：
+   - `_download_cover_as_jpg` 改为通过 `cf_bypasser.direct_client` 下载（带正确 headers 和代理配置），避免裸 httpx 无法绕过 Cloudflare 防护导致 403 错误
+
+5. **CDATA 处理**：
+   - 新增 `_wrap_cdata` 静态方法，后处理 XML 将 plot/outline 标签内容用 `<![CDATA[...]]>` 包裹
+   - 反转义 ET 自动转义的 XML 实体（&lt; / &gt; / &amp; 等），正确处理 CDATA 结束序列 `]]>`
+   - 空标签（如 episode 的 `<outline/>`）保持不变
+
+6. **其他改进**：
+   - 新增常量：DEFAULT_RUNTIME_MINUTES=24、DEFAULT_COUNTRY="Japan"、SERIES_STATUS_CONTINUING="Continuing"、DEFAULT_RATING="7.6" 及所有图片文件名常量
+   - `_find_existing_cover` 排除所有刮削生成的图片文件（backdrop/landscape/thumb/banner/fanart 等），避免误识别
+   - `_reorganize_files` 新增 metadata_list 参数用于获取年份，目录重命名后同步更新 video_entries 中的文件路径
+   - XML 声明 encoding 从 `UTF-8` 改为 `utf-8`（对齐参考格式）
+
+## v3.1.1 (2026-07-25)
+
+### 修复
+
+1. **观看次数和上传日期解析失败（简体中文不兼容）**：
+   - 源站部分页面使用简体中文"万"而非繁体"萬"，导致正则 `(\d+(?:\.\d+)?(?:萬|千)?)次` 匹配失败
+   - 正则改为 `(?:萬|万|千)?` 同时兼容简繁体
+   - `_parse_views` 方法同步加入简体"万"支持
+   - 测试验证：video_id=406538 的观看次数 155.9万次 和日期 2026-06-05 现在能正确解析
+
+2. **没有 cover 海报的视频无法下载封面**：
+   - 部分视频（如 406538）在源站确实没有 `/image/cover/` 格式的竖版海报，只有 `/image/thumbnail/` 格式的横版预览图
+   - 改为优先下载 cover 竖版海报，没有时回退到 thumbnail 横版预览图
+   - 响应中新增 `is_poster` 字段标记是否为竖版海报，前端提示信息区分"竖版海报已保存"和"该视频没有竖版海报，已下载横版预览图"
+
+## v3.1.0 (2026-07-25)
+
+### 修复
+
+1. **哈希ID封面海报无法获取的问题**：
+   - **根因**：部分视频的 cover 图片文件名是哈希ID（如 `OmjQkYr`），不是数字 video_id（如 `39306`）。原代码用正则 `re.escape(video_id)` 匹配 cover URL 中的文件名，对哈希ID永远匹配不到，导致明明有海报却提示"无法获取海报"
+   - **修复**：改用 BeautifulSoup 解析相关视频的详情页，查找指向当前视频的 `<a href="/watch?v={video_id}">` 链接，再获取链接内的 `/image/cover/` 格式 cover 图片。此方法不依赖 cover 文件名与 video_id 的关系，对数字ID和哈希ID均有效
+   - **原理**：当前视频的详情页通常不会链接到自己，但在同系列/相关视频的详情页中，当前视频会作为相关视频出现并带有 cover 图片
+   - 测试验证：video_id=39306 的封面已正确下载为 `OmjQkYr.jpg`（268x394 竖版海报），与用户手动验证的海报URL完全一致
+
+## v3.0.9 (2026-07-25)
+
+### 修复
+
+1. **下载封面改为竖版海报，海报和预览图不再混用**：
+   - 海报是海报（`/image/cover/` 格式，268x394 竖版），预览图是预览图（`/image/thumbnail/` 格式，横版），两者不再混用
+   - 下载封面只下载 `/image/cover/` 格式的竖版海报
+   - 获取不到海报格式时直接返回失败提示"该视频没有海报格式封面（cover），无法下载"，不再用预览图冒充海报
+   - 前端只传 `video_id`，封面URL获取逻辑全部由后端处理
+
+## v3.0.8 (2026-07-24)
+
+### 修复
+
+1. **下载封面按钮"未找到封面URL"错误**：
+   - 前端 `searchVideos` 调用参数类型错误：传了 `(title, 1)` 两个参数，应为 `{ query: title, page: 1 }` 对象
+   - 搜索未匹配到封面时增加回退：使用视频详情页的 poster URL 作为兜底
+
+## v3.0.7 (2026-07-24)
+
+### 修复
+
+1. **下载封面改为首页海报**：
+   - 之前下载的封面是视频详情页的 poster 截图（`h`后缀），不是首页列表展示的海报
+   - 新增 `_get_cover_from_search()` 方法，通过搜索接口用视频标题搜索，匹配 video_id 获取首页海报URL（`l`后缀）
+   - 在 `start_download` 和 `get_cover` API 中优先使用搜索获取的海报URL，搜索失败时回退到 poster
+   - 测试验证：video_id=407017 的封面已正确下载为 `thumbnail/407017l.jpg`（首页海报）
+
 ## v3.0.6 (2026-07-24)
 
 ### 回退

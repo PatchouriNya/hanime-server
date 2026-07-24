@@ -939,39 +939,20 @@ export default defineComponent({
       }
     });
 
-    // 下载封面（通过搜索接口获取 https 首页预览图封面）
+    // 下载封面海报（后端只下载 /image/cover/ 格式的竖版海报，不混用预览图）
     const handleDownloadCover = async () => {
       if (!videoDetail.value.video_id || !videoDetail.value.title) return;
       isDownloadingCover.value = true;
       try {
-        // 搜索接口现已优先提取 main-thumb 封面（首页预览图）
-        const searchResult = await VideoApi.searchVideos(videoDetail.value.title, 1);
-        let coverUrl = '';
-
-        const findCover = (videos: any[]) => {
-          const match = videos.find((v: any) => v.video_id === videoDetail.value.video_id);
-          return match?.cover_url || '';
-        };
-
-        if (searchResult?.detailed_videos) {
-          coverUrl = findCover(searchResult.detailed_videos);
-        }
-        if (!coverUrl && searchResult?.basic_videos) {
-          coverUrl = findCover(searchResult.basic_videos);
-        }
-
-        if (!coverUrl) {
-          ElMessage.error('未找到封面URL');
-          return;
-        }
-
+        // 只传 video_id，后端优先获取 /image/cover/ 格式竖版海报
+        // 没有 cover 格式时回退到 thumbnail 横版预览图，响应中通过 is_poster 标记区分
         const response = await request.post('/downloads/cover', null, {
-          params: { video_id: videoDetail.value.video_id, cover_url: coverUrl }
+          params: { video_id: videoDetail.value.video_id }
         });
         if (response.data?.success) {
-          ElMessage.success('封面已下载到 covers 目录');
+          ElMessage.success(response.data?.message || '封面已下载到 covers 目录');
         } else {
-          ElMessage.error(response.data?.message || '下载失败');
+          ElMessage.error(response.data?.message || '封面下载失败');
         }
       } catch (e: any) {
         ElMessage.error(e.message || '封面下载失败');
@@ -1374,26 +1355,39 @@ export default defineComponent({
   .video-title {
     font-size: 20px;
   }
-  
+
   .video-meta {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .video-actions {
     margin-top: 10px;
     gap: 8px;
     display: flex;
     flex-wrap: wrap;
     width: 100%;
+    /* 确保每行按钮等高对齐 */
+    align-items: stretch;
   }
 
   .video-actions .el-button {
     flex: 1 1 calc(33.33% - 8px);
     min-width: 0;
     justify-content: center;
+    align-items: center;
     font-size: 13px;
     padding: 8px 4px;
+    height: 36px;
+    margin-left: 0;
+    /* 确保图标和文字水平排列且不换行 */
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  /* 图标和文字间距统一 */
+  .video-actions .el-button .el-icon + span {
+    margin-left: 4px;
   }
 }
 
@@ -1401,7 +1395,7 @@ export default defineComponent({
   .video-title {
     font-size: 18px;
   }
-  
+
   .tab {
     padding: 10px 15px;
     font-size: 14px;
@@ -1413,8 +1407,15 @@ export default defineComponent({
 
   .video-actions .el-button {
     flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    justify-content: center;
+    align-items: center;
     font-size: 12px;
     padding: 6px 4px;
+    height: 34px;
+    margin-left: 0;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
   .tag-item {

@@ -13,7 +13,7 @@ import os
 import re
 import shutil
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set
 from xml.dom import minidom
@@ -24,12 +24,28 @@ from app.models.scrape import (
 )
 from app.services.video_service import VideoService
 from app.services.download_service import download_manager
+from app.utils.cloudflare_bypass import cf_bypasser
 
-# NFO XML 声明
-NFO_XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+# NFO XML 声明（对齐绿联NAS识别格式，使用小写 utf-8）
+NFO_XML_DECLARATION = '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n'
 
-# 成人内容分级
-MPAA_ADULT_RATING = "NC-17"
+# 成人内容分级（对齐参考格式"未来日记"的 TV-MA）
+MPAA_ADULT_RATING = "TV-MA"
+
+# 默认视频时长（分钟）- 里番每集通常20-30分钟
+DEFAULT_RUNTIME_MINUTES = 24
+
+# 季海报文件名前缀（season01-poster.jpg，对齐参考格式）
+SEASON_POSTER_FILENAME_PATTERN = "season{:02d}-poster.jpg"
+
+# 制片国家
+DEFAULT_COUNTRY = "Japan"
+
+# 剧集状态
+SERIES_STATUS_CONTINUING = "Continuing"
+
+# 默认评分
+DEFAULT_RATING = "7.6"
 
 # 绿联NAS影视中心支持的图片格式（仅JPG！PNG不被识别）
 SUPPORTED_IMAGE_FORMAT = "jpg"
@@ -40,7 +56,33 @@ VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".wmv", ".flv", ".ts"}
 # NFO文件名常量
 TVSHOW_NFO_FILENAME = "tvshow.nfo"
 MOVIE_NFO_FILENAME = "movie.nfo"
+SEASON_NFO_FILENAME = "season.nfo"
 SEASON_DIR_PREFIX = "Season "
+
+# 图片文件名常量
+POSTER_FILENAME = "poster.jpg"
+BACKDROP_FILENAME = "backdrop.jpg"
+FANART_FILENAME = "fanart.jpg"
+LANDSCAPE_FILENAME = "landscape.jpg"
+THUMB_FILENAME = "thumb.jpg"
+BANNER_FILENAME = "banner.jpg"
+
+# 标准图片尺寸（对齐绿联4800plus参考格式）
+POSTER_STANDARD_WIDTH = 1000
+POSTER_STANDARD_HEIGHT = 1426
+BACKDROP_STANDARD_WIDTH = 1920
+BACKDROP_STANDARD_HEIGHT = 1080
+LANDSCAPE_STANDARD_WIDTH = 1000
+LANDSCAPE_STANDARD_HEIGHT = 562
+BANNER_STANDARD_WIDTH = 1000
+BANNER_STANDARD_HEIGHT = 185
+
+# 图片 URL 路径常量（hanime 源站）
+COVER_URL_PATH = "/image/cover/"
+THUMBNAIL_URL_PATH = "/image/thumbnail/"
+
+# 需要 CDATA 包裹的标签
+CDATA_TAGS = ["plot", "outline"]
 
 
 class ScrapeService:
@@ -113,7 +155,8 @@ class ScrapeService:
                 renamed = await self._reorganize_files(
                     series_dir, series_name, video_entries,
                     episode_mapping, scrape_mode,
-                    is_rename_file, is_reorganize_directory
+                    is_rename_file, is_reorganize_directory,
+                    metadata_list=metadata_list
                 )
                 result.renamed_files = renamed
 
@@ -235,66 +278,110 @@ class ScrapeService:
         """
         生成 tvshow.nfo（电视剧总信息）
 
-        从同一系列的所有视频元数据中聚合信息
+        完全对齐绿联4800plus NAS影视中心的识别格式：
+        - plot/outline 用 CDATA 包裹
+        - 不包含 thumb/fanart 标签（图片文件直接放在目录里，绿联自动识别）
         """
         root = ET.Element("tvshow")
 
-        # 标题
-        title_elem = ET.SubElement(root, "title")
-        title_elem.text = self._sanitize_nfo_text(series_title)
-
-        originaltitle_elem = ET.SubElement(root, "originaltitle")
-        originaltitle_elem.text = self._sanitize_nfo_text(series_title)
-
-        sorttitle_elem = ET.SubElement(root, "sorttitle")
-        sorttitle_elem.text = self._sanitize_nfo_text(series_title)
-
-        # 描述（使用第一个有描述的视频）
+        # 描述（使用第一个有描述的视频）- 放在最前面，对齐参考格式
         plot_text = ""
         for meta in metadata_list:
             if meta and hasattr(meta, "description") and meta.description:
                 plot_text = meta.description
                 break
-        if plot_text:
-            plot_elem = ET.SubElement(root, "plot")
-            plot_elem.text = self._sanitize_nfo_text(plot_text)
+        plot_elem = ET.SubElement(root, "plot")
+        plot_elem.text = self._sanitize_nfo_text(plot_text)
 
-        # 分级（成人内容固定为 NC-17）
-        mpaa_elem = ET.SubElement(root, "mpaa")
-        mpaa_elem.text = MPAA_ADULT_RATING
+        # outline 同 plot
+        outline_elem = ET.SubElement(root, "outline")
+        outline_elem.text = self._sanitize_nfo_text(plot_text)
 
-        # 日期和年份
+        # 锁定数据
+        lockdata_elem = ET.SubElement(root, "lockdata")
+        lockdata_elem.text = "false"
+
+        # 添加时间
+        dateadded_elem = ET.SubElement(root, "dateadded")
+        dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 标题
+        title_text = self._sanitize_nfo_text(series_title)
+        title_elem = ET.SubElement(root, "title")
+        title_elem.text = title_text
+
+        # 原始标题（参考格式中与 title 相同）
+        originaltitle_elem = ET.SubElement(root, "originaltitle")
+        originaltitle_elem.text = title_text
+
+        # 评分（默认7.6，可从 like_rate 推算）- 对齐参考格式，rating 在 year 之前
+        rating_value = DEFAULT_RATING
+        for meta in metadata_list:
+            if meta and hasattr(meta, "like_rate") and meta.like_rate:
+                try:
+                    rate_str = str(meta.like_rate).replace("%", "").replace("％", "")
+                    rate_num = int(rate_str) / 10.0
+                    if 0 < rate_num <= 10:
+                        rating_value = f"{rate_num:.1f}"
+                        break
+                except (ValueError, TypeError):
+                    pass
+        rating_elem = ET.SubElement(root, "rating")
+        rating_elem.text = rating_value
+
+        # 年份和首播日期 - 取所有元数据中最早日期
         earliest_date = None
+        latest_date = None
         for meta in metadata_list:
             if meta and hasattr(meta, "upload_date") and meta.upload_date:
                 try:
-                    if isinstance(meta.upload_date, datetime):
+                    if isinstance(meta.upload_date, (datetime, date)):
                         date_val = meta.upload_date
                     else:
-                        date_val = datetime.fromisoformat(str(meta.upload_date))
+                        date_str = str(meta.upload_date)[:10]
+                        date_val = datetime.strptime(date_str, "%Y-%m-%d")
                     if earliest_date is None or date_val < earliest_date:
                         earliest_date = date_val
+                    if latest_date is None or date_val > latest_date:
+                        latest_date = date_val
                 except (ValueError, TypeError):
                     pass
 
+        year_elem = ET.SubElement(root, "year")
         if earliest_date:
-            premiered_elem = ET.SubElement(root, "premiered")
-            premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
-            year_elem = ET.SubElement(root, "year")
             year_elem.text = str(earliest_date.year)
 
-        # 制作公司（去重合并）
-        studios_added: Set[str] = set()
-        for meta in metadata_list:
-            if meta and hasattr(meta, "studio") and meta.studio:
-                studio_name = meta.studio.name if hasattr(meta.studio, "name") else str(meta.studio)
-                if studio_name and studio_name not in studios_added:
-                    studio_elem = ET.SubElement(root, "studio")
-                    studio_elem.text = self._sanitize_nfo_text(studio_name)
-                    studios_added.add(studio_name)
+        # 排序标题（取前4个字符作为缩写，对齐参考格式：sorttitle 在 year 之后）
+        sorttitle_elem = ET.SubElement(root, "sorttitle")
+        sorttitle_elem.text = title_text[:4] if title_text else ""
 
-        # 类型标签（固定添加"动画"和"成人"，再加实际标签）
-        genres_added: Set[str] = {"动画", "成人", "Animation", "Adult"}
+        # 分级（成人内容固定为 TV-MA，对齐参考格式"未来日记"）
+        mpaa_elem = ET.SubElement(root, "mpaa")
+        mpaa_elem.text = MPAA_ADULT_RATING
+
+        # 首播日期和发布日期
+        premiered_elem = ET.SubElement(root, "premiered")
+        releasedate_elem = ET.SubElement(root, "releasedate")
+        if earliest_date:
+            premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
+            releasedate_elem.text = earliest_date.strftime("%Y-%m-%d")
+
+        # 结束日期（如果有最新日期且与首播日期不同）
+        if latest_date and earliest_date and latest_date != earliest_date:
+            enddate_elem = ET.SubElement(root, "enddate")
+            enddate_elem.text = latest_date.strftime("%Y-%m-%d")
+
+        # 时长（分钟，从元数据解析或使用默认值）
+        runtime_minutes = self._extract_runtime_minutes(metadata_list)
+        runtime_elem = ET.SubElement(root, "runtime")
+        runtime_elem.text = str(runtime_minutes)
+
+        # 制片国家
+        country_elem = ET.SubElement(root, "country")
+        country_elem.text = DEFAULT_COUNTRY
+
+        # 类型标签（固定添加"动画"和"成人"，再加视频类型）
+        genres_added: Set[str] = {"动画", "成人"}
         for fixed_genre in ["动画", "成人"]:
             genre_elem = ET.SubElement(root, "genre")
             genre_elem.text = fixed_genre
@@ -308,16 +395,15 @@ class ScrapeService:
                     genre_elem.text = self._sanitize_nfo_text(vt_name)
                     genres_added.add(vt_name)
 
-        # 标签
-        tags_added: Set[str] = set()
+        # 制作公司（去重合并）
+        studios_added: Set[str] = set()
         for meta in metadata_list:
-            if meta and hasattr(meta, "tags") and meta.tags:
-                for tag in meta.tags:
-                    tag_name = tag.name if hasattr(tag, "name") else str(tag)
-                    if tag_name and tag_name not in tags_added:
-                        tag_elem = ET.SubElement(root, "tag")
-                        tag_elem.text = self._sanitize_nfo_text(tag_name)
-                        tags_added.add(tag_name)
+            if meta and hasattr(meta, "studio") and meta.studio:
+                studio_name = meta.studio.name if hasattr(meta.studio, "name") else str(meta.studio)
+                if studio_name and studio_name not in studios_added:
+                    studio_elem = ET.SubElement(root, "studio")
+                    studio_elem.text = self._sanitize_nfo_text(studio_name)
+                    studios_added.add(studio_name)
 
         # 唯一标识符
         if video_id:
@@ -326,17 +412,109 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
-        # 海报图
-        thumb_elem = ET.SubElement(root, "thumb")
-        thumb_elem.set("aspect", "poster")
-        thumb_elem.set("preview", "poster.jpg")
-        thumb_elem.text = "poster.jpg"
+        # episodeguide（参考格式中保留此字段，即使内容为简单 JSON）
+        if video_id:
+            episodeguide_elem = ET.SubElement(root, "episodeguide")
+            episodeguide_elem.text = f'{{"hanime":"{video_id}"}}'
 
-        # 背景图
-        fanart_elem = ET.SubElement(root, "fanart")
-        fanart_thumb = ET.SubElement(fanart_elem, "thumb")
-        fanart_thumb.set("preview", "fanart.jpg")
-        fanart_thumb.text = "fanart.jpg"
+        # id（参考格式中保留 id 字段，使用 video_id）
+        if video_id:
+            id_elem = ET.SubElement(root, "id")
+            id_elem.text = video_id
+
+        # season 和 episode（参考格式中是 -1，表示电视剧总信息）
+        season_elem = ET.SubElement(root, "season")
+        season_elem.text = "-1"
+        episode_elem = ET.SubElement(root, "episode")
+        episode_elem.text = "-1"
+
+        # 显示顺序（对齐参考格式）
+        displayorder_elem = ET.SubElement(root, "displayorder")
+        displayorder_elem.text = "aired"
+
+        # 状态
+        status_elem = ET.SubElement(root, "status")
+        status_elem.text = SERIES_STATUS_CONTINUING
+
+        # 注意：参考格式中没有 thumb 和 fanart 标签，
+        # 图片文件直接放在目录里，绿联会自动识别
+
+        return self._pretty_xml(root)
+
+    def generate_season_nfo(
+        self,
+        series_title: str,
+        metadata_list: List[Optional[Any]],
+        video_id: str,
+        season_number: int
+    ) -> str:
+        """
+        生成 season.nfo（季信息）
+
+        完全对齐绿联4800plus NAS影视中心的识别格式
+        """
+        root = ET.Element("season")
+
+        # 描述（使用第一个有描述的视频）
+        plot_text = ""
+        for meta in metadata_list:
+            if meta and hasattr(meta, "description") and meta.description:
+                plot_text = meta.description
+                break
+        plot_elem = ET.SubElement(root, "plot")
+        plot_elem.text = self._sanitize_nfo_text(plot_text)
+
+        # outline 同 plot
+        outline_elem = ET.SubElement(root, "outline")
+        outline_elem.text = self._sanitize_nfo_text(plot_text)
+
+        # 锁定数据
+        lockdata_elem = ET.SubElement(root, "lockdata")
+        lockdata_elem.text = "false"
+
+        # 添加时间
+        dateadded_elem = ET.SubElement(root, "dateadded")
+        dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 季标题
+        season_title = f"第 {season_number} 季"
+        title_elem = ET.SubElement(root, "title")
+        title_elem.text = season_title
+
+        # 年份
+        earliest_date = None
+        for meta in metadata_list:
+            if meta and hasattr(meta, "upload_date") and meta.upload_date:
+                try:
+                    if isinstance(meta.upload_date, (datetime, date)):
+                        date_val = meta.upload_date
+                    else:
+                        date_str = str(meta.upload_date)[:10]
+                        date_val = datetime.strptime(date_str, "%Y-%m-%d")
+                    if earliest_date is None or date_val < earliest_date:
+                        earliest_date = date_val
+                except (ValueError, TypeError):
+                    pass
+
+        year_elem = ET.SubElement(root, "year")
+        sorttitle_elem = ET.SubElement(root, "sorttitle")
+        sorttitle_elem.text = season_title
+        premiered_elem = ET.SubElement(root, "premiered")
+        releasedate_elem = ET.SubElement(root, "releasedate")
+        if earliest_date:
+            year_elem.text = str(earliest_date.year)
+            premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
+            releasedate_elem.text = earliest_date.strftime("%Y-%m-%d")
+
+        # 唯一标识符
+        if video_id:
+            uniqueid_elem = ET.SubElement(root, "uniqueid")
+            uniqueid_elem.set("type", "hanime")
+            uniqueid_elem.text = video_id
+
+        # 季号
+        seasonnumber_elem = ET.SubElement(root, "seasonnumber")
+        seasonnumber_elem.text = str(season_number)
 
         return self._pretty_xml(root)
 
@@ -345,49 +523,109 @@ class ScrapeService:
         video_detail: Optional[Any],
         season_number: int,
         episode_number: int,
-        episode_title: Optional[str] = None
+        episode_title: Optional[str] = None,
+        series_name: str = ""
     ) -> str:
-        """生成单集 .nfo 文件"""
+        """
+        生成单集 .nfo 文件
+
+        完全对齐绿联4800plus NAS影视中心的识别格式：
+        - plot 用 CDATA 包裹，outline 留空
+        - 字段顺序：plot→outline→lockdata→dateadded→title→rating→year→sorttitle→runtime→uniqueid→episode→season→aired
+        - 不包含 thumb 标签（缩略图文件与视频同名 .jpg，绿联自动识别）
+        """
         root = ET.Element("episodedetails")
 
-        # 标题
-        title_text = episode_title or f"第{episode_number}集"
+        # 描述（CDATA 包裹）
+        plot_text = ""
+        if video_detail and hasattr(video_detail, "description") and video_detail.description:
+            plot_text = video_detail.description
+        plot_elem = ET.SubElement(root, "plot")
+        plot_elem.text = self._sanitize_nfo_text(plot_text)
+
+        # outline 留空（参考格式：<outline />）
+        outline_elem = ET.SubElement(root, "outline")
+
+        # 锁定数据
+        lockdata_elem = ET.SubElement(root, "lockdata")
+        lockdata_elem.text = "false"
+
+        # 添加时间
+        dateadded_elem = ET.SubElement(root, "dateadded")
+        dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 标题（优先使用 subtitle，其次 episode_title，最后"第 N 集"）
+        title_text = episode_title or f"第 {episode_number} 集"
         if video_detail and hasattr(video_detail, "subtitle") and video_detail.subtitle:
             title_text = video_detail.subtitle
+        title_text = self._sanitize_nfo_text(title_text)
         title_elem = ET.SubElement(root, "title")
-        title_elem.text = self._sanitize_nfo_text(title_text)
+        title_elem.text = title_text
 
-        # 季号和集号
-        season_elem = ET.SubElement(root, "season")
-        season_elem.text = str(season_number)
-        episode_elem = ET.SubElement(root, "episode")
-        episode_elem.text = str(episode_number)
+        # 评分（默认7，可从 like_rate 推算）
+        rating_value = "7"
+        if video_detail and hasattr(video_detail, "like_rate") and video_detail.like_rate:
+            try:
+                rate_str = str(video_detail.like_rate).replace("%", "").replace("％", "")
+                rate_num = int(rate_str) / 10.0
+                if 0 < rate_num <= 10:
+                    rating_value = f"{rate_num:.1f}"
+            except (ValueError, TypeError):
+                pass
+        rating_elem = ET.SubElement(root, "rating")
+        rating_elem.text = rating_value
 
-        # 描述
-        if video_detail and hasattr(video_detail, "description") and video_detail.description:
-            plot_elem = ET.SubElement(root, "plot")
-            plot_elem.text = self._sanitize_nfo_text(video_detail.description)
-
-        # 播出日期
+        # 年份
+        year_elem = ET.SubElement(root, "year")
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
-                if isinstance(video_detail.upload_date, datetime):
-                    date_str = video_detail.upload_date.strftime("%Y-%m-%d")
+                if isinstance(video_detail.upload_date, (datetime, date)):
+                    year_elem.text = str(video_detail.upload_date.year)
                 else:
-                    date_str = str(video_detail.upload_date)[:10]
-                aired_elem = ET.SubElement(root, "aired")
-                aired_elem.text = date_str
+                    year_elem.text = str(video_detail.upload_date)[:4]
             except (ValueError, TypeError):
                 pass
 
-        # 单集缩略图
-        season_str = f"S{season_number:02d}"
-        episode_str = f"E{episode_number:02d}"
-        thumb_filename = f"{season_str}{episode_str}-thumb.jpg"
-        thumb_elem = ET.SubElement(root, "thumb")
-        thumb_elem.set("aspect", "thumb")
-        thumb_elem.set("preview", thumb_filename)
-        thumb_elem.text = thumb_filename
+        # 排序标题
+        sorttitle_elem = ET.SubElement(root, "sorttitle")
+        sorttitle_elem.text = title_text
+
+        # 时长（从 duration 解析或使用默认值）
+        runtime_minutes = self._parse_duration_to_minutes(
+            video_detail.duration if video_detail and hasattr(video_detail, "duration") else None
+        )
+        runtime_elem = ET.SubElement(root, "runtime")
+        runtime_elem.text = str(runtime_minutes)
+
+        # 唯一标识符（从 video_detail 获取 video_id）
+        ep_video_id = ""
+        if video_detail and hasattr(video_detail, "video_id") and video_detail.video_id:
+            ep_video_id = video_detail.video_id
+        if ep_video_id:
+            uniqueid_elem = ET.SubElement(root, "uniqueid")
+            uniqueid_elem.set("type", "hanime")
+            uniqueid_elem.set("default", "true")
+            uniqueid_elem.text = ep_video_id
+
+        # 集号和季号（对齐参考格式：episode 在 season 之前）
+        episode_elem = ET.SubElement(root, "episode")
+        episode_elem.text = str(episode_number)
+        season_elem = ET.SubElement(root, "season")
+        season_elem.text = str(season_number)
+
+        # 播出日期
+        aired_elem = ET.SubElement(root, "aired")
+        if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
+            try:
+                if isinstance(video_detail.upload_date, (datetime, date)):
+                    aired_elem.text = video_detail.upload_date.strftime("%Y-%m-%d")
+                else:
+                    aired_elem.text = str(video_detail.upload_date)[:10]
+            except (ValueError, TypeError):
+                pass
+
+        # 注意：参考格式中没有 thumb 标签，
+        # 缩略图文件与视频同名（.jpg），绿联自动识别
 
         return self._pretty_xml(root)
 
@@ -396,8 +634,33 @@ class ScrapeService:
         video_detail: Optional[Any],
         video_id: str = ""
     ) -> str:
-        """生成 movie.nfo（电影模式）"""
+        """
+        生成 movie.nfo（电影模式）
+
+        完全对齐绿联4800plus NAS影视中心的识别格式：
+        - plot/outline 用 CDATA 包裹
+        - 不包含 thumb/fanart 标签（图片文件直接放在目录里，绿联自动识别）
+        """
         root = ET.Element("movie")
+
+        # 描述
+        plot_text = ""
+        if video_detail and hasattr(video_detail, "description") and video_detail.description:
+            plot_text = video_detail.description
+        plot_elem = ET.SubElement(root, "plot")
+        plot_elem.text = self._sanitize_nfo_text(plot_text)
+
+        # outline 同 plot
+        outline_elem = ET.SubElement(root, "outline")
+        outline_elem.text = self._sanitize_nfo_text(plot_text)
+
+        # 锁定数据
+        lockdata_elem = ET.SubElement(root, "lockdata")
+        lockdata_elem.text = "false"
+
+        # 添加时间
+        dateadded_elem = ET.SubElement(root, "dateadded")
+        dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # 标题
         title_text = ""
@@ -410,34 +673,82 @@ class ScrapeService:
         if not title_text:
             title_text = "Unknown"
 
+        title_text = self._sanitize_nfo_text(title_text)
         title_elem = ET.SubElement(root, "title")
-        title_elem.text = self._sanitize_nfo_text(title_text)
+        title_elem.text = title_text
 
         originaltitle_elem = ET.SubElement(root, "originaltitle")
-        originaltitle_elem.text = self._sanitize_nfo_text(title_text)
+        originaltitle_elem.text = title_text
 
-        # 描述
-        if video_detail and hasattr(video_detail, "description") and video_detail.description:
-            plot_elem = ET.SubElement(root, "plot")
-            plot_elem.text = self._sanitize_nfo_text(video_detail.description)
+        # 评分（对齐参考格式：rating 在 year 之前）
+        rating_value = DEFAULT_RATING
+        if video_detail and hasattr(video_detail, "like_rate") and video_detail.like_rate:
+            try:
+                rate_str = str(video_detail.like_rate).replace("%", "").replace("％", "")
+                rate_num = int(rate_str) / 10.0
+                if 0 < rate_num <= 10:
+                    rating_value = f"{rate_num:.1f}"
+            except (ValueError, TypeError):
+                pass
+        rating_elem = ET.SubElement(root, "rating")
+        rating_elem.text = rating_value
+
+        # 年份
+        year_elem = ET.SubElement(root, "year")
+        if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
+            try:
+                if isinstance(video_detail.upload_date, (datetime, date)):
+                    year_elem.text = str(video_detail.upload_date.year)
+                else:
+                    year_elem.text = str(video_detail.upload_date)[:4]
+            except (ValueError, TypeError):
+                pass
+
+        # 排序标题（对齐参考格式：sorttitle 在 year 之后）
+        sorttitle_elem = ET.SubElement(root, "sorttitle")
+        sorttitle_elem.text = title_text[:4] if title_text else ""
 
         # 分级
         mpaa_elem = ET.SubElement(root, "mpaa")
         mpaa_elem.text = MPAA_ADULT_RATING
 
-        # 日期和年份
+        # 首播日期和发布日期
+        premiered_elem = ET.SubElement(root, "premiered")
+        releasedate_elem = ET.SubElement(root, "releasedate")
         if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
             try:
-                if isinstance(video_detail.upload_date, datetime):
+                if isinstance(video_detail.upload_date, (datetime, date)):
                     date_val = video_detail.upload_date
                 else:
-                    date_val = datetime.fromisoformat(str(video_detail.upload_date))
-                premiered_elem = ET.SubElement(root, "premiered")
+                    date_str = str(video_detail.upload_date)[:10]
+                    date_val = datetime.strptime(date_str, "%Y-%m-%d")
                 premiered_elem.text = date_val.strftime("%Y-%m-%d")
-                year_elem = ET.SubElement(root, "year")
-                year_elem.text = str(date_val.year)
+                releasedate_elem.text = date_val.strftime("%Y-%m-%d")
             except (ValueError, TypeError):
                 pass
+
+        # 时长（从 duration 解析或使用默认值）
+        runtime_minutes = self._parse_duration_to_minutes(
+            video_detail.duration if video_detail and hasattr(video_detail, "duration") else None
+        )
+        runtime_elem = ET.SubElement(root, "runtime")
+        runtime_elem.text = str(runtime_minutes)
+
+        # 国家
+        country_elem = ET.SubElement(root, "country")
+        country_elem.text = DEFAULT_COUNTRY
+
+        # 类型
+        for fixed_genre in ["动画", "成人"]:
+            genre_elem = ET.SubElement(root, "genre")
+            genre_elem.text = fixed_genre
+
+        # 视频类型
+        if video_detail and hasattr(video_detail, "video_type") and video_detail.video_type:
+            vt_name = video_detail.video_type.name if hasattr(video_detail.video_type, "name") else str(video_detail.video_type)
+            if vt_name and vt_name not in {"动画", "成人"}:
+                genre_elem = ET.SubElement(root, "genre")
+                genre_elem.text = self._sanitize_nfo_text(vt_name)
 
         # 制作公司
         if video_detail and hasattr(video_detail, "studio") and video_detail.studio:
@@ -446,19 +757,6 @@ class ScrapeService:
                 studio_elem = ET.SubElement(root, "studio")
                 studio_elem.text = self._sanitize_nfo_text(studio_name)
 
-        # 类型
-        for fixed_genre in ["动画", "成人"]:
-            genre_elem = ET.SubElement(root, "genre")
-            genre_elem.text = fixed_genre
-
-        # 标签
-        if video_detail and hasattr(video_detail, "tags") and video_detail.tags:
-            for tag in video_detail.tags:
-                tag_name = tag.name if hasattr(tag, "name") else str(tag)
-                if tag_name:
-                    tag_elem = ET.SubElement(root, "tag")
-                    tag_elem.text = self._sanitize_nfo_text(tag_name)
-
         # 唯一标识符
         if video_id:
             uniqueid_elem = ET.SubElement(root, "uniqueid")
@@ -466,21 +764,105 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
-        # 海报图（竖版，详情页用）
-        thumb_elem = ET.SubElement(root, "thumb")
-        thumb_elem.set("aspect", "poster")
-        thumb_elem.set("preview", "poster.jpg")
-        thumb_elem.text = "poster.jpg"
+            # id（参考格式中保留 id 字段）
+            id_elem = ET.SubElement(root, "id")
+            id_elem.text = video_id
 
-        # 背景图
-        fanart_elem = ET.SubElement(root, "fanart")
-        fanart_thumb = ET.SubElement(fanart_elem, "thumb")
-        fanart_thumb.set("preview", "fanart.jpg")
-        fanart_thumb.text = "fanart.jpg"
+        # 注意：参考格式中没有 thumb 和 fanart 标签，
+        # 图片文件直接放在目录里，绿联会自动识别
 
         return self._pretty_xml(root)
 
     # ==================== 图片处理 ====================
+
+    @staticmethod
+    def _get_horizontal_thumbnail_url(cover_url: str) -> str:
+        """
+        从 cover URL 推导横向缩略图 URL
+
+        hanime 源站图片 URL 规律：
+        - 竖版海报：/image/cover/{filename}.jpg (268x394)
+        - 横版缩略图：/image/thumbnail/{filename}.jpg (1024x576)
+
+        两者共享相同的文件名，只是路径段不同。
+        如果 cover_url 已经是 thumbnail 格式，直接返回；
+        如果是 cover 格式，替换路径段；
+        其他情况返回原 URL。
+        """
+        if not cover_url:
+            return ""
+        if THUMBNAIL_URL_PATH in cover_url:
+            return cover_url
+        if COVER_URL_PATH in cover_url:
+            return cover_url.replace(COVER_URL_PATH, THUMBNAIL_URL_PATH)
+        return cover_url
+
+    @staticmethod
+    def _parse_duration_to_minutes(duration: Optional[str]) -> int:
+        """
+        将 duration 字符串解析为分钟数
+
+        支持的格式：
+        - "HH:MM:SS"（如 "01:23:45"）
+        - "MM:SS"（如 "23:45"）
+        - "123 min" / "123分钟" 等带单位的数字
+        - 纯数字（视为分钟）
+
+        解析失败或为空时返回 DEFAULT_RUNTIME_MINUTES。
+        向上取整（保证显示时长不会比实际短）。
+        """
+        if not duration:
+            return DEFAULT_RUNTIME_MINUTES
+
+        text = str(duration).strip()
+        if not text:
+            return DEFAULT_RUNTIME_MINUTES
+
+        # 格式1：HH:MM:SS 或 MM:SS
+        time_match = re.match(r'^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$', text)
+        if time_match:
+            parts = [int(g) for g in time_match.groups() if g is not None]
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+            else:
+                hours = 0
+                minutes, seconds = parts
+            total_seconds = hours * 3600 + minutes * 60 + seconds
+            # 向上取整到分钟
+            return max(1, (total_seconds + 59) // 60)
+
+        # 格式2：带单位的数字（如 "123 min", "45分钟"）
+        unit_match = re.match(r'^(\d+(?:\.\d+)?)\s*(min|mins|minute|minutes|分钟|分)?$', text, re.IGNORECASE)
+        if unit_match:
+            try:
+                value = float(unit_match.group(1))
+                # 向上取整
+                return max(1, int(value) if value == int(value) else int(value) + 1)
+            except (ValueError, TypeError):
+                pass
+
+        # 格式3：纯数字字符串（视为分钟）
+        if text.isdigit():
+            try:
+                return max(1, int(text))
+            except (ValueError, TypeError):
+                pass
+
+        return DEFAULT_RUNTIME_MINUTES
+
+    def _extract_runtime_minutes(self, metadata_list: List[Optional[Any]]) -> int:
+        """
+        从元数据列表中提取时长（分钟）
+
+        优先使用第一个有效 duration 解析的分钟数，
+        解析失败或为空时返回 DEFAULT_RUNTIME_MINUTES。
+        """
+        for meta in metadata_list:
+            if meta and hasattr(meta, "duration") and meta.duration:
+                minutes = self._parse_duration_to_minutes(meta.duration)
+                if minutes > 0:
+                    return minutes
+        return DEFAULT_RUNTIME_MINUTES
 
     async def generate_poster(
         self,
@@ -488,13 +870,15 @@ class ScrapeService:
         cover_url: str
     ) -> bool:
         """
-        生成 poster.jpg（封面海报）
+        生成 poster.jpg（竖版封面海报）
 
-        绿联影视中心仅识别JPG格式封面。
-        1. 优先使用已有封面文件
-        2. 否则从URL下载并转换为JPG
+        绿联影视中心通过 poster.jpg 识别封面。
+        1. 优先使用已有 poster.jpg
+        2. 否则从已有封面文件复制/转换
+        3. 最后从 URL 下载（使用 cf_bypasser 绕过 Cloudflare）
+        4. 下载后用 PIL 放大到标准尺寸（1000x1426）使用 LANCZOS 重采样
         """
-        poster_path = series_dir / "poster.jpg"
+        poster_path = series_dir / POSTER_FILENAME
 
         # 如果已有 poster.jpg，直接使用
         if poster_path.exists():
@@ -508,19 +892,25 @@ class ScrapeService:
                 if settings.SCRAPE_CONVERT_COVER_JPG and existing_cover.suffix.lower() != ".jpg":
                     success = self._convert_image_to_jpg(existing_cover, poster_path)
                     if success:
+                        self._upscale_to_standard(poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT)
                         logger.info(f"封面转换成功: {existing_cover} -> {poster_path}")
                         return True
                 else:
                     shutil.copy2(existing_cover, poster_path)
+                    self._upscale_to_standard(poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT)
                     logger.info(f"封面复制成功: {existing_cover} -> {poster_path}")
                     return True
             except Exception as e:
                 logger.warning(f"封面处理失败: {e}")
 
-        # 从URL下载
+        # 从URL下载（使用 cf_bypasser 绕过 Cloudflare）
         if cover_url:
             try:
-                return await self._download_cover_as_jpg(cover_url, poster_path)
+                success = await self._download_cover_as_jpg(cover_url, poster_path)
+                if success:
+                    # 放大到标准尺寸以提升显示效果
+                    self._upscale_to_standard(poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT)
+                    return True
             except Exception as e:
                 logger.warning(f"封面下载失败: {e}")
 
@@ -531,36 +921,130 @@ class ScrapeService:
                     self._convert_image_to_jpg(existing_cover, poster_path)
                 else:
                     shutil.copy2(existing_cover, poster_path)
+                self._upscale_to_standard(poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT)
                 return True
             except Exception:
                 pass
 
         return False
 
-    async def generate_episode_thumb(
+    async def generate_backdrop(
         self,
-        season_dir: Path,
-        season_number: int,
-        episode_number: int,
+        series_dir: Path,
         cover_url: str = ""
     ) -> bool:
-        """生成单集缩略图 S01E01-thumb.jpg"""
-        season_str = f"S{season_number:02d}"
-        episode_str = f"E{episode_number:02d}"
-        thumb_filename = f"{season_str}{episode_str}-thumb.jpg"
-        thumb_path = season_dir / thumb_filename
+        """
+        生成 backdrop.jpg（高分辨率横版背景图）
 
-        if thumb_path.exists():
+        策略（优先级从高到低）：
+        1. 优先从横向 thumbnail URL 下载（1024x576，源站原生横版）
+        2. 回退：从 poster.jpg 裁剪 16:9 横条
+        3. 回退：从 cover_url 下载并裁剪
+        下载后放大到 1920x1080 标准尺寸
+        """
+        backdrop_path = series_dir / BACKDROP_FILENAME
+
+        if backdrop_path.exists():
+            logger.info(f"backdrop.jpg 已存在: {backdrop_path}")
             return True
 
-        if cover_url:
+        # 优先从横向 thumbnail URL 下载高分辨率横版图
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
             try:
-                success = await self._download_cover_as_jpg(cover_url, thumb_path)
+                success = await self._download_cover_as_jpg(thumbnail_url, backdrop_path)
                 if success:
-                    logger.info(f"单集缩略图下载成功: {thumb_path}")
+                    # 放大到标准尺寸 1920x1080
+                    self._upscale_to_standard(backdrop_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"backdrop.jpg 从 thumbnail URL 下载: {backdrop_path}")
                     return True
             except Exception as e:
-                logger.warning(f"单集缩略图下载失败: {e}")
+                logger.warning(f"backdrop 从 thumbnail 下载失败: {e}")
+
+        # 回退：从 poster.jpg 裁剪
+        poster_path = series_dir / POSTER_FILENAME
+        if poster_path.exists():
+            try:
+                success = self._crop_landscape_from_poster(poster_path, backdrop_path)
+                if success:
+                    self._upscale_to_standard(backdrop_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"backdrop.jpg 从 poster.jpg 裁剪: {backdrop_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"生成backdrop失败: {e}")
+
+        # 最后回退：从原 cover_url 下载并裁剪
+        if cover_url:
+            try:
+                import tempfile
+                tmp_path = Path(tempfile.mktemp(suffix=".jpg"))
+                success = await self._download_cover_as_jpg(cover_url, tmp_path)
+                if success:
+                    landscape_success = self._crop_landscape_from_poster(tmp_path, backdrop_path)
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                    if landscape_success:
+                        self._upscale_to_standard(backdrop_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                        logger.info(f"backdrop.jpg 从下载封面裁剪: {backdrop_path}")
+                        return True
+                    if tmp_path.exists():
+                        shutil.copy2(tmp_path, backdrop_path)
+                    return True
+            except Exception as e:
+                logger.warning(f"backdrop下载失败: {e}")
+
+        return False
+
+    async def generate_fanart(
+        self,
+        series_dir: Path,
+        cover_url: str = ""
+    ) -> bool:
+        """
+        生成 fanart.jpg（背景图，与 backdrop 相同）
+
+        绿联NAS影视中心通过 fanart.jpg 识别背景图。
+        优先复制 backdrop.jpg，没有则重新下载生成。
+        """
+        fanart_path = series_dir / FANART_FILENAME
+
+        if fanart_path.exists():
+            logger.info(f"fanart.jpg 已存在: {fanart_path}")
+            return True
+
+        # 优先复制 backdrop.jpg
+        backdrop_path = series_dir / BACKDROP_FILENAME
+        if backdrop_path.exists():
+            try:
+                shutil.copy2(backdrop_path, fanart_path)
+                logger.info(f"fanart.jpg 从 backdrop.jpg 复制: {fanart_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"生成fanart失败: {e}")
+
+        # 回退：从 thumbnail URL 下载
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
+            try:
+                success = await self._download_cover_as_jpg(thumbnail_url, fanart_path)
+                if success:
+                    self._upscale_to_standard(fanart_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"fanart.jpg 从 thumbnail URL 下载: {fanart_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"fanart 下载失败: {e}")
+
+        # 最后回退：从 poster.jpg 裁剪
+        poster_path = series_dir / POSTER_FILENAME
+        if poster_path.exists():
+            try:
+                success = self._crop_landscape_from_poster(poster_path, fanart_path)
+                if success:
+                    self._upscale_to_standard(fanart_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"fanart.jpg 从 poster.jpg 裁剪: {fanart_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"生成fanart失败: {e}")
 
         return False
 
@@ -570,47 +1054,249 @@ class ScrapeService:
         cover_url: str = ""
     ) -> bool:
         """
-        生成 landscape.jpg（横版缩略图）
+        生成 landscape.jpg（横版缩略图，列表页用）
 
-        绿联影视中心列表页使用此图做缩略图！
-        如果只有竖版 poster，裁剪中部横条生成横版，
-        避免绿联将竖版压扁导致模糊。
+        绿联影视中心列表页使用此图做缩略图。
+        优先从 thumbnail URL 下载（原生 1024x576 横版），
+        回退复制 backdrop.jpg，最后从 poster 裁剪。
         """
-        landscape_path = series_dir / "landscape.jpg"
+        landscape_path = series_dir / LANDSCAPE_FILENAME
 
         if landscape_path.exists():
+            logger.info(f"landscape.jpg 已存在: {landscape_path}")
             return True
 
-        # 尝试从 poster.jpg 生成横版缩略图
-        poster_path = series_dir / "poster.jpg"
+        # 优先从 thumbnail URL 下载
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
+            try:
+                success = await self._download_cover_as_jpg(thumbnail_url, landscape_path)
+                if success:
+                    # 调整到标准尺寸 1000x562
+                    self._resize_to_standard(landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                    logger.info(f"landscape.jpg 从 thumbnail URL 下载: {landscape_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"landscape 下载失败: {e}")
+
+        # 回退：复制 backdrop.jpg
+        backdrop_path = series_dir / BACKDROP_FILENAME
+        if backdrop_path.exists():
+            try:
+                shutil.copy2(backdrop_path, landscape_path)
+                self._resize_to_standard(landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                logger.info(f"landscape.jpg 从 backdrop.jpg 复制: {landscape_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"生成landscape失败: {e}")
+
+        # 最后回退：从 poster.jpg 裁剪
+        poster_path = series_dir / POSTER_FILENAME
         if poster_path.exists():
             try:
                 success = self._crop_landscape_from_poster(poster_path, landscape_path)
                 if success:
-                    logger.info(f"landscape.jpg 从 poster.jpg 裁剪生成: {landscape_path}")
+                    self._resize_to_standard(landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                    logger.info(f"landscape.jpg 从 poster.jpg 裁剪: {landscape_path}")
                     return True
             except Exception as e:
                 logger.warning(f"生成landscape失败: {e}")
 
-        # 从URL下载
-        if cover_url:
+        return False
+
+    async def generate_thumb(
+        self,
+        series_dir: Path,
+        cover_url: str = ""
+    ) -> bool:
+        """
+        生成 thumb.jpg（横版缩略图，与 landscape 相同）
+
+        绿联NAS影视中心通过 thumb.jpg 识别缩略图。
+        优先复制 landscape.jpg，回退复制 backdrop.jpg。
+        """
+        thumb_path = series_dir / THUMB_FILENAME
+
+        if thumb_path.exists():
+            logger.info(f"thumb.jpg 已存在: {thumb_path}")
+            return True
+
+        # 优先复制 landscape.jpg
+        landscape_path = series_dir / LANDSCAPE_FILENAME
+        if landscape_path.exists():
             try:
-                # 先下载为临时文件，再裁剪为横版
-                import tempfile
-                tmp_path = Path(tempfile.mktemp(suffix=".jpg"))
-                success = await self._download_cover_as_jpg(cover_url, tmp_path)
+                shutil.copy2(landscape_path, thumb_path)
+                logger.info(f"thumb.jpg 从 landscape.jpg 复制: {thumb_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"生成thumb失败: {e}")
+
+        # 回退：复制 backdrop.jpg
+        backdrop_path = series_dir / BACKDROP_FILENAME
+        if backdrop_path.exists():
+            try:
+                shutil.copy2(backdrop_path, thumb_path)
+                self._resize_to_standard(thumb_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                logger.info(f"thumb.jpg 从 backdrop.jpg 复制: {thumb_path}")
+                return True
+            except Exception as e:
+                logger.warning(f"生成thumb失败: {e}")
+
+        # 最后回退：从 thumbnail URL 下载
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
+            try:
+                success = await self._download_cover_as_jpg(thumbnail_url, thumb_path)
                 if success:
-                    landscape_success = self._crop_landscape_from_poster(tmp_path, landscape_path)
-                    if tmp_path.exists():
-                        tmp_path.unlink()
-                    if landscape_success:
-                        logger.info(f"landscape.jpg 从下载封面裁剪生成: {landscape_path}")
-                        return True
-                    # 裁剪失败就直接用原图
-                    shutil.copy2(tmp_path, landscape_path) if tmp_path.exists() else None
+                    self._resize_to_standard(thumb_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                    logger.info(f"thumb.jpg 从 thumbnail URL 下载: {thumb_path}")
                     return True
             except Exception as e:
-                logger.warning(f"landscape下载失败: {e}")
+                logger.warning(f"thumb 下载失败: {e}")
+
+        # 最后从 poster 裁剪
+        poster_path = series_dir / POSTER_FILENAME
+        if poster_path.exists():
+            try:
+                success = self._crop_landscape_from_poster(poster_path, thumb_path)
+                if success:
+                    self._resize_to_standard(thumb_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT)
+                    logger.info(f"thumb.jpg 从 poster.jpg 裁剪: {thumb_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"生成thumb失败: {e}")
+
+        return False
+
+    async def generate_banner(
+        self,
+        series_dir: Path,
+        cover_url: str = ""
+    ) -> bool:
+        """
+        生成 banner.jpg（横幅图，长宽比 5.4:1，如 1000x185）
+
+        绿联NAS影视中心通过 banner.jpg 识别横幅。
+        从横向图（backdrop/landscape/thumb）裁剪中部 5.4:1 横条。
+        """
+        banner_path = series_dir / BANNER_FILENAME
+
+        if banner_path.exists():
+            logger.info(f"banner.jpg 已存在: {banner_path}")
+            return True
+
+        # 优先从已有的横向图裁剪
+        for src_name in [BACKDROP_FILENAME, LANDSCAPE_FILENAME, THUMB_FILENAME, FANART_FILENAME]:
+            src_path = series_dir / src_name
+            if src_path.exists():
+                try:
+                    success = self._crop_banner_from_landscape(src_path, banner_path)
+                    if success:
+                        logger.info(f"banner.jpg 从 {src_name} 裁剪: {banner_path}")
+                        return True
+                except Exception as e:
+                    logger.warning(f"生成banner失败: {e}")
+
+        # 回退：从 thumbnail URL 下载后裁剪
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
+            try:
+                import tempfile
+                tmp_path = Path(tempfile.mktemp(suffix=".jpg"))
+                success = await self._download_cover_as_jpg(thumbnail_url, tmp_path)
+                if success:
+                    banner_success = self._crop_banner_from_landscape(tmp_path, banner_path)
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                    if banner_success:
+                        logger.info(f"banner.jpg 从下载 thumbnail 裁剪: {banner_path}")
+                        return True
+                    # 裁剪失败就直接用原图
+                    if tmp_path.exists():
+                        shutil.copy2(tmp_path, banner_path)
+                    return True
+            except Exception as e:
+                logger.warning(f"banner 下载失败: {e}")
+
+        # 最后回退：从 poster.jpg 裁剪（极少情况）
+        poster_path = series_dir / POSTER_FILENAME
+        if poster_path.exists():
+            try:
+                # 先裁剪 16:9 横版，再裁剪 5.4:1 banner
+                tmp_landscape = series_dir / ".tmp_landscape_for_banner.jpg"
+                success = self._crop_landscape_from_poster(poster_path, tmp_landscape)
+                if success:
+                    banner_success = self._crop_banner_from_landscape(tmp_landscape, banner_path)
+                    if tmp_landscape.exists():
+                        tmp_landscape.unlink()
+                    if banner_success:
+                        logger.info(f"banner.jpg 从 poster.jpg 裁剪: {banner_path}")
+                        return True
+            except Exception as e:
+                logger.warning(f"生成banner失败: {e}")
+
+        return False
+
+    async def generate_episode_thumb(
+        self,
+        season_dir: Path,
+        season_number: int,
+        episode_number: int,
+        cover_url: str = "",
+        series_name: str = ""
+    ) -> bool:
+        """
+        生成单集缩略图（横版，1920x1080 或原生分辨率）
+
+        文件名格式：番剧名 - S01E01 - 第 1 集.jpg
+        与视频文件同名（.jpg），绿联自动识别。
+        优先使用 thumbnail URL（横版 1024x576），回退使用 cover URL。
+        """
+        safe_name = self._sanitize_filename(series_name) if series_name else ""
+        season_str = f"S{season_number:02d}"
+        episode_str = f"E{episode_number:02d}"
+
+        if safe_name:
+            thumb_filename = f"{safe_name} - {season_str}{episode_str} - 第 {episode_number} 集.jpg"
+        else:
+            thumb_filename = f"{season_str}{episode_str}-thumb.jpg"
+        thumb_path = season_dir / thumb_filename
+
+        if thumb_path.exists():
+            return True
+
+        # 优先使用 thumbnail URL（横版高分辨率）
+        thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
+        if thumbnail_url:
+            try:
+                success = await self._download_cover_as_jpg(thumbnail_url, thumb_path)
+                if success:
+                    # 放大到 1920x1080 标准尺寸（对齐参考格式）
+                    self._upscale_to_standard(thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"单集缩略图下载成功: {thumb_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"单集缩略图从 thumbnail 下载失败: {e}")
+
+        # 回退：使用原 cover_url
+        if cover_url:
+            try:
+                success = await self._download_cover_as_jpg(cover_url, thumb_path)
+                if success:
+                    # 如果是竖版，裁剪为横版
+                    if not self._is_landscape_image(thumb_path):
+                        tmp_path = season_dir / f".tmp_{thumb_filename}"
+                        shutil.move(str(thumb_path), str(tmp_path))
+                        crop_success = self._crop_landscape_from_poster(tmp_path, thumb_path)
+                        if tmp_path.exists():
+                            tmp_path.unlink()
+                        if not crop_success:
+                            shutil.copy2(cover_url, thumb_path)
+                    self._upscale_to_standard(thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
+                    logger.info(f"单集缩略图从 cover URL 下载: {thumb_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"单集缩略图下载失败: {e}")
 
         return False
 
@@ -662,40 +1348,147 @@ class ScrapeService:
             logger.error(f"裁剪landscape失败: {e}")
             return False
 
-    async def generate_fanart(
-        self,
-        series_dir: Path,
-        cover_url: str = ""
-    ) -> bool:
+    def _crop_banner_from_landscape(self, landscape_path: Path, banner_path: Path) -> bool:
         """
-        生成 fanart.jpg（背景图）
+        从横版图裁剪出 banner（长宽比 5.4:1，如 1000x185）
 
-        如果没有专门的背景图，使用封面作为替代
+        裁剪策略：从横版图中部取 5.4:1 横条
         """
-        fanart_path = series_dir / "fanart.jpg"
+        try:
+            from PIL import Image
 
-        if fanart_path.exists():
-            return True
+            with Image.open(landscape_path) as img:
+                width, height = img.size
 
-        # 尝试使用 poster.jpg 作为 fanart
-        poster_path = series_dir / "poster.jpg"
-        if poster_path.exists():
-            try:
-                shutil.copy2(poster_path, fanart_path)
-                logger.info(f"fanart.jpg 从 poster.jpg 生成: {fanart_path}")
+                # 目标高度 = 宽度 / 5.4 （5.4:1 比例）
+                target_height = int(width / 5.4)
+                if target_height > height:
+                    # 图太矮，按实际高度计算
+                    target_height = height
+                # 从中间取横条
+                top = (height - target_height) // 2
+                box = (0, top, width, top + target_height)
+
+                cropped = img.crop(box)
+                # 调整到标准尺寸 1000x185
+                resized = cropped.resize(
+                    (BANNER_STANDARD_WIDTH, BANNER_STANDARD_HEIGHT),
+                    Image.Resampling.LANCZOS
+                )
+                rgb_img = resized.convert("RGB") if resized.mode != "RGB" else resized
+                rgb_img.save(banner_path, "JPEG", quality=100, subsampling=0)
                 return True
-            except Exception as e:
-                logger.warning(f"生成fanart失败: {e}")
 
-        # 从URL下载
-        if cover_url:
-            try:
-                success = await self._download_cover_as_jpg(cover_url, fanart_path)
-                return success
-            except Exception as e:
-                logger.warning(f"fanart下载失败: {e}")
+        except ImportError:
+            # Pillow不可用，直接复制
+            shutil.copy2(landscape_path, banner_path)
+            return True
+        except Exception as e:
+            logger.error(f"裁剪banner失败: {e}")
+            return False
 
-        return False
+    def _upscale_to_standard(self, image_path: Path, target_width: int, target_height: int) -> bool:
+        """
+        将图片放大到标准尺寸（仅放大，不缩小）
+
+        使用 LANCZOS 重采样算法保证画质。
+        如果原图已经大于等于目标尺寸，不处理。
+        如果原图比例与目标比例不一致，先裁剪再缩放。
+        """
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                width, height = img.size
+
+                # 如果已经大于等于目标尺寸，不处理
+                if width >= target_width and height >= target_height:
+                    return True
+
+                # 计算目标比例
+                target_ratio = target_width / target_height
+                current_ratio = width / height
+
+                if abs(current_ratio - target_ratio) > 0.05:
+                    # 比例不一致，先裁剪
+                    if current_ratio > target_ratio:
+                        # 原图更宽，裁剪左右
+                        new_width = int(height * target_ratio)
+                        left = (width - new_width) // 2
+                        box = (left, 0, left + new_width, height)
+                    else:
+                        # 原图更高，裁剪上下
+                        new_height = int(width / target_ratio)
+                        top = (height - new_height) // 2
+                        box = (0, top, width, top + new_height)
+                    img = img.crop(box)
+
+                # 放大到目标尺寸
+                resized = img.resize(
+                    (target_width, target_height),
+                    Image.Resampling.LANCZOS
+                )
+                rgb_img = resized.convert("RGB") if resized.mode != "RGB" else resized
+                rgb_img.save(image_path, "JPEG", quality=100, subsampling=0)
+                return True
+
+        except ImportError:
+            logger.warning("Pillow未安装，无法放大图片")
+            return False
+        except Exception as e:
+            logger.warning(f"放大图片失败: {e}")
+            return False
+
+    def _resize_to_standard(self, image_path: Path, target_width: int, target_height: int) -> bool:
+        """
+        将图片调整到标准尺寸（裁剪+缩放，比例不一致时先裁剪）
+
+        与 _upscale_to_standard 不同，此方法会强制调整到目标尺寸，
+        即使原图更大也会缩小。
+        """
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                width, height = img.size
+
+                # 如果尺寸已经一致，不处理
+                if width == target_width and height == target_height:
+                    return True
+
+                # 计算目标比例
+                target_ratio = target_width / target_height
+                current_ratio = width / height
+
+                if abs(current_ratio - target_ratio) > 0.05:
+                    # 比例不一致，先裁剪
+                    if current_ratio > target_ratio:
+                        # 原图更宽，裁剪左右
+                        new_width = int(height * target_ratio)
+                        left = (width - new_width) // 2
+                        box = (left, 0, left + new_width, height)
+                    else:
+                        # 原图更高，裁剪上下
+                        new_height = int(width / target_ratio)
+                        top = (height - new_height) // 2
+                        box = (0, top, width, top + new_height)
+                    img = img.crop(box)
+
+                # 缩放到目标尺寸
+                resized = img.resize(
+                    (target_width, target_height),
+                    Image.Resampling.LANCZOS
+                )
+                rgb_img = resized.convert("RGB") if resized.mode != "RGB" else resized
+                rgb_img.save(image_path, "JPEG", quality=100, subsampling=0)
+                return True
+
+        except ImportError:
+            logger.warning("Pillow未安装，无法调整图片尺寸")
+            return False
+        except Exception as e:
+            logger.warning(f"调整图片尺寸失败: {e}")
+            return False
 
     # ==================== 文件重命名和目录重组 ====================
 
@@ -707,28 +1500,67 @@ class ScrapeService:
         episode_mapping: Dict[str, int],
         scrape_mode: ScrapeMode,
         is_rename_file: bool,
-        is_reorganize_directory: bool
+        is_reorganize_directory: bool,
+        metadata_list: List[Optional[Any]] = None
     ) -> List[str]:
         """
         重命名视频文件并重组目录结构
 
         电视剧模式：
           原始: 番剧名/video_id_subtitle.mp4
-          目标: 番剧名/Season 01/S01E01.mp4
+          目标: 番剧名 (年份)/Season 1/番剧名 - S01E01 - 第 1 集.mp4
 
         电影模式：
           原始: 番剧名/video_id_subtitle.mp4
           目标: 番剧名 (年份)/番剧名 (年份).mp4
+
+        如果番剧目录名尚未包含年份，且能从元数据获取到年份，则重命名目录为 "番剧名 (年份)"。
         """
         renamed_files = []
 
+        # 从元数据获取年份
+        year_str = ""
+        if metadata_list:
+            first_meta = next((m for m in metadata_list if m), None)
+            if first_meta and hasattr(first_meta, "upload_date") and first_meta.upload_date:
+                try:
+                    if isinstance(first_meta.upload_date, (datetime, date)):
+                        year_str = f" ({first_meta.upload_date.year})"
+                    else:
+                        year_str = f" ({str(first_meta.upload_date)[:4]})"
+                except (ValueError, TypeError):
+                    pass
+
+        # 重命名番剧目录（添加年份，避免重复添加）
+        if is_reorganize_directory and year_str:
+            # 检查目录名是否已包含年份（如 "番剧名 (2011)"）
+            if not re.search(r'\(\d{4}\)', series_dir.name):
+                new_dir_name = f"{series_name}{year_str}"
+                new_series_dir = series_dir.parent / new_dir_name
+                if series_dir != new_series_dir and not new_series_dir.exists():
+                    old_dir_str = str(series_dir)
+                    new_dir_str = str(new_series_dir)
+                    try:
+                        series_dir.rename(new_series_dir)
+                        renamed_files.append(f"目录重命名: {series_dir.name} -> {new_series_dir.name}")
+                        logger.info(f"番剧目录重命名: {series_dir.name} -> {new_series_dir.name}")
+                        series_dir = new_series_dir
+                        # 更新 video_entries 中的文件路径，避免后续重命名时找不到文件
+                        for entry in video_entries:
+                            if entry.get("file_path", "").startswith(old_dir_str):
+                                entry["file_path"] = new_dir_str + entry["file_path"][len(old_dir_str):]
+                    except Exception as e:
+                        logger.error(f"番剧目录重命名失败: {e}")
+
         if scrape_mode == ScrapeMode.TV_SHOW:
-            # 电视剧模式：创建 Season 01 目录
+            # 电视剧模式：创建 Season 1 目录（对齐参考格式，不带前导零）
             if is_reorganize_directory:
-                season_dir = series_dir / f"{SEASON_DIR_PREFIX}01"
+                season_dir = series_dir / f"{SEASON_DIR_PREFIX}1"
                 season_dir.mkdir(parents=True, exist_ok=True)
             else:
                 season_dir = series_dir
+
+            safe_series_name = self._sanitize_filename(series_name)
 
             for entry in video_entries:
                 video_path = Path(entry["file_path"])
@@ -739,10 +1571,13 @@ class ScrapeService:
                     continue
 
                 if is_rename_file:
-                    # 新文件名: S01E01.mp4
+                    # 新文件名格式：番剧名 - S01E01 - 第 1 集.mp4
                     season_str = "S01"
                     episode_str = f"E{episode_num:02d}"
-                    new_filename = f"{season_str}{episode_str}{video_path.suffix.lower()}"
+                    new_filename = (
+                        f"{safe_series_name} - {season_str}{episode_str} - "
+                        f"第 {episode_num} 集{video_path.suffix.lower()}"
+                    )
                 else:
                     new_filename = video_path.name
 
@@ -752,8 +1587,12 @@ class ScrapeService:
                     try:
                         # 移动文件
                         shutil.move(str(video_path), str(new_path))
-                        renamed_files.append(f"{video_path.name} -> {new_path.relative_to(series_dir)}")
-                        logger.info(f"文件重命名: {video_path.name} -> {new_path.relative_to(series_dir)}")
+                        try:
+                            relative_path = new_path.relative_to(series_dir)
+                        except ValueError:
+                            relative_path = new_path.name
+                        renamed_files.append(f"{video_path.name} -> {relative_path}")
+                        logger.info(f"文件重命名: {video_path.name} -> {relative_path}")
                     except Exception as e:
                         logger.error(f"文件重命名失败: {video_path} -> {new_path}: {e}")
 
@@ -761,19 +1600,6 @@ class ScrapeService:
             # 电影模式：重命名为 番剧名 (年份).mp4
             for entry in video_entries:
                 video_path = Path(entry["file_path"])
-                video_id = entry["video_id"]
-
-                # 尝试获取年份
-                year_str = ""
-                try:
-                    video_detail = await self.video_service.get_video_detail(video_id)
-                    if video_detail and hasattr(video_detail, "upload_date") and video_detail.upload_date:
-                        if isinstance(video_detail.upload_date, datetime):
-                            year_str = f" ({video_detail.upload_date.year})"
-                        else:
-                            year_str = f" ({str(video_detail.upload_date)[:4]})"
-                except Exception:
-                    pass
 
                 if is_rename_file:
                     safe_name = self._sanitize_filename(series_name)
@@ -872,6 +1698,7 @@ class ScrapeService:
             )
 
             # 预览单集NFO
+            safe_series_name = self._sanitize_filename(series_name)
             for entry in video_entries:
                 video_id = entry["video_id"]
                 episode_num = episode_mapping.get(video_id, 0)
@@ -879,10 +1706,15 @@ class ScrapeService:
                     continue
                 meta = next((m for i, m in enumerate(metadata_list)
                               if video_entries[i]["video_id"] == video_id), None)
-                episode_nfo = self.generate_episode_nfo(meta, 1, episode_num)
-                season_str = f"S01"
+                episode_nfo = self.generate_episode_nfo(
+                    meta, 1, episode_num, series_name=series_name
+                )
+                season_str = "S01"
                 episode_str = f"E{episode_num:02d}"
-                nfo_filename = f"{season_str}{episode_str}.nfo"
+                episode_filename = (
+                    f"{safe_series_name} - {season_str}{episode_str} - 第 {episode_num} 集"
+                )
+                nfo_filename = f"{episode_filename}.nfo"
                 preview.episode_nfos.append({
                     "filename": nfo_filename,
                     "content": episode_nfo
@@ -890,11 +1722,11 @@ class ScrapeService:
 
                 # 重命名映射
                 original_name = Path(entry["file_path"]).name
-                new_name = f"{season_str}{episode_str}.mp4"
+                new_name = f"{episode_filename}.mp4"
                 if original_name != new_name:
                     preview.rename_mapping.append({
                         "original": original_name,
-                        "new": f"Season 01/{new_name}"
+                        "new": f"Season 1/{new_name}"
                     })
         else:
             # 预览 movie.nfo
@@ -914,12 +1746,32 @@ class ScrapeService:
         metadata_list: List[Optional[Any]],
         episode_mapping: Dict[str, int]
     ) -> tuple:
-        """生成电视剧模式的NFO和图片文件"""
+        """
+        生成电视剧模式的NFO和图片文件
+
+        目录结构对齐绿联4800plus NAS影视中心识别格式：
+        番剧名 (年份)/
+        ├── tvshow.nfo
+        ├── poster.jpg, backdrop.jpg, fanart.jpg, landscape.jpg, thumb.jpg, banner.jpg
+        └── Season 1/
+            ├── poster.jpg（复制根目录）
+            ├── season.nfo
+            ├── 番剧名 - S01E01 - 第 1 集.nfo
+            ├── 番剧名 - S01E01 - 第 1 集.jpg
+            └── ...
+        """
         nfo_files = []
         image_files = []
 
-        # 1. 生成 tvshow.nfo
+        # 获取第一个有效 video_id 和 cover_url
         first_video_id = video_entries[0]["video_id"] if video_entries else ""
+        first_cover_url = ""
+        for meta in metadata_list:
+            if meta and hasattr(meta, "cover_url") and meta.cover_url:
+                first_cover_url = meta.cover_url
+                break
+
+        # 1. 生成 tvshow.nfo
         tvshow_nfo_content = self.generate_tvshow_nfo(
             series_name, metadata_list, first_video_id
         )
@@ -927,30 +1779,75 @@ class ScrapeService:
         await self._write_nfo_file(tvshow_nfo_path, tvshow_nfo_content)
         nfo_files.append(str(tvshow_nfo_path))
 
-        # 2. 生成 poster.jpg
-        first_cover_url = ""
-        for meta in metadata_list:
-            if meta and hasattr(meta, "cover_url") and meta.cover_url:
-                first_cover_url = meta.cover_url
-                break
-
+        # 2. 生成 poster.jpg（竖版海报，绿联识别用）
         poster_success = await self.generate_poster(series_dir, first_cover_url)
         if poster_success:
-            image_files.append(str(series_dir / "poster.jpg"))
+            image_files.append(str(series_dir / POSTER_FILENAME))
 
-        # 3. 生成 landscape.jpg（横版缩略图，绿联列表页用）
-        landscape_success = await self.generate_landscape(series_dir, first_cover_url)
-        if landscape_success:
-            image_files.append(str(series_dir / "landscape.jpg"))
+        # 3. 生成 backdrop.jpg（横版背景图，从 poster 裁剪或下载）
+        backdrop_success = await self.generate_backdrop(series_dir, first_cover_url)
+        if backdrop_success:
+            image_files.append(str(series_dir / BACKDROP_FILENAME))
 
-        # 4. 生成 fanart.jpg
+        # 4. 生成 fanart.jpg（复制 backdrop）
         fanart_success = await self.generate_fanart(series_dir, first_cover_url)
         if fanart_success:
-            image_files.append(str(series_dir / "fanart.jpg"))
+            image_files.append(str(series_dir / FANART_FILENAME))
 
-        # 5. 生成各集NFO和缩略图
-        # 确定Season目录（可能已经重组过）
-        season_dir = series_dir / f"{SEASON_DIR_PREFIX}01"
+        # 5. 生成 landscape.jpg（复制 backdrop）
+        landscape_success = await self.generate_landscape(series_dir, first_cover_url)
+        if landscape_success:
+            image_files.append(str(series_dir / LANDSCAPE_FILENAME))
+
+        # 6. 生成 thumb.jpg（复制 landscape）
+        thumb_success = await self.generate_thumb(series_dir, first_cover_url)
+        if thumb_success:
+            image_files.append(str(series_dir / THUMB_FILENAME))
+
+        # 7. 生成 banner.jpg（复制 landscape）
+        banner_success = await self.generate_banner(series_dir, first_cover_url)
+        if banner_success:
+            image_files.append(str(series_dir / BANNER_FILENAME))
+
+        # 8. 创建 Season 1 目录（对齐参考格式，不带前导零）
+        season_dir = series_dir / f"{SEASON_DIR_PREFIX}1"
+        season_dir.mkdir(parents=True, exist_ok=True)
+
+        # 9. 生成 season.nfo
+        season_nfo_content = self.generate_season_nfo(
+            series_name, metadata_list, first_video_id, 1
+        )
+        season_nfo_path = season_dir / SEASON_NFO_FILENAME
+        await self._write_nfo_file(season_nfo_path, season_nfo_content)
+        nfo_files.append(str(season_nfo_path))
+
+        # 10. 复制 poster.jpg 到 Season 目录
+        season_poster_path = season_dir / POSTER_FILENAME
+        if not season_poster_path.exists():
+            root_poster = series_dir / POSTER_FILENAME
+            if root_poster.exists():
+                try:
+                    shutil.copy2(root_poster, season_poster_path)
+                    image_files.append(str(season_poster_path))
+                except Exception as e:
+                    logger.warning(f"复制 poster.jpg 到 Season 目录失败: {e}")
+
+        # 10.1 生成 season01-poster.jpg 到根目录（对齐参考格式"未来日记"）
+        # 参考格式中根目录有 season01-poster.jpg，与 poster.jpg 内容相同，
+        # 绿联NAS通过此文件识别第1季的海报
+        season_numbered_poster_path = series_dir / SEASON_POSTER_FILENAME_PATTERN.format(1)
+        if not season_numbered_poster_path.exists():
+            root_poster = series_dir / POSTER_FILENAME
+            if root_poster.exists():
+                try:
+                    shutil.copy2(root_poster, season_numbered_poster_path)
+                    image_files.append(str(season_numbered_poster_path))
+                    logger.info(f"season01-poster.jpg 已生成: {season_numbered_poster_path}")
+                except Exception as e:
+                    logger.warning(f"生成 season01-poster.jpg 失败: {e}")
+
+        # 11. 为每集生成 NFO 和缩略图
+        safe_series_name = self._sanitize_filename(series_name)
 
         for i, entry in enumerate(video_entries):
             video_id = entry["video_id"]
@@ -960,28 +1857,30 @@ class ScrapeService:
 
             meta = metadata_list[i] if i < len(metadata_list) else None
 
-            # 单集NFO
-            episode_nfo_content = self.generate_episode_nfo(meta, 1, episode_num)
-            season_str = f"S01"
+            # 单集NFO（文件名：番剧名 - S01E01 - 第 1 集.nfo）
+            episode_nfo_content = self.generate_episode_nfo(
+                meta, 1, episode_num, series_name=series_name
+            )
+            season_str = "S01"
             episode_str = f"E{episode_num:02d}"
-            nfo_filename = f"{season_str}{episode_str}.nfo"
+            episode_filename = (
+                f"{safe_series_name} - {season_str}{episode_str} - 第 {episode_num} 集"
+            )
 
-            # NFO文件放在Season目录（如果存在）或根目录
-            nfo_save_dir = season_dir if season_dir.exists() else series_dir
-            episode_nfo_path = nfo_save_dir / nfo_filename
+            episode_nfo_path = season_dir / f"{episode_filename}.nfo"
             await self._write_nfo_file(episode_nfo_path, episode_nfo_content)
             nfo_files.append(str(episode_nfo_path))
 
-            # 单集缩略图
-            cover_url = ""
+            # 单集缩略图（文件名：番剧名 - S01E01 - 第 1 集.jpg，与视频同名）
+            episode_cover_url = ""
             if meta and hasattr(meta, "cover_url") and meta.cover_url:
-                cover_url = meta.cover_url
+                episode_cover_url = meta.cover_url
             thumb_success = await self.generate_episode_thumb(
-                nfo_save_dir, 1, episode_num, cover_url
+                season_dir, 1, episode_num, episode_cover_url,
+                series_name=series_name
             )
             if thumb_success:
-                thumb_filename = f"{season_str}{episode_str}-thumb.jpg"
-                image_files.append(str(nfo_save_dir / thumb_filename))
+                image_files.append(str(season_dir / f"{episode_filename}.jpg"))
 
         return nfo_files, image_files
 
@@ -1012,17 +1911,32 @@ class ScrapeService:
             cover_url = meta.cover_url
         poster_success = await self.generate_poster(series_dir, cover_url)
         if poster_success:
-            image_files.append(str(series_dir / "poster.jpg"))
+            image_files.append(str(series_dir / POSTER_FILENAME))
 
-        # 生成 landscape.jpg（横版缩略图，绿联列表页用）
-        landscape_success = await self.generate_landscape(series_dir, cover_url)
-        if landscape_success:
-            image_files.append(str(series_dir / "landscape.jpg"))
+        # 生成 backdrop.jpg
+        backdrop_success = await self.generate_backdrop(series_dir, cover_url)
+        if backdrop_success:
+            image_files.append(str(series_dir / BACKDROP_FILENAME))
 
-        # 生成 fanart.jpg
+        # 生成 fanart.jpg（复制 backdrop）
         fanart_success = await self.generate_fanart(series_dir, cover_url)
         if fanart_success:
-            image_files.append(str(series_dir / "fanart.jpg"))
+            image_files.append(str(series_dir / FANART_FILENAME))
+
+        # 生成 landscape.jpg
+        landscape_success = await self.generate_landscape(series_dir, cover_url)
+        if landscape_success:
+            image_files.append(str(series_dir / LANDSCAPE_FILENAME))
+
+        # 生成 thumb.jpg
+        thumb_success = await self.generate_thumb(series_dir, cover_url)
+        if thumb_success:
+            image_files.append(str(series_dir / THUMB_FILENAME))
+
+        # 生成 banner.jpg
+        banner_success = await self.generate_banner(series_dir, cover_url)
+        if banner_success:
+            image_files.append(str(series_dir / BANNER_FILENAME))
 
         return nfo_files, image_files
 
@@ -1032,7 +1946,7 @@ class ScrapeService:
 
         支持两种目录结构：
         1. 扁平结构: 番剧名/video_id_subtitle.mp4
-        2. Season结构: 番剧名/Season 01/S01E01.mp4
+        2. Season结构: 番剧名/Season 1/S01E01.mp4
         """
         entries = []
 
@@ -1143,10 +2057,24 @@ class ScrapeService:
             if path.exists():
                 return path
 
+        # 排除所有刮削生成的图片文件名（包括 season01-poster.jpg 这类季海报）
+        excluded_names = {
+            POSTER_FILENAME, BACKDROP_FILENAME, FANART_FILENAME,
+            LANDSCAPE_FILENAME, THUMB_FILENAME, BANNER_FILENAME,
+            TVSHOW_NFO_FILENAME, MOVIE_NFO_FILENAME,
+        }
+        # season{NN}-poster.jpg 模式（季海报，刮削生成）
+        excluded_patterns = [
+            re.compile(r'^season\d+-poster\.(jpg|png|webp)$', re.IGNORECASE),
+        ]
+
         # 查找 video_id.jpg 格式的封面
         for f in series_dir.iterdir():
             if f.is_file() and f.suffix.lower() in (".jpg", ".png", ".webp"):
-                if f.stem and not f.name.startswith("S") and f.name != "fanart.jpg":
+                if f.stem and not f.name.startswith("S") and f.name not in excluded_names:
+                    # 排除 season{NN}-poster.jpg 这类文件
+                    if any(p.match(f.name) for p in excluded_patterns):
+                        continue
                     return f
 
         # 查找Season子目录中的封面
@@ -1162,31 +2090,34 @@ class ScrapeService:
         """
         下载封面并保存为JPG格式
         绿联影视中心仅识别JPG格式。
+
+        使用 cf_bypasser 的 direct_client 下载（带正确的 headers 和代理配置），
+        避免裸 httpx 无法绕过 Cloudflare 防护导致 403 错误。
         """
-        import httpx
         try:
             save_path.parent.mkdir(parents=True, exist_ok=True)
 
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                response = await client.get(cover_url)
-                if response.status_code != 200:
-                    logger.warning(f"下载封面失败: HTTP {response.status_code}")
-                    return False
+            # 通过 cf_bypasser 的 direct_client 下载（带正确 headers 和代理）
+            client = await cf_bypasser.direct_client
+            response = await client.get(cover_url)
+            if response.status_code != 200:
+                logger.warning(f"下载封面失败: HTTP {response.status_code}, URL: {cover_url}")
+                return False
 
-                if settings.SCRAPE_CONVERT_COVER_JPG:
-                    # 转换为JPG
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
-                        tmp.write(response.content)
-                        tmp_path = Path(tmp.name)
+            if settings.SCRAPE_CONVERT_COVER_JPG:
+                # 转换为JPG
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
+                    tmp.write(response.content)
+                    tmp_path = Path(tmp.name)
 
-                    success = self._convert_to_jpg(tmp_path, save_path)
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
-                    return success
-                else:
-                    save_path.write_bytes(response.content)
-                    return True
+                success = self._convert_to_jpg(tmp_path, save_path)
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                return success
+            else:
+                save_path.write_bytes(response.content)
+                return True
 
         except Exception as e:
             logger.error(f"下载封面异常: {e}")
@@ -1270,7 +2201,7 @@ class ScrapeService:
 
     @staticmethod
     def _pretty_xml(root: ET.Element) -> str:
-        """生成格式化的XML字符串"""
+        """生成格式化的XML字符串，并对 plot/outline 标签内容包裹 CDATA"""
         rough_string = ET.tostring(root, encoding="unicode", xml_declaration=False)
         try:
             parsed = minidom.parseString(rough_string)
@@ -1280,9 +2211,56 @@ class ScrapeService:
             if lines and lines[0].startswith("<?xml"):
                 lines = lines[1:]
             content = NFO_XML_DECLARATION + "\n".join(lines)
+            # 对需要 CDATA 包裹的标签进行处理
+            content = ScrapeService._wrap_cdata(content, CDATA_TAGS)
             return content
         except Exception:
-            return NFO_XML_DECLARATION + rough_string
+            content = NFO_XML_DECLARATION + rough_string
+            content = ScrapeService._wrap_cdata(content, CDATA_TAGS)
+            return content
+
+    @staticmethod
+    def _wrap_cdata(xml_string: str, tags: List[str]) -> str:
+        """
+        将指定标签的内容用 CDATA 包裹
+
+        Python 标准库 xml.etree.ElementTree 不直接支持 CDATA，
+        通过后处理将 <tag>内容</tag> 转为 <tag><![CDATA[内容]]></tag>。
+        空标签（<tag></tag> 或 <tag />）保持不变。
+        """
+        for tag in tags:
+            # 匹配 <tag>非空内容</tag>（不匹配空标签和自闭合标签）
+            pattern = rf'<{tag}>(.+?)</{tag}>'
+
+            def replace(match):
+                content = match.group(1)
+                # 如果已经是 CDATA，不重复包裹
+                if content.strip().startswith('<![CDATA['):
+                    return match.group(0)
+                # 反转义 XML 实体（ET 会自动转义特殊字符）
+                content = (content
+                           .replace('&lt;', '<')
+                           .replace('&gt;', '>')
+                           .replace('&quot;', '"')
+                           .replace('&apos;', "'")
+                           .replace('&amp;', '&'))
+                # 处理 CDATA 结束序列（极少见，但需正确转义）
+                content = content.replace(']]>', ']]]]><![CDATA[>')
+                return f'<{tag}><![CDATA[{content}]]></{tag}>'
+
+            xml_string = re.sub(pattern, replace, xml_string, flags=re.DOTALL)
+        return xml_string
+
+    @staticmethod
+    def _is_landscape_image(image_path: Path) -> bool:
+        """判断图片是否为横版（宽 >= 高）"""
+        try:
+            from PIL import Image
+            with Image.open(image_path) as img:
+                width, height = img.size
+                return width >= height
+        except Exception:
+            return False
 
 
 # 创建刮削服务实例

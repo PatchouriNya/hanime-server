@@ -51,6 +51,14 @@
           <el-button size="small" @click="confirmClearFailed" :disabled="!downloadStore.failedDownloads.length">
             <el-icon><Delete /></el-icon> 清除失败
           </el-button>
+          <el-button
+            size="small"
+            :type="downloadStore.batchDeleteMode ? 'warning' : 'default'"
+            @click="toggleBatchDeleteMode"
+          >
+            <el-icon><Delete /></el-icon>
+            {{ downloadStore.batchDeleteMode ? '退出批量' : '批量删除' }}
+          </el-button>
         </div>
         <div class="right-actions">
           <el-button-group>
@@ -63,6 +71,25 @@
           </el-button-group>
           <el-button size="small" @click="refreshDownloadList">
             <el-icon><Refresh /></el-icon> 刷新
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 批量删除模式下的操作栏 -->
+      <div v-if="downloadStore.batchDeleteMode" class="batch-action-bar">
+        <div class="batch-info">
+          <span class="batch-count">已选 {{ downloadStore.selectedDownloadsCount }} 项</span>
+          <el-button text size="small" @click="selectAllInCurrentTab">全选当前列表</el-button>
+          <el-button text size="small" @click="downloadStore.clearSelection()">取消选择</el-button>
+        </div>
+        <div class="batch-buttons">
+          <el-button @click="toggleBatchDeleteMode">取消</el-button>
+          <el-button
+            type="danger"
+            :disabled="!downloadStore.hasSelectedDownloads"
+            @click="confirmBatchDelete"
+          >
+            <el-icon><Delete /></el-icon> 删除选中
           </el-button>
         </div>
       </div>
@@ -227,7 +254,7 @@
       :before-close="closeVideoPlayer"
     >
       <div class="video-player-wrapper">
-        <VideoPlayer 
+        <VideoPlayer
           v-if="videoPlayerVisible"
           :streamUrls="[{ url: currentVideo.url, quality: '原始质量' }]"
           :coverUrl="currentVideo.cover_url"
@@ -236,6 +263,39 @@
           :showDebugInfo="false"
         />
       </div>
+    </el-dialog>
+
+    <!-- 批量删除确认对话框 -->
+    <el-dialog
+      v-model="batchDeleteDialogVisible"
+      title="批量删除确认"
+      width="420px"
+      :width="isMobile ? '90%' : '420px'"
+    >
+      <div class="batch-delete-dialog-content">
+        <p class="dialog-text">
+          即将删除选中的 <strong>{{ downloadStore.selectedDownloadsCount }}</strong> 条下载记录
+        </p>
+        <div class="dialog-option">
+          <el-checkbox v-model="batchDeleteDeleteFiles">
+            同时删除源文件
+          </el-checkbox>
+          <p class="option-hint">
+            勾选后将删除：视频文件、刮削生成的 NFO 元数据文件、封面和缩略图等图片文件；<br/>
+            不勾选则仅删除下载记录，保留所有文件。
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="batchDeleteDialogVisible = false">取消</el-button>
+        <el-button
+          type="danger"
+          :loading="false"
+          @click="executeBatchDelete"
+        >
+          确认删除
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -266,6 +326,12 @@ const { shouldBlur, mode: blurMode } = useContentSettings();
 const viewMode = ref<'list' | 'group'>('list');
 const activeTab = ref('all');
 const searchQuery = ref('');
+const isMobile = ref(window.innerWidth <= 480);
+
+// 窗口大小变化处理
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 480;
+};
 
 // 分组视图状态
 const groups = ref<any[]>([]);
@@ -479,6 +545,59 @@ const confirmClearFailed = async () => {
   } catch {}
 };
 
+// 切换批量删除模式
+const toggleBatchDeleteMode = () => {
+  downloadStore.toggleBatchDeleteMode();
+  if (downloadStore.batchDeleteMode) {
+    ElMessage.info('已进入批量删除模式，点击下载项进行选择');
+  }
+};
+
+// 全选当前标签下的所有下载项
+const selectAllInCurrentTab = () => {
+  let itemsToSelect: any[] = [];
+  switch (activeTab.value) {
+    case 'active':
+      itemsToSelect = downloadStore.activeDownloads;
+      break;
+    case 'completed':
+      itemsToSelect = downloadStore.completedDownloads;
+      break;
+    case 'failed':
+      itemsToSelect = downloadStore.failedDownloads;
+      break;
+    default:
+      itemsToSelect = downloadStore.allDownloads;
+  }
+  downloadStore.selectAll(itemsToSelect);
+};
+
+// 确认批量删除（打开对话框询问是否删除源文件）
+const batchDeleteDialogVisible = ref(false);
+const batchDeleteDeleteFiles = ref(true);
+
+const confirmBatchDelete = () => {
+  if (!downloadStore.hasSelectedDownloads) {
+    ElMessage.warning('请先选择要删除的下载项');
+    return;
+  }
+  // 重置默认值：默认删除源文件
+  batchDeleteDeleteFiles.value = true;
+  batchDeleteDialogVisible.value = true;
+};
+
+// 执行批量删除
+const executeBatchDelete = async () => {
+  const deleteFiles = batchDeleteDeleteFiles.value;
+  batchDeleteDialogVisible.value = false;
+
+  const result = await downloadStore.deleteSelected(deleteFiles);
+  if (result) {
+    await downloadStore.initializeDownloads();
+    if (viewMode.value === 'group') await loadGroups();
+  }
+};
+
 // 全部暂停
 const pauseAllDownloads = async () => {
   await downloadStore.pauseAllDownloads();
@@ -515,10 +634,12 @@ const closeVideoPlayer = () => {
 onMounted(async () => {
   await downloadStore.initializeDownloads();
   downloadStore.startPolling();
+  window.addEventListener('resize', handleResize);
 });
 
 onUnmounted(() => {
   downloadStore.stopPolling();
+  window.removeEventListener('resize', handleResize);
 });
 </script>
 
@@ -866,6 +987,75 @@ onUnmounted(() => {
   padding: 10px;
 }
 
+/* 批量删除操作栏 */
+.batch-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 15px;
+  background: linear-gradient(135deg, rgba(245, 108, 108, 0.12), rgba(230, 162, 60, 0.12));
+  border: 1px solid rgba(245, 108, 108, 0.3);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.batch-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger-color, #F56C6C);
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 批量删除对话框 */
+.batch-delete-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog-text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+.dialog-text strong {
+  color: var(--danger-color, #F56C6C);
+  font-size: 18px;
+  margin: 0 4px;
+}
+
+.dialog-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 8px;
+}
+
+.option-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary-color);
+  line-height: 1.5;
+}
+
 /* PC端大气布局 */
 @media (min-width: 769px) {
   .downloads-page {
@@ -931,7 +1121,7 @@ onUnmounted(() => {
   .left-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 6px;
   }
   .right-actions {
@@ -943,6 +1133,24 @@ onUnmounted(() => {
   .download-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .stat-card { min-width: 0; flex: none; }
   .group-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  /* 批量操作栏手机端垂直布局 */
+  .batch-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+  .batch-info {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .batch-buttons {
+    width: 100%;
+  }
+  .batch-buttons .el-button {
+    flex: 1;
+  }
 }
 
 @media (max-width: 480px) {
@@ -954,6 +1162,7 @@ onUnmounted(() => {
   .stat-card { padding: 8px; }
   .stat-value { font-size: 16px; }
   .stat-label { font-size: 12px; }
+  /* 手机端每行2个按钮，5个按钮=3行（2+2+1） */
   .left-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .right-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }

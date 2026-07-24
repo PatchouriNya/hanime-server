@@ -71,7 +71,7 @@
             </el-form-item>
             <el-form-item label="目录重组">
               <el-switch v-model="scrapeForm.reorganizeDir" />
-              <span class="form-hint">创建Season 01子目录结构</span>
+              <span class="form-hint">创建Season 1子目录结构</span>
             </el-form-item>
             <el-form-item label="封面转换JPG">
               <el-switch v-model="scrapeForm.convertCover" />
@@ -231,7 +231,7 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v3.0.6</span>
+              <span class="about-value">v3.1.6</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
