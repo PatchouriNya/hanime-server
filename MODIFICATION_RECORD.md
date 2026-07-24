@@ -3,22 +3,41 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
-## 二十五、刮削封面下载失败修复 — v3.0.3 → v3.0.4 (2026-07-24)
+## 二十五、封面下载+详情页按钮+下载页样式 — v3.0.3 → v3.0.4 (2026-07-24)
 
 ### 修改原因
-刮削只有NFO没有图片（图片0个），封面下载全部失败。
-
-### 根因
-`_download_cover_as_jpg` 使用裸 httpx.AsyncClient 下载封面，无法绕过 Cloudflare 防护，导致CDN返回403。
-此外 `client._transport = httpx.HTTPTransport(proxy=...)` 的代理设置方式也不正确。
+1. 刮削封面下载失败（图片0个），裸httpx无法绕过Cloudflare
+2. 需要一个"下载封面"按钮测试封面URL是否正确（首页预览图 vs 播放预览截图）
+3. 下载管理页面手机端按钮样式不齐
 
 ### 修改内容
+
+#### 1. 刮削封面下载修复
 
 **文件：backend/app/services/scrape_service.py**
 - `_download_cover_as_jpg()` 改为使用 `self.video_service.cf_bypasser.get_request(url)` 下载
 - cf_bypasser 内部已处理 Cloudflare 绕过和代理设置
 - 通过 `response.status_code` 和 `response.content` 获取二进制图片数据
-- 移除裸 httpx 导入和错误的代理设置代码
+
+#### 2. 视频详情页下载封面按钮
+
+**文件：frontend/src/components/VideoDetailPage.vue**
+- 新增"下载封面"按钮（Picture图标）
+- `handleDownloadCover()`：先通过搜索接口获取封面URL（首页预览图），再调用后端下载
+- 新增 `isDownloadingCover` loading状态
+- 导入 Picture 图标、request 工具
+
+**文件：backend/app/api/endpoints/downloads.py**
+- cover_router 新增 `POST /cover` 端点
+- 接收 video_id 和 cover_url 参数
+- 使用 cf_bypasser 下载封面到 covers/ 目录
+- 自动检测图片格式并转换为JPG
+
+#### 3. 下载管理页面手机端按钮
+
+**文件：frontend/src/views/Downloads.vue**
+- 768px以下：移除 `justify-content: space-between`，改为 flex 流式布局统一间距
+- 480px以下：按钮 `flex: 1 1 calc(50% - 5px)`，每2个一行
 
 ## 二十四、封面图/合集/按钮修复 — v3.0.2 → v3.0.3 (2026-07-24)
 

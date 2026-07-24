@@ -928,7 +928,15 @@ onUnmounted(() => {
   .header-toolbar { justify-content: space-between; }
   .search-input { flex: 1; }
   .actions-row { flex-direction: column; }
-  .left-actions, .right-actions { width: 100%; justify-content: space-between; }
+  .left-actions, .right-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .left-actions .el-button, .right-actions .el-button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .download-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .stat-card { min-width: 0; flex: none; }
   .group-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
@@ -943,7 +951,11 @@ onUnmounted(() => {
   .stat-card { padding: 8px; }
   .stat-value { font-size: 16px; }
   .stat-label { font-size: 12px; }
-  .left-actions, .right-actions { flex-wrap: wrap; }
+  .left-actions, .right-actions { flex-wrap: wrap; gap: 5px; }
+  .left-actions .el-button, .right-actions .el-button {
+    flex: 1 1 calc(50% - 5px);
+    font-size: 12px;
+  }
   .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .group-title { font-size: 13px; }
 }

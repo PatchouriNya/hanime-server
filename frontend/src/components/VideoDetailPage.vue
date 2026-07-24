@@ -79,6 +79,11 @@
             <el-button type="default" @click="openPlaylistDialog">
               <el-icon><FolderAdd /></el-icon> 播放列表
             </el-button>
+
+            <!-- 下载封面按钮（下载首页预览图到covers目录） -->
+            <el-button type="default" :loading="isDownloadingCover" @click="handleDownloadCover">
+              <el-icon><Picture /></el-icon> 下载封面
+            </el-button>
           </div>
         </div>
       </div>
@@ -265,9 +270,10 @@ import VideoSection from '../components/VideoSection.vue';
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
 import VideoPlayer from './VideoPlayer.vue';
 import VideoComments from './VideoComments.vue';
-import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled, Star, StarFilled, Clock, FolderAdd } from '@element-plus/icons-vue';
+import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled, Star, StarFilled, Clock, FolderAdd, Picture } from '@element-plus/icons-vue';
 import { useDownloadStore } from '../stores/download';
 import { AccountApi, UserPlaylist } from '../api/account';
+import request from '../utils/request';
 import defaultAvatar from '../assets/default-avatar.svg';
 
 export default defineComponent({
@@ -288,7 +294,8 @@ export default defineComponent({
     Star,
     StarFilled,
     Clock,
-    FolderAdd
+    FolderAdd,
+    Picture
   },
   setup() {
     const route = useRoute();
@@ -299,6 +306,7 @@ export default defineComponent({
     const currentTab = ref('intro');
     const isDescriptionExpanded = ref(false);
     const isDownloading = ref(false);
+    const isDownloadingCover = ref(false);
     const seriesDialogVisible = ref(false);
     const selectAll = ref(false);
     const selectedSeries = ref<string[]>([]);
@@ -931,6 +939,47 @@ export default defineComponent({
       }
     });
 
+    // 下载封面（通过搜索接口获取首页预览图URL）
+    const handleDownloadCover = async () => {
+      if (!videoDetail.value.video_id || !videoDetail.value.title) return;
+      isDownloadingCover.value = true;
+      try {
+        // 通过搜索接口获取正确的封面URL（首页预览图）
+        const searchResult = await VideoApi.searchVideos(videoDetail.value.title, 1);
+        let coverUrl = videoDetail.value.cover_url; // 兜底
+
+        if (searchResult?.detailed_videos) {
+          const match = searchResult.detailed_videos.find(
+            (v: any) => v.video_id === videoDetail.value.video_id
+          );
+          if (match?.cover_url) coverUrl = match.cover_url;
+        }
+        if (!coverUrl && searchResult?.basic_videos) {
+          const match = searchResult.basic_videos.find(
+            (v: any) => v.video_id === videoDetail.value.video_id
+          );
+          if (match?.cover_url) coverUrl = match.cover_url;
+        }
+
+        // 调用后端下载封面
+        const response = await request.post('/downloads/cover', null, {
+          params: {
+            video_id: videoDetail.value.video_id,
+            cover_url: coverUrl
+          }
+        });
+        if (response.data?.success) {
+          ElMessage.success('封面已下载到 covers 目录');
+        } else {
+          ElMessage.error(response.data?.message || '封面下载失败');
+        }
+      } catch (e: any) {
+        ElMessage.error(e.message || '封面下载失败');
+      } finally {
+        isDownloadingCover.value = false;
+      }
+    };
+
     return {
       loading,
       error,
@@ -944,6 +993,7 @@ export default defineComponent({
       selectedSeries,
       selectedSeriesMap,
       isDownloading,
+      isDownloadingCover,
       videoPlayerRef,
       handleDownload,
       formatDate,
@@ -983,7 +1033,8 @@ export default defineComponent({
       toggleWatchLater,
       openPlaylistDialog,
       addToPlaylist,
-      createNewPlaylist
+      createNewPlaylist,
+      handleDownloadCover
     };
   }
 });

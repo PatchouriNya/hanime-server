@@ -12,11 +12,22 @@
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><SuccessFilled /></el-icon>
+              <span><strong>视频详情页下载封面按钮：</strong>点击后下载封面到covers目录，封面URL通过搜索接口获取（首页预览图）</span>
+            </li>
+          </ul>
           <h3 class="section-title">修复</h3>
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><Warning /></el-icon>
               <span><strong>刮削封面下载失败：</strong>使用裸httpx无法绕过Cloudflare导致封面下载失败，改为使用cf_bypasser正确下载</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><Warning /></el-icon>
+              <span><strong>下载管理页面手机端按钮不齐：</strong>改为flex流式布局，统一间距和排列</span>
             </li>
           </ul>
         </div>

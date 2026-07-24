@@ -3,6 +3,7 @@ from app.services.download_service import download_manager
 from app.models.download import DownloadRequest, DownloadAction
 from typing import List, Dict, Any, Optional
 from app.config import settings, logger
+from fastapi import APIRouter, Query, Depends
 from fastapi.responses import FileResponse
 from app.utils.auth import get_current_user, verify_token
 import os
@@ -128,6 +129,72 @@ async def get_downloaded_file(video_id: str, user: dict = Depends(get_current_us
 
 
 cover_router = APIRouter()
+
+
+@cover_router.post("/cover")
+async def download_cover(
+    video_id: str = Query(...),
+    cover_url: str = Query(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    下载封面图片到 covers 目录
+    用于测试封面URL是否正确（必须是首页预览图，不是播放预览截图）
+    """
+    try:
+        covers_dir = settings.DOWNLOAD_PATH / "covers"
+        covers_dir.mkdir(parents=True, exist_ok=True)
+
+        # 使用 cf_bypasser 下载封面（绕过 Cloudflare）
+        from app.services.video_service import video_service
+        response = await video_service.cf_bypasser.get_request(cover_url)
+
+        if not response or response.status_code != 200:
+            return {"success": False, "message": f"封面下载失败: HTTP {response.status_code if response else 'N/A'}"}
+
+        content = response.content
+        content_type = response.headers.get("content-type", "")
+
+        # 确定扩展名
+        if "png" in content_type:
+            ext = ".png"
+        elif "webp" in content_type:
+            ext = ".webp"
+        else:
+            ext = ".jpg"
+
+        # 保存原始文件
+        original_path = covers_dir / f"{video_id}{ext}"
+        with open(original_path, "wb") as f:
+            f.write(content)
+
+        # 如果不是JPG，也转换一份JPG
+        if ext != ".jpg":
+            try:
+                from PIL import Image
+                img = Image.open(original_path)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+                jpg_path = covers_dir / f"{video_id}.jpg"
+                img.save(jpg_path, "JPEG", quality=95, subsampling=0)
+                img.close()
+            except ImportError:
+                pass
+
+        file_size = len(content)
+        logger.info(f"封面已下载: {video_id}, 大小: {file_size}字节, URL: {cover_url}")
+        return {"success": True, "message": f"封面已保存到 {covers_dir}", "file_size": file_size}
+
+    except Exception as e:
+        logger.error(f"下载封面失败: {e}")
+        return {"success": False, "message": str(e)}
 
 
 @cover_router.get("/cover/{video_id}")
