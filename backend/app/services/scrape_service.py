@@ -1245,9 +1245,10 @@ class ScrapeService:
                 if not url:
                     continue
                 try:
-                    # 使用 cf_bypasser 下载（绕过 Cloudflare 防护）
+                    # 使用 cf_bypasser 的 direct_client 下载（绕过 Cloudflare 防护，返回 httpx.Response）
                     from app.utils.cloudflare_bypass import cf_bypasser
-                    response = await cf_bypasser.get_request(url)
+                    client = await cf_bypasser.direct_client
+                    response = await client.get(url)
                     if not response or response.status_code != 200:
                         continue
 
