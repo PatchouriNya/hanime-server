@@ -3,6 +3,27 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十七、刮削逻辑回退至3.0.0 — v3.0.5 → v3.0.6 (2026-07-24)
+
+### 修改原因
+v3.0.2~v3.0.5 期间新增的刮削增强（tmdbid合集识别、landscape横版缩略图、搜索接口封面）引入了新问题，决定先回退至3.0.0的稳定刮削逻辑，后续重新设计整理后再修复。
+
+### 修改内容
+
+**文件：backend/app/services/scrape_service.py**
+- `generate_tvshow_nfo()`：删除 `<tmdbid>` 字段
+- NFO 中仅保留 `uniqueid`（type="hanime"）、`thumb`（poster）、`fanart`
+- `generate_episode_nfo()`：删除 `landscape` 横版缩略图，仅保留 episode 缩略图
+
+**文件：backend/app/services/video_service.py**
+- `get_video_detail()` 封面提取回退为：`video_elem.get('poster', '')`
+- 不再通过搜索接口匹配封面海报
+
+### 影响
+- 同系列合集识别暂时失效（缺少 tmdbid）
+- 绿联影视中心列表页封面可能模糊（缺少 landscape 横版图）
+- 将在下个版本重新整理逻辑后修复
+
 ## 二十六、导入错误修复+按钮布局调整 — v3.0.4 → v3.0.5 (2026-07-24)
 
 ### 修改原因

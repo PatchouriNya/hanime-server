@@ -9,7 +9,7 @@
       </button>
       <div class="title-wrapper">
         <h1 class="app-title" @click="goToHome">HanimeViewer</h1>
-        <span class="version-badge">v3.0.5</span>
+        <span class="version-badge">v3.0.6</span>
       </div>
     </div>
     <div class="header-right">

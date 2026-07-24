@@ -326,23 +326,11 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
-        # 系列标识（绿联影视中心通过此字段关联同一系列的所有集）
-        # 使用系列标题的哈希作为系列ID，确保同系列不同集指向同一ID
-        series_id = str(abs(hash(series_title)) % (10 ** 8))  # 8位正整数
-        tmdbid_elem = ET.SubElement(root, "tmdbid")
-        tmdbid_elem.text = series_id
-
-        # 海报图（竖版，详情页用）
+        # 海报图
         thumb_elem = ET.SubElement(root, "thumb")
         thumb_elem.set("aspect", "poster")
         thumb_elem.set("preview", "poster.jpg")
         thumb_elem.text = "poster.jpg"
-
-        # 横版缩略图（预览列表用，绿联影视中心列表页优先使用此图）
-        landscape_elem = ET.SubElement(root, "thumb")
-        landscape_elem.set("aspect", "landscape")
-        landscape_elem.set("preview", "landscape.jpg")
-        landscape_elem.text = "landscape.jpg"
 
         # 背景图
         fanart_elem = ET.SubElement(root, "fanart")
@@ -484,12 +472,6 @@ class ScrapeService:
         thumb_elem.set("preview", "poster.jpg")
         thumb_elem.text = "poster.jpg"
 
-        # 横版缩略图（预览列表用，绿联影视中心列表页优先使用此图）
-        landscape_elem = ET.SubElement(root, "thumb")
-        landscape_elem.set("aspect", "landscape")
-        landscape_elem.set("preview", "landscape.jpg")
-        landscape_elem.text = "landscape.jpg"
-
         # 背景图
         fanart_elem = ET.SubElement(root, "fanart")
         fanart_thumb = ET.SubElement(fanart_elem, "thumb")
@@ -508,49 +490,37 @@ class ScrapeService:
         """
         生成 poster.jpg（封面海报）
 
-        绿联影视中心仅识别JPG格式封面！
-        1. 优先使用已有封面文件（检查分辨率，太低则尝试下载高分辨率版本）
-        2. 否则下载并转换为JPG
+        绿联影视中心仅识别JPG格式封面。
+        1. 优先使用已有封面文件
+        2. 否则从URL下载并转换为JPG
         """
         poster_path = series_dir / "poster.jpg"
 
-        # 如果已有 poster.jpg，检查分辨率是否足够
+        # 如果已有 poster.jpg，直接使用
         if poster_path.exists():
-            resolution = self._get_image_resolution(poster_path)
-            if resolution >= 600:
-                logger.info(f"poster.jpg 已存在且分辨率足够: {poster_path} ({resolution}px)")
-                return True
-            else:
-                logger.warning(f"poster.jpg 分辨率过低: {resolution}px，尝试下载高分辨率版本")
+            logger.info(f"poster.jpg 已存在: {poster_path}")
+            return True
 
         # 尝试从已有封面文件复制/转换
         existing_cover = self._find_existing_cover(series_dir)
-        if existing_cover and not poster_path.exists():
+        if existing_cover:
             try:
-                existing_resolution = self._get_image_resolution(existing_cover)
                 if settings.SCRAPE_CONVERT_COVER_JPG and existing_cover.suffix.lower() != ".jpg":
                     success = self._convert_image_to_jpg(existing_cover, poster_path)
                     if success:
-                        logger.info(f"封面转换成功: {existing_cover} -> {poster_path} ({existing_resolution}px)")
-                        # 如果已有封面分辨率够高，直接使用；否则继续尝试下载
-                        if existing_resolution >= 600:
-                            return True
+                        logger.info(f"封面转换成功: {existing_cover} -> {poster_path}")
+                        return True
                 else:
                     shutil.copy2(existing_cover, poster_path)
-                    logger.info(f"封面复制成功: {existing_cover} -> {poster_path} ({existing_resolution}px)")
-                    if existing_resolution >= 600:
-                        return True
+                    logger.info(f"封面复制成功: {existing_cover} -> {poster_path}")
+                    return True
             except Exception as e:
                 logger.warning(f"封面处理失败: {e}")
 
-        # 从URL下载（_download_cover_as_jpg 会自动尝试高分辨率URL）
+        # 从URL下载
         if cover_url:
             try:
-                success = await self._download_cover_as_jpg(cover_url, poster_path)
-                if success:
-                    resolution = self._get_image_resolution(poster_path)
-                    logger.success(f"封面下载成功: {poster_path} ({resolution}px)")
-                    return True
+                return await self._download_cover_as_jpg(cover_url, poster_path)
             except Exception as e:
                 logger.warning(f"封面下载失败: {e}")
 
@@ -1155,43 +1125,11 @@ class ScrapeService:
                 continue
             try:
                 detail = await self.video_service.get_video_detail(video_id)
-
-                # 通过搜索接口获取正确的封面海报URL
-                # 详情页的 cover_url 可能是 video poster（播放预览截图），不是封面海报
-                # 搜索接口返回的是列表页的缩略图，才是真正的封面
-                if detail and detail.title:
-                    search_cover_url = await self._get_cover_from_search(detail.title, video_id)
-                    if search_cover_url:
-                        detail.cover_url = search_cover_url
-                        logger.info(f"从搜索接口获取到正确封面URL: {detail.title}")
-
                 metadata_list.append(detail)
             except Exception as e:
                 logger.warning(f"获取视频元数据失败 video_id={video_id}: {e}")
                 metadata_list.append(None)
         return metadata_list
-
-    async def _get_cover_from_search(self, title: str, video_id: str) -> str:
-        """
-        通过搜索接口获取视频的封面海报URL
-
-        搜索接口返回的封面是列表页的 main-thumb，是真正的番剧封面海报。
-        详情页的 cover_url 可能是 video poster（播放预览截图）。
-        """
-        try:
-            # 用标题搜索，取第一个匹配 video_id 的结果
-            search_results = await self.video_service.search_videos(title, page=1)
-            if search_results and hasattr(search_results, 'detailed_videos'):
-                for video in search_results.detailed_videos:
-                    if video.video_id == video_id and video.cover_url:
-                        return video.cover_url
-            if search_results and hasattr(search_results, 'basic_videos'):
-                for video in search_results.basic_videos:
-                    if video.video_id == video_id and video.cover_url:
-                        return video.cover_url
-        except Exception as e:
-            logger.warning(f"搜索封面URL失败: {e}")
-        return ""
 
     def _find_existing_cover(self, series_dir: Path) -> Optional[Path]:
         """在番剧目录中查找已有的封面文件"""
@@ -1223,135 +1161,36 @@ class ScrapeService:
     async def _download_cover_as_jpg(self, cover_url: str, save_path: Path) -> bool:
         """
         下载封面并保存为JPG格式
-
-        绿联影视中心仅识别JPG格式！
-        自动尝试获取高分辨率版本，避免列表页封面模糊。
+        绿联影视中心仅识别JPG格式。
         """
+        import httpx
         try:
             save_path.parent.mkdir(parents=True, exist_ok=True)
 
-            import tempfile
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(cover_url)
+                if response.status_code != 200:
+                    logger.warning(f"下载封面失败: HTTP {response.status_code}")
+                    return False
 
-            # 尝试推断高分辨率URL
-            high_res_urls = self._get_high_res_cover_urls(cover_url)
-            
-            # 按优先级尝试：高分辨率URL → 原始URL
-            urls_to_try = high_res_urls + [cover_url]
-            
-            best_tmp_path = None
-            best_resolution = 0
-
-            for url in urls_to_try:
-                if not url:
-                    continue
-                try:
-                    # 使用 cf_bypasser 的 direct_client 下载（绕过 Cloudflare 防护，返回 httpx.Response）
-                    from app.utils.cloudflare_bypass import cf_bypasser
-                    client = await cf_bypasser.direct_client
-                    response = await client.get(url)
-                    if not response or response.status_code != 200:
-                        continue
-
-                    # 写入临时文件
+                if settings.SCRAPE_CONVERT_COVER_JPG:
+                    # 转换为JPG
+                    import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
                         tmp.write(response.content)
-                        tmp_path = tmp.name
+                        tmp_path = Path(tmp.name)
 
-                    # 检查分辨率
-                    resolution = self._get_image_resolution(Path(tmp_path))
-                    if resolution > best_resolution:
-                        # 找到更好的图，替换
-                        if best_tmp_path and os.path.exists(best_tmp_path):
-                            os.remove(best_tmp_path)
-                        best_tmp_path = tmp_path
-                        best_resolution = resolution
-                        logger.info(f"封面下载成功: {url}, 分辨率: {resolution}px")
-                        # 如果分辨率已经够高，不需要继续尝试
-                        if resolution >= 600:
-                            break
-                    else:
-                        # 分辨率更低，丢弃
-                        if os.path.exists(tmp_path):
-                            os.remove(tmp_path)
-
-                except Exception as e:
-                    logger.warning(f"下载封面URL失败: {url} - {e}")
-                    continue
-
-            if not best_tmp_path:
-                logger.warning(f"所有封面URL下载失败: {cover_url}")
-                return False
-
-            # 转换为JPG
-            try:
-                if settings.SCRAPE_CONVERT_COVER_JPG:
-                    success = self._convert_to_jpg(Path(best_tmp_path), save_path)
+                    success = self._convert_to_jpg(tmp_path, save_path)
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                    return success
                 else:
-                    shutil.move(best_tmp_path, str(save_path))
-                    success = True
-            finally:
-                # 清理临时文件
-                if os.path.exists(best_tmp_path):
-                    os.remove(best_tmp_path)
-
-            return success
+                    save_path.write_bytes(response.content)
+                    return True
 
         except Exception as e:
-            logger.error(f"下载封面失败: {e}")
+            logger.error(f"下载封面异常: {e}")
             return False
-
-    def _get_high_res_cover_urls(self, cover_url: str) -> List[str]:
-        """
-        从原始封面URL推断高分辨率版本URL
-
-        hanime1.me CDN 常见的URL模式：
-        - 原始: https://xxx/preview/123.jpg → 高分辨率: https://xxx/poster/123.jpg
-        - 原始: https://xxx/thumbnail/123.jpg → 高分辨率: https://xxx/123.jpg
-        - 原始带尺寸参数: ?w=320 → 去掉参数获取原图
-        """
-        urls = []
-        
-        if not cover_url:
-            return urls
-        
-        # 策略1: URL路径中替换 preview → poster (hanime CDN常见)
-        if '/preview/' in cover_url:
-            high_res_url = cover_url.replace('/preview/', '/poster/')
-            if high_res_url != cover_url:
-                urls.append(high_res_url)
-        
-        # 策略2: URL路径中替换 thumbnail → 原图
-        if '/thumbnail/' in cover_url:
-            high_res_url = cover_url.replace('/thumbnail/', '/')
-            if high_res_url != cover_url:
-                urls.append(high_res_url)
-        
-        # 策略3: 去掉URL中的尺寸参数（如 ?w=320&h=180）
-        from urllib.parse import urlparse, urlunparse, parse_qs
-        parsed = urlparse(cover_url)
-        if parsed.query:
-            qs = parse_qs(parsed.query)
-            # 移除尺寸相关参数
-            size_keys = {'w', 'h', 'width', 'height', 'size', 's', 'q', 'quality'}
-            filtered_qs = {k: v for k, v in qs.items() if k.lower() not in size_keys}
-            if len(filtered_qs) < len(qs):
-                # 有尺寸参数被移除
-                from urllib.parse import urlencode
-                new_query = urlencode(filtered_qs, doseq=True)
-                high_res_url = urlunparse(parsed._replace(query=new_query))
-                if high_res_url != cover_url:
-                    urls.append(high_res_url)
-        
-        # 策略4: 替换文件名中的 _thumb 或 _small 后缀
-        import re
-        for suffix in ['_thumb', '_small', '_preview', '_low']:
-            if suffix in cover_url:
-                high_res_url = cover_url.replace(suffix, '')
-                if high_res_url != cover_url:
-                    urls.append(high_res_url)
-                    break
-        
-        return urls
 
     @staticmethod
     def _get_image_resolution(image_path: Path) -> int:
@@ -1362,17 +1201,7 @@ class ScrapeService:
                 width, height = img.size
                 return max(width, height)
         except Exception:
-            # Pillow不可用，通过文件大小粗略估算（10KB以下可能很小）
-            try:
-                file_size = image_path.stat().st_size
-                if file_size < 10240:  # < 10KB
-                    return 100
-                elif file_size < 51200:  # < 50KB
-                    return 300
-                else:
-                    return 600
-            except Exception:
-                return 0
+            return 0
 
     def _convert_to_jpg(self, source_path: Path, target_path: Path) -> bool:
         """使用Pillow将图片转换为JPG格式"""
