@@ -63,6 +63,8 @@ const handleLogout = () => {
   localStorage.removeItem('tokenType');
   localStorage.removeItem('username');
   localStorage.removeItem('loginTime');
+  // 通知所有组件清除用户状态
+  window.dispatchEvent(new Event('user-logout'));
   router.push('/login');
 };
 

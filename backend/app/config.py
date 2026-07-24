@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "3.0.0")
+    APP_VERSION: str = os.getenv("APP_VERSION", "3.0.1")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -135,6 +135,20 @@ if _scrape_file.exists():
     except Exception as e:
         logger.warning(f"恢复刮削设置失败: {e}")
 
+# 从持久化文件恢复下载目录设置（覆盖 .env 默认值）
+_download_dir_file = settings.DB_PATH / "download_dir_settings.json"
+if _download_dir_file.exists():
+    try:
+        _ddata = _json.loads(_download_dir_file.read_text(encoding="utf-8"))
+        if _ddata.get("download_path"):
+            _restored_path = Path(_ddata["download_path"])
+            if _restored_path.is_dir() or True:  # 允许目录不存在（Docker重启后可能还未挂载）
+                settings.DOWNLOAD_PATH = _restored_path
+                settings.COVER_PATH = _restored_path / "covers"
+                logger.info(f"已从持久化文件恢复下载目录: {settings.DOWNLOAD_PATH}")
+    except Exception as e:
+        logger.warning(f"恢复下载目录设置失败: {e}")
+
 # 打印下载目录信息
 logger.info(f"数据根目录: {settings.DATA_ROOT}")
 logger.info(f"下载目录: {settings.DOWNLOAD_PATH}")
@@ -233,3 +247,16 @@ def save_proxy_settings_to_file():
         logger.info(f"代理设置已持久化: USE_PROXY={settings.USE_PROXY}")
     except Exception as e:
         logger.error(f"持久化代理设置失败: {e}")
+
+
+def save_download_dir_to_file():
+    """将当前下载目录设置持久化到文件，重启后自动恢复"""
+    try:
+        _dir_file = settings.DB_PATH / "download_dir_settings.json"
+        _dir_file.parent.mkdir(parents=True, exist_ok=True)
+        _dir_file.write_text(_json.dumps({
+            "download_path": str(settings.DOWNLOAD_PATH)
+        }, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"下载目录已持久化: {settings.DOWNLOAD_PATH}")
+    except Exception as e:
+        logger.error(f"持久化下载目录失败: {e}")

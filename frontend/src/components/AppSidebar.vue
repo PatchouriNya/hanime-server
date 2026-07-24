@@ -326,12 +326,21 @@ export default defineComponent({
       currentUsername.value = localStorage.getItem('username') || '';
     };
 
+    const handleUserLogout = () => {
+      // 登出时立即清除本地状态，不需要等刷新
+      currentUsername.value = '';
+      avatarUrl.value = '';
+      selectedCoverId.value = '';
+    };
+
     onMounted(() => {
       loadAvatar();
       refreshUsername();
       // 监听 storage 事件（跨标签页同步）和自定义事件（同标签页登录）
       window.addEventListener('storage', refreshUsername);
       window.addEventListener('user-login', refreshUsername);
+      // 监听登出事件，立即清除用户状态
+      window.addEventListener('user-logout', handleUserLogout);
     });
 
     return {

@@ -3,6 +3,63 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十二、v3.0.0 多项bug修复 — v3.0.0 → v3.0.1 (2026-07-24)
+
+### 修改原因
+用户反馈5个问题：绿联影视中心列表封面模糊、登录页选择框换行、登出后头像不消失、图片屏蔽设置不记忆、下载目录设置不记忆。
+
+### 修改内容
+
+#### 1. 刮削封面模糊修复
+
+**问题**：绿联影视中心预览列表封面模糊，点进详情才清楚。原因是列表页将竖版 poster.jpg 压扁为横版缩略图显示，分辨率损失严重。
+
+**文件：backend/app/services/scrape_service.py**
+- tvshow.nfo 和 movie.nfo 中新增 `thumb aspect="landscape"` 声明，指向 `landscape.jpg`
+- 新增 `generate_landscape()` 方法：生成横版缩略图
+- 新增 `_crop_landscape_from_poster()` 方法：从竖版海报裁剪16:9中部横条
+  - 竖版图：取中部16:9区域裁剪
+  - 横版图：直接复制
+- `_generate_tv_show_files()` 和 `_generate_movie_files()` 中新增调用 `generate_landscape()`
+
+#### 2. 登录页选择框换行修复
+
+**文件：frontend/src/views/LoginPage.vue**
+- `.db-type-btn` 添加 `white-space: nowrap`，防止"本地数据库"文字换行
+
+#### 3. 登出后头像不消失修复
+
+**文件：frontend/src/App.vue**
+- `handleLogout()` 中添加 `window.dispatchEvent(new Event('user-logout'))`，通知所有组件
+
+**文件：frontend/src/components/AppSidebar.vue**
+- 新增 `handleUserLogout()` 函数：登出时立即清除 `currentUsername`、`avatarUrl`、`selectedCoverId`
+- `onMounted` 中监听 `user-logout` 事件
+
+#### 4. 图片屏蔽设置不记忆修复
+
+**问题**：`useContentSettings.ts` 中 `isInitialized` 是模块级变量，一旦为 true 就不再 `fetchSettings`。换设备或重新登录后不重新获取设置。
+
+**文件：frontend/src/composables/useContentSettings.ts**（重写）
+- 移除 `isInitialized` 模块级锁定
+- 改为 `enableBlur.value === null` 时触发 `fetchSettings()`
+- 监听 `user-login` 事件：重新获取设置
+- 监听 `user-logout` 事件：重置为默认值
+- 监听 `storage` 事件：跨标签页切换登录时同步
+
+#### 5. 下载目录设置不记忆修复
+
+**问题**：`set_download_dir` 只修改运行时 `settings.DOWNLOAD_PATH`，没有持久化到文件。重启/更新版本后恢复默认。
+
+**文件：backend/app/config.py**
+- 新增 `save_download_dir_to_file()` 函数：保存到 `download_dir_settings.json`
+- 启动时新增从 `download_dir_settings.json` 恢复下载目录的逻辑
+
+**文件：backend/app/api/endpoints/settings.py**
+- `set_download_dir()` 中调用 `save_download_dir_to_file()` 持久化
+- 修正 `COVER_PATH` 为 `new_path / "covers"`（原来是 `new_path`，封面不应和视频混放）
+- 导入 `save_download_dir_to_file`
+
 ## 二十一、里番自动刮削功能 — v2.5.1 → v3.0.0 (2026-07-24)
 
 ### 修改原因

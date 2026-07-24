@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from app.config import settings, logger, save_proxy_settings_to_file
+from app.config import settings, logger, save_proxy_settings_to_file, save_download_dir_to_file
 from app.utils.cloudflare_bypass import cf_bypasser
 import httpx
 import time
@@ -146,7 +146,9 @@ async def set_download_dir(data: DownloadDirSettings):
 
         old_path = settings.DOWNLOAD_PATH
         settings.DOWNLOAD_PATH = new_path
-        settings.COVER_PATH = new_path
+        settings.COVER_PATH = new_path / "covers"
+        # 持久化下载目录设置，重启后自动恢复
+        save_download_dir_to_file()
         logger.info(f"下载目录已更新: {old_path} -> {new_path}")
         return {"success": True, "message": "下载目录已更新", "download_path": str(new_path)}
     except PermissionError:

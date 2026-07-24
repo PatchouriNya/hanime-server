@@ -326,11 +326,17 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
-        # 海报图
+        # 海报图（竖版，详情页用）
         thumb_elem = ET.SubElement(root, "thumb")
         thumb_elem.set("aspect", "poster")
         thumb_elem.set("preview", "poster.jpg")
         thumb_elem.text = "poster.jpg"
+
+        # 横版缩略图（预览列表用，绿联影视中心列表页优先使用此图）
+        landscape_elem = ET.SubElement(root, "thumb")
+        landscape_elem.set("aspect", "landscape")
+        landscape_elem.set("preview", "landscape.jpg")
+        landscape_elem.text = "landscape.jpg"
 
         # 背景图
         fanart_elem = ET.SubElement(root, "fanart")
@@ -466,11 +472,17 @@ class ScrapeService:
             uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
-        # 海报图
+        # 海报图（竖版，详情页用）
         thumb_elem = ET.SubElement(root, "thumb")
         thumb_elem.set("aspect", "poster")
         thumb_elem.set("preview", "poster.jpg")
         thumb_elem.text = "poster.jpg"
+
+        # 横版缩略图（预览列表用，绿联影视中心列表页优先使用此图）
+        landscape_elem = ET.SubElement(root, "thumb")
+        landscape_elem.set("aspect", "landscape")
+        landscape_elem.set("preview", "landscape.jpg")
+        landscape_elem.text = "landscape.jpg"
 
         # 背景图
         fanart_elem = ET.SubElement(root, "fanart")
@@ -557,6 +569,104 @@ class ScrapeService:
                 logger.warning(f"单集缩略图下载失败: {e}")
 
         return False
+
+    async def generate_landscape(
+        self,
+        series_dir: Path,
+        cover_url: str = ""
+    ) -> bool:
+        """
+        生成 landscape.jpg（横版缩略图）
+
+        绿联影视中心列表页使用此图做缩略图！
+        如果只有竖版 poster，裁剪中部横条生成横版，
+        避免绿联将竖版压扁导致模糊。
+        """
+        landscape_path = series_dir / "landscape.jpg"
+
+        if landscape_path.exists():
+            return True
+
+        # 尝试从 poster.jpg 生成横版缩略图
+        poster_path = series_dir / "poster.jpg"
+        if poster_path.exists():
+            try:
+                success = self._crop_landscape_from_poster(poster_path, landscape_path)
+                if success:
+                    logger.info(f"landscape.jpg 从 poster.jpg 裁剪生成: {landscape_path}")
+                    return True
+            except Exception as e:
+                logger.warning(f"生成landscape失败: {e}")
+
+        # 从URL下载
+        if cover_url:
+            try:
+                # 先下载为临时文件，再裁剪为横版
+                import tempfile
+                tmp_path = Path(tempfile.mktemp(suffix=".jpg"))
+                success = await self._download_cover_as_jpg(cover_url, tmp_path)
+                if success:
+                    landscape_success = self._crop_landscape_from_poster(tmp_path, landscape_path)
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                    if landscape_success:
+                        logger.info(f"landscape.jpg 从下载封面裁剪生成: {landscape_path}")
+                        return True
+                    # 裁剪失败就直接用原图
+                    shutil.copy2(tmp_path, landscape_path) if tmp_path.exists() else None
+                    return True
+            except Exception as e:
+                logger.warning(f"landscape下载失败: {e}")
+
+        return False
+
+    def _crop_landscape_from_poster(self, poster_path: Path, landscape_path: Path) -> bool:
+        """
+        从竖版海报裁剪出横版缩略图
+
+        裁剪策略：取图片中部 16:9 区域
+        如果原图已经是横版(宽>高)，直接复制
+        """
+        try:
+            from PIL import Image
+
+            with Image.open(poster_path) as img:
+                width, height = img.size
+
+                # 如果已经是横版，直接保存
+                if width >= height:
+                    rgb_img = img.convert("RGB") if img.mode != "RGB" else img
+                    rgb_img.save(landscape_path, "JPEG", quality=95)
+                    return True
+
+                # 竖版图：从中间裁剪 16:9 横条
+                # 目标高度 = 宽度 * 9 / 16（16:9比例）
+                target_height = int(width * 9 / 16)
+                if target_height > height:
+                    # 图太窄，按实际高度计算最大宽度
+                    target_height = height
+                    target_width = int(height * 16 / 9)
+                    if target_width > width:
+                        target_width = width
+                    left = (width - target_width) // 2
+                    box = (left, 0, left + target_width, target_height)
+                else:
+                    # 从中间取横条
+                    top = (height - target_height) // 2
+                    box = (0, top, width, top + target_height)
+
+                cropped = img.crop(box)
+                rgb_img = cropped.convert("RGB") if cropped.mode != "RGB" else cropped
+                rgb_img.save(landscape_path, "JPEG", quality=95)
+                return True
+
+        except ImportError:
+            # Pillow不可用，直接复制
+            shutil.copy2(poster_path, landscape_path)
+            return True
+        except Exception as e:
+            logger.error(f"裁剪landscape失败: {e}")
+            return False
 
     async def generate_fanart(
         self,
@@ -834,12 +944,17 @@ class ScrapeService:
         if poster_success:
             image_files.append(str(series_dir / "poster.jpg"))
 
-        # 3. 生成 fanart.jpg
+        # 3. 生成 landscape.jpg（横版缩略图，绿联列表页用）
+        landscape_success = await self.generate_landscape(series_dir, first_cover_url)
+        if landscape_success:
+            image_files.append(str(series_dir / "landscape.jpg"))
+
+        # 4. 生成 fanart.jpg
         fanart_success = await self.generate_fanart(series_dir, first_cover_url)
         if fanart_success:
             image_files.append(str(series_dir / "fanart.jpg"))
 
-        # 4. 生成各集NFO和缩略图
+        # 5. 生成各集NFO和缩略图
         # 确定Season目录（可能已经重组过）
         season_dir = series_dir / f"{SEASON_DIR_PREFIX}01"
 
@@ -904,6 +1019,11 @@ class ScrapeService:
         poster_success = await self.generate_poster(series_dir, cover_url)
         if poster_success:
             image_files.append(str(series_dir / "poster.jpg"))
+
+        # 生成 landscape.jpg（横版缩略图，绿联列表页用）
+        landscape_success = await self.generate_landscape(series_dir, cover_url)
+        if landscape_success:
+            image_files.append(str(series_dir / "landscape.jpg"))
 
         # 生成 fanart.jpg
         fanart_success = await self.generate_fanart(series_dir, cover_url)

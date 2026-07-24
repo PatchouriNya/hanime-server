@@ -315,6 +315,7 @@ const handleArrowRight = async () => {
   font-size: 13px;
   cursor: pointer;
   transition: all 0.25s;
+  white-space: nowrap;
 }
 
 .db-type-btn:hover {

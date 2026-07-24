@@ -3,7 +3,6 @@ import request from '../utils/request';
 
 const enableBlur = ref<boolean | null>(null);
 const blurMode = ref<'blur' | 'hide' | null>(null);
-let isInitialized = false;
 let isFetching = false;
 
 const fetchSettings = async () => {
@@ -65,10 +64,35 @@ watch(blurMode, (newVal, oldVal) => {
   debouncedSave();
 });
 
+// 监听登录/登出事件，重新获取设置
+if (typeof window !== 'undefined') {
+  window.addEventListener('user-login', () => {
+    fetchSettings();
+  });
+  window.addEventListener('user-logout', () => {
+    // 登出时重置为默认值
+    enableBlur.value = true;
+    blurMode.value = 'blur';
+  });
+  // 监听 storage 事件（跨标签页切换登录时同步）
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'token') {
+      if (e.newValue) {
+        // 新登录，重新获取设置
+        fetchSettings();
+      } else {
+        // 登出
+        enableBlur.value = true;
+        blurMode.value = 'blur';
+      }
+    }
+  });
+}
+
 export function useContentSettings() {
-  // 确保 fetch 只执行一次
-  if (!isInitialized) {
-    isInitialized = true;
+  // 每次调用都确保设置已加载
+  // 如果值为null（尚未初始化），触发获取
+  if (enableBlur.value === null) {
     fetchSettings();
   }
 
