@@ -1,5 +1,69 @@
 # 更新日志
 
+## v3.3.2 (2026-07-26)
+
+### 修复
+
+1. **根本性修复绿联NAS把同系列多季识别为独立剧集的问题**：
+   - 根因：`season.nfo` 中每个季的 `<uniqueid>` 标签使用了各自集的 video_id（如 Season 1=39710、Season 2=39937、Season 3=431），各季 uniqueid 不同导致绿联NAS 把每季识别为独立剧集，从而拆分成多个条目
+   - 修复：从 `season.nfo` 中**完全移除 uniqueid 标签**（对齐国色芳华参考格式）。季的归属由目录结构（Season N/ 在系列目录下）和 `<seasonnumber>` 标签决定，不需要独立 ID
+   - 参考验证：国色芳华的 season.nfo 完全没有 uniqueid 标签，但绿联NAS 能正确识别为同一合集的不同季
+
+2. **移除 NFO 中 `default="true"` 属性**：
+   - tvshow.nfo、episode.nfo、movie.nfo 的 `<uniqueid>` 标签之前带有 `default="true"` 属性，参考目录（未来日记、国色芳华等）均无此属性
+   - 移除以完全对齐参考格式
+
+3. **修复 `episodeguide` 标签内容被 XML 转义的问题**：
+   - 根因：`_pretty_xml` 方法使用 `minidom` 格式化 XML 时，会自动把 `episodeguide` 内容中的引号转义为 `&quot;`，导致 NAS 无法正确解析 series ID
+   - 修复：在 XML 格式化后，恢复 `episodeguide` 标签中的引号（`&quot;` → `"`）
+   - 参考格式：国色芳华和未来日记的 episodeguide 都是原始 JSON 格式 `{"tmdb":"..."}`，没有转义
+
+## v3.3.1 (2026-07-26)
+
+### 修复
+
+1. **彻底修复绿联NAS把同系列多季识别为独立剧集的问题**：
+   - 根因：v3.3.0 把 `{video_id}.jpg` 移到 `.covers/` 隐藏子目录后，NAS 仍然扫描该目录并把其中的 .jpg 文件当作独立视频，导致剧集继续被拆分为多个条目
+   - 修复：改为把 `{video_id}.jpg` 移到中央封面目录 `COVER_PATH`（`/downloads/covers/`），这是系列目录的兄弟目录，NAS 不会将其识别为剧集
+   - 在 `COVER_PATH` 中放置 `.nomedia` 文件，防止 NAS 扫描该目录
+   - 自动清理 v3.3.0 创建的 `.covers/` 目录，把其中的封面也移到 `COVER_PATH`
+   - 更新 Season 目录海报查找逻辑：从 `COVER_PATH` 查找 `{video_id}.jpg`
+
+2. **保持各季 Season 目录预览图独立的修复**（v3.3.0 已实现）：
+   - Season 目录的 `landscape.jpg` 和 `thumb.jpg` 通过视频截帧生成，各季天然不同
+
+## v3.3.0 (2026-07-26)
+
+### 修复
+
+1. **修复绿联NAS把同系列多季识别为独立剧集的问题**：
+   - 根因：根目录中存在 `{video_id}.jpg`（如 39710.jpg、39937.jpg、431.jpg）等下载时保存的封面文件，绿联NAS扫描时可能将其当作独立视频文件，导致剧集被拆分为多个条目
+   - 修复：刮削完成后将根目录中所有 `{video_id}.jpg` 文件移到 `.covers/` 隐藏目录，既不影响绿联NAS扫描（隐藏目录默认不扫描），又保留了后续刮削所需的封面数据
+   - 查找封面时同步支持从 `.covers/` 目录查找，兼容已刮削的旧数据
+
+2. **修复各季 Season 目录的预览图（landscape.jpg/thumb.jpg）完全相同的问题**：
+   - 根因：旧逻辑只尝试从 thumbnail URL 下载横版预览图，但源站对该路径返回 HTTP 403，导致 Season 目录没有 landscape.jpg 和 thumb.jpg，绿联NAS 回退到根目录的同一张预览图
+   - 修复：为 Season 目录的 landscape.jpg 生成新增三级回退策略：
+     1. 优先从该季视频文件用 ffmpeg 截取真实画面（每集画面天然不同，预览图独立）
+     2. 失败则尝试从 thumbnail URL 下载
+     3. 最后从该季竖版 poster.jpg 裁剪 16:9 横条（各季海报不同，裁剪后预览图也不同）
+   - thumb.jpg 从 landscape.jpg 复制，保持一致
+   - 验证结果：Season 1 (472464 bytes)、Season 2 (518312 bytes)、Season 3 (423318 bytes) 三张预览图各不相同，分别从各集视频 @ 982.5s、@ 1068.2s、@ 1094.2s 截取
+
+## v3.2.9 (2026-07-26)
+
+### 修复
+
+1. **修复绿联NAS把同系列多季识别为独立剧集的问题**：
+   - 根因：season.nfo 的 title 使用番剧名+集号（如"告白…… 1"、"告白…… 2"、"告白…… 3"），绿联NAS通过 title 模式识别为三部独立剧集，而非一个剧集的三季
+   - 对比参考：梅林传奇的 season.nfo title 是"第 1 季"、"第 2 季"等标准季标题，绿联NAS能正确识别为合集下的季
+   - 修复：season.nfo 的 title 和 sorttitle 改回"第 N 季"格式（对齐梅林传奇参考格式）
+   - 合集层面由 tvshow.nfo 的 title 显示番剧名（如"告白……"），点开后显示"第 1 季"、"第 2 季"等
+   - 这样绿联NAS会显示为一个合集，可以点开选季，和梅林传奇的展示效果一致
+
+2. **修复标题栏版本号漏改**：
+   - AppHeader.vue 的版本徽章从 v3.2.6 更新到 v3.2.9
+
 ## v3.2.8 (2026-07-26)
 
 ### 修复

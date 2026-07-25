@@ -8,6 +8,86 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.3.2</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>根本性修复绿联NAS把同系列多季识别为独立剧集的问题：</strong>season.nfo 中每个季的 uniqueid 标签使用了各自集的 video_id（如 Season 1=39710、Season 2=39937、Season 3=431），各季 uniqueid 不同导致绿联NAS 把每季识别为独立剧集。现在完全移除 season.nfo 中的 uniqueid 标签（对齐国色芳华参考格式），季的归属由目录结构和 seasonnumber 标签决定</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>移除 NFO 中 default="true" 属性：</strong>tvshow.nfo、episode.nfo、movie.nfo 的 uniqueid 标签之前带有 default="true" 属性，参考目录均无此属性，移除以完全对齐参考格式</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复 episodeguide 标签被 XML 转义的问题：</strong>minidom 格式化 XML 时会自动把 episodeguide 内容中的引号转义为 &quot;，导致 NAS 无法正确解析 series ID。现在恢复为原始 JSON 格式，对齐国色芳华和未来日记参考格式</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.3.1</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>彻底修复绿联NAS把同系列多季识别为独立剧集的问题：</strong>v3.3.0 把 {video_id}.jpg 移到 .covers/ 隐藏子目录后，NAS 仍然扫描该目录导致继续拆分。现在改为把封面文件移到中央封面目录（/downloads/covers/），这是系列目录的兄弟目录，NAS 不会将其识别为剧集。同时在封面目录放置 .nomedia 文件防止扫描，并自动清理旧的 .covers/ 目录</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.3.0</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复绿联NAS把同系列多季识别为独立剧集的问题：</strong>根目录中存在 {video_id}.jpg（如 39710.jpg、39937.jpg、431.jpg）等下载时保存的封面文件，绿联NAS扫描时可能将其当作独立视频文件，导致剧集被拆分为多个条目。现在刮削完成后会将这些文件移到 .covers/ 隐藏目录，既不影响NAS扫描，又保留后续刮削所需的封面数据</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复各季 Season 目录的预览图（landscape.jpg/thumb.jpg）完全相同的问题：</strong>旧逻辑只尝试从 thumbnail URL 下载横版预览图，但源站返回 HTTP 403 导致 Season 目录没有 landscape.jpg 和 thumb.jpg，绿联NAS 回退到根目录的同一张预览图。现在新增三级回退策略：优先从该季视频文件用 ffmpeg 截取真实画面（每集画面天然不同），失败则尝试下载，最后从该季竖版海报裁剪 16:9 横条</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.2.9</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复绿联NAS把同系列多季识别为独立剧集的问题：</strong>season.nfo 的 title 之前使用番剧名+集号（如"告白…… 1/2/3"），绿联NAS通过 title 模式识别为三部独立剧集。现在改回"第 N 季"格式（对齐梅林传奇参考格式），合集层面由 tvshow.nfo 的 title 显示番剧名，点开后显示"第 1 季"、"第 2 季"等，和梅林传奇的展示效果一致</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复标题栏版本号漏改：</strong>AppHeader.vue 的版本徽章从 v3.2.6 更新到 v3.2.9</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.8</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>

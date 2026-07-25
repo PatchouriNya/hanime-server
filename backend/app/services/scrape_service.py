@@ -206,6 +206,52 @@ class ScrapeService:
                 )
                 result.renamed_files = renamed
 
+            # 6. 把根目录的 {video_id}.jpg 文件移到中央封面目录（COVER_PATH）
+            # 这些文件是下载时保存的封面，会干扰绿联NAS的影视库识别
+            # （绿联NAS可能把它们当作独立的视频文件，导致剧集被拆分为多个条目）
+            # 移到 COVER_PATH（/downloads/covers/）后：
+            # - 系列目录保持干净，只含标准命名的 NFO/图片和 Season 子目录
+            # - 封面文件仍保留，供后续重新刮削使用
+            # - COVER_PATH 是系列目录的兄弟目录，NAS 不会将其识别为剧集
+            central_covers_dir = settings.COVER_PATH
+            central_covers_dir.mkdir(parents=True, exist_ok=True)
+            # 在中央封面目录放置 .nomedia 文件，防止 NAS 扫描该目录
+            # （COVER_PATH 位于 DOWNLOAD_PATH 下，NAS 会将其视为一个系列目录）
+            nomedia_path = central_covers_dir / ".nomedia"
+            if not nomedia_path.exists():
+                try:
+                    nomedia_path.write_text("", encoding="utf-8")
+                except Exception:
+                    pass
+            moved_count = 0
+            for f in series_dir.iterdir():
+                if f.is_file() and f.suffix.lower() == ".jpg":
+                    # 文件名是纯数字（video_id.jpg），且不是 poster/backdrop 等标准图片
+                    if re.match(r'^\d+$', f.stem) and f.stem not in ("poster", "backdrop", "fanart", "landscape", "thumb", "banner"):
+                        try:
+                            target = central_covers_dir / f.name
+                            shutil.move(str(f), str(target))
+                            moved_count += 1
+                        except Exception as e:
+                            logger.warning(f"移动 {f.name} 到 {central_covers_dir} 失败: {e}")
+            if moved_count > 0:
+                logger.info(f"已将 {moved_count} 个封面文件移到中央封面目录: {central_covers_dir}")
+
+            # 7. 清理旧的 .covers/ 目录（v3.3.0 之前的版本会创建此目录）
+            old_covers_dir = series_dir / ".covers"
+            if old_covers_dir.exists() and old_covers_dir.is_dir():
+                try:
+                    # 把 .covers/ 里的封面也移到中央封面目录
+                    for f in old_covers_dir.iterdir():
+                        if f.is_file():
+                            target = central_covers_dir / f.name
+                            if not target.exists():
+                                shutil.move(str(f), str(target))
+                    old_covers_dir.rmdir()
+                    logger.info(f"已清理旧的 .covers/ 目录: {old_covers_dir}")
+                except Exception as e:
+                    logger.warning(f"清理 .covers/ 目录失败: {e}")
+
             logger.success(f"刮削完成: {series_name}, "
                            f"NFO {len(nfo_files)} 个, "
                            f"图片 {len(image_files)} 个, "
@@ -484,11 +530,10 @@ class ScrapeService:
                     studio_elem.text = self._sanitize_nfo_text(studio_name)
                     studios_added.add(studio_name)
 
-        # 唯一标识符
+        # 唯一标识符（不添加 default 属性，对齐参考格式）
         if video_id:
             uniqueid_elem = ET.SubElement(root, "uniqueid")
             uniqueid_elem.set("type", "hanime")
-            uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
         # episodeguide（参考格式中保留此字段，即使内容为简单 JSON）
@@ -555,13 +600,10 @@ class ScrapeService:
         dateadded_elem = ET.SubElement(root, "dateadded")
         dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 季标题 - 用番剧名而不是"第N季"，这样NAS中显示的是番剧名
-        # 如果有副标题则用副标题（如"援助交配 10"），否则用番剧名
-        season_title = series_title
-        for meta in metadata_list:
-            if meta and hasattr(meta, "subtitle") and meta.subtitle:
-                season_title = meta.subtitle
-                break
+        # 季标题 - 使用"第 N 季"格式（对齐梅林传奇参考格式）
+        # 这样绿联NAS能正确识别为剧集的季，而不是独立的电影
+        # 合集层面由 tvshow.nfo 的 title 显示番剧名
+        season_title = f"第 {season_number} 季"
         title_elem = ET.SubElement(root, "title")
         title_elem.text = self._sanitize_nfo_text(season_title)
 
@@ -590,11 +632,11 @@ class ScrapeService:
             premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
             releasedate_elem.text = earliest_date.strftime("%Y-%m-%d")
 
-        # 唯一标识符
-        if video_id:
-            uniqueid_elem = ET.SubElement(root, "uniqueid")
-            uniqueid_elem.set("type", "hanime")
-            uniqueid_elem.text = video_id
+        # 唯一标识符 - 不在 season.nfo 中添加 uniqueid
+        # 原因：绿联NAS 通过 uniqueid 判断季的归属，如果各季 uniqueid 不同，
+        # 会把每季识别为独立剧集，导致合集被拆分。
+        # 参考国色芳华的 season.nfo：完全没有 uniqueid 标签，NAS 仍能正确识别季的归属。
+        # 季的归属由目录结构（Season N/ 在系列目录下）和 seasonnumber 标签决定。
 
         # 季号
         seasonnumber_elem = ET.SubElement(root, "seasonnumber")
@@ -683,13 +725,13 @@ class ScrapeService:
         runtime_elem.text = str(runtime_minutes)
 
         # 唯一标识符（从 video_detail 获取 video_id）
+        # 注意：不添加 default="true" 属性，对齐参考格式（未来日记 episode.nfo 无 default 属性）
         ep_video_id = ""
         if video_detail and hasattr(video_detail, "video_id") and video_detail.video_id:
             ep_video_id = video_detail.video_id
         if ep_video_id:
             uniqueid_elem = ET.SubElement(root, "uniqueid")
             uniqueid_elem.set("type", "hanime")
-            uniqueid_elem.set("default", "true")
             uniqueid_elem.text = ep_video_id
 
         # 集号和季号（对齐参考格式：episode 在 season 之前）
@@ -844,11 +886,10 @@ class ScrapeService:
                 studio_elem = ET.SubElement(root, "studio")
                 studio_elem.text = self._sanitize_nfo_text(studio_name)
 
-        # 唯一标识符
+        # 唯一标识符（不添加 default 属性，对齐参考格式）
         if video_id:
             uniqueid_elem = ET.SubElement(root, "uniqueid")
             uniqueid_elem.set("type", "hanime")
-            uniqueid_elem.set("default", "true")
             uniqueid_elem.text = video_id
 
             # id（参考格式中保留 id 字段）
@@ -2174,7 +2215,12 @@ class ScrapeService:
             season_poster_path = season_dir / POSTER_FILENAME
             if not season_poster_path.exists():
                 # 优先使用该季视频对应的 {video_id}.jpg（下载时保存的封面）
+                # 查找位置：根目录 → 中央封面目录（COVER_PATH，刮削后会被移到这里）
                 season_cover_path = series_dir / f"{season_video_id}.jpg"
+                if not season_cover_path.exists():
+                    central_candidate = settings.COVER_PATH / f"{season_video_id}.jpg"
+                    if central_candidate.exists():
+                        season_cover_path = central_candidate
                 if season_cover_path.exists():
                     try:
                         shutil.copy2(season_cover_path, season_poster_path)
@@ -2225,6 +2271,77 @@ class ScrapeService:
                         logger.info(f"season{season_number:02d}-poster.jpg 已生成: {season_numbered_poster_path}")
                     except Exception as e:
                         logger.warning(f"生成 season{season_number:02d}-poster.jpg 失败: {e}")
+
+            # 为 Season 目录生成独立的 thumb.jpg 和 landscape.jpg（横版预览图）
+            # 对齐梅林传奇参考格式：每个 Season 目录都有独立的 thumb.jpg 和 landscape.jpg
+            # 否则绿联NAS会回退到根目录的图片，导致所有季的预览图都一样
+            season_cover_url = ""
+            if season_metadata and hasattr(season_metadata[0], "cover_url") and season_metadata[0].cover_url:
+                season_cover_url = season_metadata[0].cover_url
+
+            # 生成 Season 目录的 landscape.jpg
+            # 优先级：视频截帧 > thumbnail URL 下载 > 竖版海报裁剪
+            season_landscape_path = season_dir / LANDSCAPE_FILENAME
+            if not season_landscape_path.exists():
+                # 1. 优先从该季视频文件截取真实画面（每集画面不同，预览图天然独立）
+                season_video_file = None
+                for f in sorted(season_dir.iterdir()):
+                    if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                        season_video_file = f
+                        break
+                if season_video_file:
+                    try:
+                        success = await self._extract_frame_from_video(
+                            season_video_file, season_landscape_path, seek_pct=0.7
+                        )
+                        if success:
+                            self._resize_to_standard(
+                                season_landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT
+                            )
+                            image_files.append(str(season_landscape_path))
+                            logger.info(f"Season {season_number} landscape.jpg 从视频截取")
+                    except Exception as e:
+                        logger.warning(f"Season {season_number} landscape.jpg 视频截取失败: {e}")
+
+                # 2. 回退：从 thumbnail URL 下载
+                if not season_landscape_path.exists() and season_cover_url:
+                    thumbnail_url = self._get_horizontal_thumbnail_url(season_cover_url)
+                    if thumbnail_url:
+                        try:
+                            success = await self._download_cover_as_jpg(thumbnail_url, season_landscape_path)
+                            if success:
+                                self._resize_to_standard(
+                                    season_landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT
+                                )
+                                image_files.append(str(season_landscape_path))
+                                logger.info(f"Season {season_number} landscape.jpg 从 thumbnail URL 下载")
+                        except Exception as e:
+                            logger.warning(f"Season {season_number} landscape.jpg 下载失败: {e}")
+
+                # 3. 最后回退：从该季竖版海报裁剪（海报各季不同，裁剪后预览图也不同）
+                if not season_landscape_path.exists() and season_poster_path.exists():
+                    try:
+                        success = self._crop_landscape_from_poster(
+                            season_poster_path, season_landscape_path
+                        )
+                        if success:
+                            self._resize_to_standard(
+                                season_landscape_path, LANDSCAPE_STANDARD_WIDTH, LANDSCAPE_STANDARD_HEIGHT
+                            )
+                            image_files.append(str(season_landscape_path))
+                            logger.info(f"Season {season_number} landscape.jpg 从 poster.jpg 裁剪生成")
+                    except Exception as e:
+                        logger.warning(f"Season {season_number} landscape.jpg 从海报裁剪失败: {e}")
+
+            # 生成 Season 目录的 thumb.jpg（复制 landscape.jpg）
+            season_thumb_path = season_dir / THUMB_FILENAME
+            if not season_thumb_path.exists() and season_landscape_path.exists():
+                try:
+                    shutil.copy2(season_landscape_path, season_thumb_path)
+                    image_files.append(str(season_thumb_path))
+                    logger.info(f"Season {season_number} thumb.jpg 从 landscape.jpg 复制")
+                except Exception as e:
+                    logger.warning(f"Season {season_number} thumb.jpg 复制失败: {e}")
 
         # 10. 为每集生成 NFO 和缩略图
         for i, entry in enumerate(video_entries):
@@ -2732,10 +2849,26 @@ class ScrapeService:
             content = NFO_XML_DECLARATION + "\n".join(lines)
             # 对需要 CDATA 包裹的标签进行处理
             content = ScrapeService._wrap_cdata(content, CDATA_TAGS)
+            # episodeguide 标签中的引号不应被 XML 转义
+            # 参考目录（国色芳华、未来日记等）的 episodeguide 都是原始 JSON 格式
+            # minidom 会自动转义引号为 &quot;，需要恢复
+            content = re.sub(
+                r'(<episodeguide>)(.*?)(</episodeguide>)',
+                lambda m: m.group(1) + m.group(2).replace('&quot;', '"') + m.group(3),
+                content,
+                flags=re.DOTALL
+            )
             return content
         except Exception:
             content = NFO_XML_DECLARATION + rough_string
             content = ScrapeService._wrap_cdata(content, CDATA_TAGS)
+            # episodeguide 反转义（异常分支也需要）
+            content = re.sub(
+                r'(<episodeguide>)(.*?)(</episodeguide>)',
+                lambda m: m.group(1) + m.group(2).replace('&quot;', '"') + m.group(3),
+                content,
+                flags=re.DOTALL
+            )
             return content
 
     @staticmethod
