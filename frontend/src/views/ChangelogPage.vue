@@ -8,6 +8,46 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.5</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复刮削时 video_id 提取失败导致 NFO 内容缺失：</strong>重命名后的文件名无法提取 video_id，导致重新刮削时 NFO 内容全部丢失。现在新增从同名 NFO 文件和数据库下载记录中回退查找 video_id，确保元数据能正确获取</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复文件名和 NFO 标题包含年份后缀：</strong>目录名"番剧名 (2017)"中的年份不应出现在文件名和 NFO 标题中，现在统一去除年份后缀，年份仅保留在目录名中</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复刮削重命名时残留旧附属文件：</strong>视频文件重命名时，同名的旧 NFO/JPG 文件现在会自动清理，避免 Season 目录中残留错误的元数据文件</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.2.3</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载时自动检测同系列番剧并合并目录：</strong>下载时自动从源站读取系列信息，如果检测到同系列视频已下载，自动将新视频放入同一目录的对应 Season 子目录，第一部自动整理到 Season 1，目录名自动重命名为系列基础名（去掉编号后缀）</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.2</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

@@ -1433,21 +1433,42 @@ class DownloadManager:
             if not best_url:
                 return {"status": "error", "message": "未找到有效的下载链接"}
             
-            # 确定番剧系列名（目录名）：优先用主标题（系列名），副标题仅作为文件名的一部分
-            series_name = self._sanitize_filename(video_detail.title)
-            
+            # 确定番剧系列名（目录名）—— 智能检测同系列已下载的番剧
+            series_name, season_number, is_series_merge = await self._detect_series_directory(
+                video_id, video_detail, username
+            )
+            logger.info(f"系列检测结果: video_id={video_id}, series_name={series_name}, season_number={season_number}, is_series_merge={is_series_merge}")
+
             # 优先使用副标题作为文件名，如果没有副标题则使用标题
             if video_detail.subtitle:
                 filename = self._sanitize_filename(video_detail.subtitle)
             else:
                 filename = self._sanitize_filename(video_detail.title)
-            
+
             # 在下载目录下创建以番剧系列名命名的子目录
             series_dir = settings.DOWNLOAD_PATH / series_name
             series_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 确保文件名唯一（包含番剧目录的相对路径）
-            filename = f"{series_name}/{video_id}_{filename}.mp4"
+
+            # 如果是系列合并，将文件放入对应的 Season 子目录
+            if is_series_merge and season_number > 0:
+                # 确保系列目录下的已有视频也被正确组织到 Season 子目录
+                await self._ensure_series_season_structure(series_dir, series_name, username)
+
+                season_dir = series_dir / f"Season {season_number}"
+                season_dir.mkdir(parents=True, exist_ok=True)
+                # 统计该 Season 下已有的视频数量，用于自动编号集号
+                existing_videos_in_season = [
+                    f for f in season_dir.iterdir()
+                    if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS
+                ]
+                episode_num = len(existing_videos_in_season) + 1
+                # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
+                import re as _re
+                base_name_for_filename = _re.sub(r'\s*\(\d{4}\)$', '', series_name).strip()
+                safe_name = self._sanitize_filename(base_name_for_filename)
+                filename = f"{series_name}/Season {season_number}/{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.mp4"
+            else:
+                filename = f"{series_name}/{video_id}_{filename}.mp4"
 
             # 创建下载记录
             file_path = settings.DOWNLOAD_PATH / filename
@@ -1519,6 +1540,313 @@ class DownloadManager:
         
         return sorted_streams[0].url if sorted_streams else None
     
+    async def _ensure_series_season_structure(
+        self,
+        series_dir: Path,
+        series_name: str,
+        username: str
+    ) -> None:
+        """
+        确保系列目录下的已有视频被正确组织到 Season 1 子目录
+
+        当检测到系列合并时调用。如果系列目录下已有视频文件但还没有 Season 1 子目录，
+        则将它们移到 Season 1 并更新数据库记录。
+
+        :param series_dir: 系列根目录路径
+        :param series_name: 系列名称
+        :param username: 用户名
+        """
+        import re as _re
+
+        # 检查是否已有 Season 子目录
+        existing_seasons = [d for d in series_dir.iterdir()
+                           if d.is_dir() and d.name.startswith('Season ')]
+        if existing_seasons:
+            return  # 已有 Season 结构，无需处理
+
+        # 查找根目录下的视频文件（未整理到 Season 目录的）
+        root_videos = []
+        for f in sorted(series_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS:
+                root_videos.append(f)
+
+        if not root_videos:
+            return  # 没有需要整理的视频
+
+        # 创建 Season 1 目录
+        season_dir = series_dir / "Season 1"
+        season_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_name = self._sanitize_filename(series_name)
+
+        for idx, video_file in enumerate(root_videos, 1):
+            # 新文件名：系列名 - S01E01 - 第 1 集.mp4
+            new_filename = f"{safe_name} - S01E{idx:02d} - 第 {idx} 集{video_file.suffix.lower()}"
+            new_path = season_dir / new_filename
+
+            try:
+                shutil.move(str(video_file), str(new_path))
+                logger.info(f"系列整理: {video_file.name} -> Season 1/{new_filename}")
+
+                # 移动同名 NFO 和缩略图
+                for ext in ['.nfo', '.jpg']:
+                    old_assoc = video_file.parent / f"{video_file.stem}{ext}"
+                    if old_assoc.exists():
+                        new_assoc_name = f"{safe_name} - S01E{idx:02d} - 第 {idx} 集{ext}"
+                        new_assoc = season_dir / new_assoc_name
+                        try:
+                            shutil.move(str(old_assoc), str(new_assoc))
+                        except Exception as e:
+                            logger.warning(f"移动关联文件失败: {old_assoc} - {e}")
+
+                # 更新数据库记录
+                new_relative = f"{series_name}/Season 1/{new_filename}"
+                async with aiosqlite.connect(self.db_path) as conn:
+                    # 通过旧文件名查找记录
+                    old_relative = f"{series_name}/{video_file.name}"
+                    await conn.execute(
+                        "UPDATE downloads SET filename = ? WHERE username = ? AND filename = ?",
+                        (new_relative, username, old_relative)
+                    )
+                    # 也通过 title 匹配
+                    await conn.execute(
+                        "UPDATE downloads SET filename = ? WHERE username = ? AND filename LIKE ?",
+                        (new_relative, username, f"{series_name}/{video_file.name}")
+                    )
+                    await conn.commit()
+
+            except Exception as e:
+                logger.error(f"系列整理失败: {video_file} -> {new_path}: {e}")
+
+    async def _detect_series_directory(
+        self,
+        video_id: str,
+        video_detail: Any,
+        username: str
+    ) -> tuple:
+        """
+        智能检测同系列已下载的番剧，返回正确的目录名和季号
+
+        逻辑：
+        1. 检查源站的 series_videos 信息
+        2. 如果 series_videos 为空，从 basic_related_videos 中通过标题相似度识别同系列
+        3. 遍历已下载目录，查找同系列视频所在的目录
+        4. 如果找到，返回该系列目录名和计算出的季号
+        5. 如果没找到，使用系列名（去掉编号后缀）作为目录名
+
+        :return: (series_name, season_number, is_series_merge)
+        """
+        import re as _re
+
+        series_videos = getattr(video_detail, 'series_videos', None) or []
+        basic_related = getattr(video_detail, 'basic_related_videos', None) or []
+        current_title = video_detail.title
+        # 优先使用副标题（中文），因为格式更规范，更容易提取系列名
+        # 例如：subtitle="欢迎光临！水龙敬乐园 1" 比 title="おいでよ！水龍敬ランド ＃1 ..." 更容易匹配
+        current_subtitle = getattr(video_detail, 'subtitle', None) or ''
+        name_source = current_subtitle if current_subtitle else current_title
+
+        # 提取系列名（去掉编号后缀）
+        def _extract_series_base(title: str) -> str:
+            """从标题中提取系列基础名"""
+            if not title:
+                return title
+            patterns = [
+                r'\s*[＃#]\s*\d+.*$',                   # ＃1 はじめての... -> (去掉＃及之后所有内容)
+                r'[・\s][赤青黒白紅緑黄紫]$',           # 不潔之星・赤 -> 不潔之星
+                r'\s*[第ⅠⅡⅢ]\s*$',                     # 某番剧 第Ⅱ -> 某番剧
+                r'\s*\d+$',                              # 某番剧 2 -> 某番剧
+                r'\s*第\d+[期章部話]$',                   # 某番剧 第2期 -> 某番剧
+                r'\s*Season\s*\d+$',                     # 某番剧 Season 2 -> 某番剧
+                r'[・\-]\s*\d+$',                        # 某番剧・2 -> 某番剧
+            ]
+            result = title
+            for pattern in patterns:
+                new_result = _re.sub(pattern, '', result, flags=_re.IGNORECASE)
+                if new_result != result and len(new_result) >= 2:
+                    result = new_result
+            return result.strip()
+
+        base_series_name = _extract_series_base(name_source)
+        default_series_name = self._sanitize_filename(base_series_name)
+        logger.info(f"系列检测: video_id={video_id}, name_source={name_source}, base_series_name={base_series_name}, default_series_name={default_series_name}")
+        logger.info(f"系列检测: series_videos={len(series_videos)}, basic_related={len(basic_related)}")
+
+        # 收集所有同系列视频（从 series_videos 或 basic_related_videos）
+        detected_series_videos = []
+        if series_videos:
+            # 源站直接提供了 series_videos
+            for sv in series_videos:
+                detected_series_videos.append({
+                    "video_id": sv.video_id,
+                    "title": sv.title
+                })
+        else:
+            # 源站没有提供 series_videos，从 basic_related_videos 中通过标题相似度识别
+            # 策略：将相关视频的标题转为简体中文后，提取基础名与当前视频的基础名比较
+            from app.utils.chinese_converter import to_simplified
+            base_series_name_simplified = to_simplified(base_series_name)
+            for rv in basic_related:
+                rv_title = getattr(rv, 'title', '') or ''
+                # 将相关视频标题也转为简体中文后提取基础名
+                rv_title_simplified = to_simplified(rv_title)
+                rv_base = _extract_series_base(rv_title_simplified)
+                if rv_base and rv_base == base_series_name_simplified and rv.video_id != video_id:
+                    detected_series_videos.append({
+                        "video_id": rv.video_id,
+                        "title": rv_title
+                    })
+                    logger.info(f"系列检测: 从相关视频中发现同系列: video_id={rv.video_id}, title={rv_title}, rv_base={rv_base}")
+
+        logger.info(f"系列检测: 检测到同系列视频 {len(detected_series_videos)} 个")
+
+        # 辅助函数：在下载目录中查找匹配的系列目录
+        # 刮削服务可能会将目录重命名为 "番剧名 (年份)" 格式
+        def _find_series_dir_on_disk(series_base_name: str) -> Optional[Path]:
+            """
+            在下载目录中查找系列目录，支持以下格式：
+            1. 精确匹配：series_base_name
+            2. 带年份后缀：series_base_name (YYYY)
+            """
+            # 精确匹配
+            exact_dir = settings.DOWNLOAD_PATH / series_base_name
+            if exact_dir.exists() and exact_dir.is_dir():
+                return exact_dir
+            # 带年份后缀匹配：查找 "series_base_name (YYYY)" 格式的目录
+            for d in settings.DOWNLOAD_PATH.iterdir():
+                if d.is_dir():
+                    # 匹配 "番剧名 (2026)" 格式
+                    match = _re.match(r'^(.+?)\s*\(\d{4}\)$', d.name)
+                    if match and match.group(1).strip() == series_base_name:
+                        return d
+            return None
+
+        # 如果没有检测到任何同系列视频，检查是否已有同系列目录存在
+        if not detected_series_videos:
+            existing_dir = _find_series_dir_on_disk(default_series_name)
+            if existing_dir:
+                # 检查该目录是否包含 Season 子目录（说明之前已经有合并过）
+                season_dirs = [d for d in existing_dir.iterdir()
+                              if d.is_dir() and d.name.startswith('Season ')]
+                if season_dirs:
+                    # 计算下一个季号
+                    max_season = 0
+                    for sd in season_dirs:
+                        match = _re.search(r'Season\s+(\d+)', sd.name)
+                        if match:
+                            max_season = max(max_season, int(match.group(1)))
+                    logger.info(f"检测到已存在的系列目录 {existing_dir.name}，当前最高季号 {max_season}，新视频将作为 Season {max_season + 1}")
+                    return existing_dir.name, max_season + 1, True
+            return default_series_name, 0, False
+
+        # 有同系列视频信息，按 video_id 排序
+        all_series_ids = sorted(set([sv["video_id"] for sv in detected_series_videos] + [video_id]))
+        # 构建 video_id -> title 的映射
+        id_title_map = {sv["video_id"]: sv["title"] for sv in detected_series_videos}
+        id_title_map[video_id] = current_title
+
+        # 检查 series 数据库表，看是否已经有合并记录
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(
+                "SELECT series_name, season_number FROM series WHERE video_id = ?",
+                (video_id,)
+            ) as cursor:
+                existing_series = await cursor.fetchone()
+                if existing_series:
+                    return existing_series['series_name'], existing_series['season_number'], True
+
+            # 检查同系列其他视频是否已下载
+            for sv_info in detected_series_videos:
+                sv_id = sv_info["video_id"]
+                async with conn.execute(
+                    "SELECT filename, title FROM downloads WHERE username = ? AND video_id = ? AND status = 'completed'",
+                    (username, sv_id)
+                ) as cursor2:
+                    existing_dl = await cursor2.fetchone()
+                    logger.info(f"系列检测: 查询同系列视频下载记录 video_id={sv_id}, found={existing_dl is not None}")
+                    if existing_dl:
+                        # 找到同系列已下载的视频！
+                        existing_filename = existing_dl['filename']
+                        # 从数据库记录的 filename 中提取实际目录名
+                        existing_series_dir_name = existing_filename.split('/')[0] if '/' in existing_filename else None
+
+                        # 确定实际磁盘上的目录路径
+                        # 优先使用数据库记录中的目录名，如果磁盘上不存在再尝试查找
+                        actual_series_dir = None
+                        actual_series_dir_name = None
+
+                        if existing_series_dir_name:
+                            db_dir = settings.DOWNLOAD_PATH / existing_series_dir_name
+                            if db_dir.exists():
+                                actual_series_dir = db_dir
+                                actual_series_dir_name = existing_series_dir_name
+
+                        # 如果数据库记录的目录不存在（可能被刮削服务重命名了），在磁盘上查找
+                        if not actual_series_dir:
+                            # 从数据库记录中提取基础名（去掉可能的年份后缀）
+                            base_dir_name = _re.sub(r'\s*\(\d{4}\)$', '', existing_series_dir_name) if existing_series_dir_name else default_series_name
+                            found_dir = _find_series_dir_on_disk(base_dir_name)
+                            if found_dir:
+                                actual_series_dir = found_dir
+                                actual_series_dir_name = found_dir.name
+
+                        # 最后回退：直接用默认系列名查找
+                        if not actual_series_dir:
+                            found_dir = _find_series_dir_on_disk(default_series_name)
+                            if found_dir:
+                                actual_series_dir = found_dir
+                                actual_series_dir_name = found_dir.name
+
+                        if actual_series_dir:
+                            # 如果目录名与默认系列名不同，重命名为系列基础名
+                            # 但要注意：如果目录名有年份后缀是刮削服务加的，保留它
+                            target_series_name = actual_series_dir_name
+                            if actual_series_dir_name != default_series_name:
+                                # 检查是否只是年份后缀不同，如果是则保持实际名称
+                                base_actual = _re.sub(r'\s*\(\d{4}\)$', '', actual_series_dir_name)
+                                if base_actual == default_series_name:
+                                    # 只是年份后缀差异，保留实际目录名（刮削服务可能已添加）
+                                    logger.info(f"系列检测: 目录名有年份后缀 {actual_series_dir_name}，保留实际名称")
+                                    target_series_name = actual_series_dir_name
+
+                            # 检查该目录是否已经是多季结构
+                            season_dirs = [d for d in actual_series_dir.iterdir()
+                                          if d.is_dir() and d.name.startswith('Season ')]
+
+                            # 按视频ID排序确定季号
+                            current_index = all_series_ids.index(video_id) if video_id in all_series_ids else len(all_series_ids)
+                            season_number = current_index + 1
+
+                            if season_dirs:
+                                logger.info(f"检测到同系列已下载（多季）: {target_series_name}，"
+                                          f"当前视频 {video_id} 将作为 Season {season_number}")
+                            else:
+                                logger.info(f"检测到同系列已下载（单季）: {target_series_name}，"
+                                          f"当前视频 {video_id} 将作为 Season {season_number}")
+
+                            if current_index == 0:
+                                # 当前视频是第一部，不需要合并到新季
+                                return target_series_name, 0, False
+                            return target_series_name, season_number, True
+
+        # 没有找到已下载的同系列视频，使用系列基础名
+        # 再次检查是否已有同系列目录（支持年份后缀）
+        existing_dir = _find_series_dir_on_disk(default_series_name)
+        if existing_dir:
+            season_dirs = [d for d in existing_dir.iterdir()
+                          if d.is_dir() and d.name.startswith('Season ')]
+            if season_dirs:
+                max_season = 0
+                for sd in season_dirs:
+                    match = _re.search(r'Season\s+(\d+)', sd.name)
+                    if match:
+                        max_season = max(max_season, int(match.group(1)))
+                return existing_dir.name, max_season + 1, True
+
+        return default_series_name, 0, False
+
     def _sanitize_filename(self, filename):
         """处理文件名，移除非法字符"""
         # 替换非法字符

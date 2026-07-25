@@ -166,6 +166,15 @@ class ScrapeService:
                 result.error_message = f"番剧目录中没有视频文件: {series_name}"
                 return result
 
+            # 1.5 补充无效 video_id（从数据库查找）
+            for entry in video_entries:
+                vid = entry.get("video_id", "")
+                if not vid or not vid.isdigit():
+                    db_vid = await self._lookup_video_id_from_db(Path(entry["file_path"]))
+                    if db_vid:
+                        entry["video_id"] = db_vid
+                        logger.info(f"从数据库补充 video_id: {entry['filename']} -> {db_vid}")
+
             # 2. 获取元数据
             metadata_list = await self._fetch_metadata(video_entries)
 
@@ -218,26 +227,58 @@ class ScrapeService:
         """
         try:
             # 查找该 video_id 对应的下载记录
+            # 优先从数据库获取文件路径，再在磁盘上查找
             download_info = None
-            for series_dir in settings.DOWNLOAD_PATH.iterdir():
-                if not series_dir.is_dir():
-                    continue
-                for video_file in series_dir.iterdir():
-                    if not video_file.is_file():
+
+            # 方法1：从数据库获取 filename
+            try:
+                import aiosqlite
+                db_path = settings.DB_PATH / "downloads.db"
+                async with aiosqlite.connect(db_path) as conn:
+                    conn.row_factory = aiosqlite.Row
+                    async with conn.execute(
+                        "SELECT filename FROM downloads WHERE video_id = ? AND status = 'completed'",
+                        (video_id,)
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            file_path = settings.DOWNLOAD_PATH / row['filename']
+                            if file_path.exists():
+                                series_dir = file_path.parent
+                                # 如果文件在 Season 子目录中，系列目录是上一级
+                                if series_dir.name.startswith('Season '):
+                                    series_dir = series_dir.parent
+                                download_info = {
+                                    "series_dir": series_dir,
+                                    "series_name": series_dir.name,
+                                    "video_file": file_path,
+                                    "video_id": video_id
+                                }
+            except Exception as db_err:
+                logger.warning(f"自动刮削: 数据库查询失败: {db_err}")
+
+            # 方法2：如果数据库没找到，在磁盘上递归搜索
+            if not download_info:
+                for series_dir in settings.DOWNLOAD_PATH.iterdir():
+                    if not series_dir.is_dir():
                         continue
-                    if video_file.suffix.lower() not in VIDEO_EXTENSIONS:
-                        continue
-                    # 检查文件名中是否包含 video_id
-                    if video_id in video_file.stem:
-                        download_info = {
-                            "series_dir": series_dir,
-                            "series_name": series_dir.name,
-                            "video_file": video_file,
-                            "video_id": video_id
-                        }
+                    # 递归搜索所有子目录（包括 Season 子目录）
+                    for video_file in series_dir.rglob("*"):
+                        if not video_file.is_file():
+                            continue
+                        if video_file.suffix.lower() not in VIDEO_EXTENSIONS:
+                            continue
+                        # 检查文件名中是否包含 video_id
+                        if video_id in video_file.stem:
+                            download_info = {
+                                "series_dir": series_dir,
+                                "series_name": series_dir.name,
+                                "video_file": video_file,
+                                "video_id": video_id
+                            }
+                            break
+                    if download_info:
                         break
-                if download_info:
-                    break
 
             if not download_info:
                 logger.warning(f"自动刮削: 未找到 video_id={video_id} 对应的文件")
@@ -1730,6 +1771,8 @@ class ScrapeService:
                 if series_dir != new_series_dir and not new_series_dir.exists():
                     old_dir_str = str(series_dir)
                     new_dir_str = str(new_series_dir)
+                    old_dir_name = series_dir.name
+                    new_dir_name_clean = new_series_dir.name
                     try:
                         series_dir.rename(new_series_dir)
                         renamed_files.append(f"目录重命名: {series_dir.name} -> {new_series_dir.name}")
@@ -1739,11 +1782,27 @@ class ScrapeService:
                         for entry in video_entries:
                             if entry.get("file_path", "").startswith(old_dir_str):
                                 entry["file_path"] = new_dir_str + entry["file_path"][len(old_dir_str):]
+                        # 同步更新数据库中的 filename 字段
+                        try:
+                            import aiosqlite
+                            db_path = settings.DB_PATH / "downloads.db"
+                            async with aiosqlite.connect(db_path) as conn:
+                                await conn.execute(
+                                    "UPDATE downloads SET filename = REPLACE(filename, ?, ?) WHERE filename LIKE ?",
+                                    (f"{old_dir_name}/", f"{new_dir_name_clean}/", f"{old_dir_name}/%")
+                                )
+                                await conn.commit()
+                                logger.info(f"数据库记录已更新: 目录重命名 {old_dir_name} -> {new_dir_name_clean}")
+                        except Exception as db_err:
+                            logger.warning(f"更新数据库目录重命名记录失败: {db_err}")
                     except Exception as e:
                         logger.error(f"番剧目录重命名失败: {e}")
 
         if scrape_mode == ScrapeMode.TV_SHOW:
-            safe_series_name = self._sanitize_filename(series_name)
+            # 文件名中的系列名不应包含年份后缀（年份已在目录名中）
+            # 例如：目录名 "欢迎光临！水龙敬乐园 (2017)"，文件名应为 "欢迎光临！水龙敬乐园 - S01E01"
+            series_name_no_year = re.sub(r'\s*\(\d{4}\)\s*$', '', series_name).strip()
+            safe_series_name = self._sanitize_filename(series_name_no_year)
 
             for entry in video_entries:
                 video_path = Path(entry["file_path"])
@@ -1778,6 +1837,17 @@ class ScrapeService:
 
                 if video_path.exists() and video_path != new_path:
                     try:
+                        # 清理旧的同名 NFO 和 JPG 文件（重命名前先移除）
+                        old_stem = video_path.stem
+                        for ext in [".nfo", ".jpg", ".jpeg", ".png", ".webp"]:
+                            old_aux = video_path.with_suffix(ext)
+                            if old_aux.exists():
+                                try:
+                                    old_aux.unlink()
+                                    logger.info(f"清理旧附属文件: {old_aux.name}")
+                                except Exception:
+                                    pass
+
                         # 移动文件
                         shutil.move(str(video_path), str(new_path))
                         try:
@@ -1786,6 +1856,22 @@ class ScrapeService:
                             relative_path = new_path.name
                         renamed_files.append(f"{video_path.name} -> {relative_path}")
                         logger.info(f"文件重命名: {video_path.name} -> {relative_path}")
+                        # 同步更新数据库中的 filename 字段
+                        try:
+                            import aiosqlite
+                            db_path = settings.DB_PATH / "downloads.db"
+                            # 计算新的相对路径（相对于 DOWNLOAD_PATH）
+                            new_relative = f"{series_dir.name}/{relative_path}"
+                            async with aiosqlite.connect(db_path) as db_conn:
+                                # 先尝试通过 video_id 更新
+                                await db_conn.execute(
+                                    "UPDATE downloads SET filename = ? WHERE video_id = ?",
+                                    (new_relative, video_id)
+                                )
+                                await db_conn.commit()
+                                logger.info(f"数据库文件路径已更新: video_id={video_id}, filename={new_relative}")
+                        except Exception as db_err:
+                            logger.warning(f"更新数据库文件重命名记录失败: {db_err}")
                     except Exception as e:
                         logger.error(f"文件重命名失败: {video_path} -> {new_path}: {e}")
 
@@ -1793,6 +1879,7 @@ class ScrapeService:
             # 电影模式：重命名为 番剧名 (年份).mp4
             for entry in video_entries:
                 video_path = Path(entry["file_path"])
+                video_id = entry.get("video_id", "")
 
                 if is_rename_file:
                     safe_name = self._sanitize_filename(series_name)
@@ -1807,6 +1894,21 @@ class ScrapeService:
                         shutil.move(str(video_path), str(new_path))
                         renamed_files.append(f"{video_path.name} -> {new_filename}")
                         logger.info(f"电影文件重命名: {video_path.name} -> {new_filename}")
+                        # 同步更新数据库中的 filename 字段
+                        if video_id:
+                            try:
+                                import aiosqlite
+                                db_path = settings.DB_PATH / "downloads.db"
+                                new_relative = f"{series_dir.name}/{new_filename}"
+                                async with aiosqlite.connect(db_path) as db_conn:
+                                    await db_conn.execute(
+                                        "UPDATE downloads SET filename = ? WHERE video_id = ?",
+                                        (new_relative, video_id)
+                                    )
+                                    await db_conn.commit()
+                                    logger.info(f"数据库文件路径已更新: video_id={video_id}, filename={new_relative}")
+                            except Exception as db_err:
+                                logger.warning(f"更新数据库文件重命名记录失败: {db_err}")
                     except Exception as e:
                         logger.error(f"电影文件重命名失败: {e}")
 
@@ -1976,8 +2078,10 @@ class ScrapeService:
                 break
 
         # 1. 生成 tvshow.nfo
+        # NFO 中的标题不应包含年份后缀（年份已在目录名中）
+        series_name_no_year = re.sub(r'\s*\(\d{4}\)\s*$', '', series_name).strip()
         tvshow_nfo_content = self.generate_tvshow_nfo(
-            series_name, metadata_list, first_video_id
+            series_name_no_year, metadata_list, first_video_id
         )
         tvshow_nfo_path = series_dir / TVSHOW_NFO_FILENAME
         await self._write_nfo_file(tvshow_nfo_path, tvshow_nfo_content)
@@ -2024,7 +2128,9 @@ class ScrapeService:
             season_numbers = {1}
 
         # 9. 为每个季生成 Season 目录、season.nfo、季海报
-        safe_series_name = self._sanitize_filename(series_name)
+        # 文件名中的系列名不应包含年份后缀（年份已在目录名中）
+        series_name_no_year = re.sub(r'\s*\(\d{4}\)\s*$', '', series_name).strip()
+        safe_series_name = self._sanitize_filename(series_name_no_year)
 
         for season_number in sorted(season_numbers):
             # 创建 Season 目录（对齐参考格式，不带前导零）
@@ -2052,7 +2158,7 @@ class ScrapeService:
                     break
 
             season_nfo_content = self.generate_season_nfo(
-                series_name, season_metadata, season_video_id or first_video_id, season_number
+                series_name_no_year, season_metadata, season_video_id or first_video_id, season_number
             )
             season_nfo_path = season_dir / SEASON_NFO_FILENAME
             await self._write_nfo_file(season_nfo_path, season_nfo_content)
@@ -2090,6 +2196,9 @@ class ScrapeService:
 
             season_number = mapping["season"]
             episode_num = mapping["episode"]
+            season_str = f"S{season_number:02d}"
+            episode_str = f"E{episode_num:02d}"
+            season_ep_pattern = f"{season_str}{episode_str}"
 
             meta = metadata_list[i] if i < len(metadata_list) else None
 
@@ -2097,12 +2206,20 @@ class ScrapeService:
             season_dir = series_dir / f"{SEASON_DIR_PREFIX}{season_number}"
             season_dir.mkdir(parents=True, exist_ok=True)
 
+            # 清理带年份后缀的旧文件（NFO、JPG 等）
+            for old_file in season_dir.iterdir():
+                if old_file.is_file() and season_ep_pattern in old_file.name:
+                    if re.search(r'\(\d{4}\)', old_file.stem):
+                        try:
+                            old_file.unlink()
+                            logger.info(f"清理带年份后缀的旧文件: {old_file.name}")
+                        except Exception:
+                            pass
+
             # 单集NFO（文件名：番剧名 - S01E01 - 第 1 集.nfo）
             episode_nfo_content = self.generate_episode_nfo(
-                meta, season_number, episode_num, series_name=series_name
+                meta, season_number, episode_num, series_name=series_name_no_year
             )
-            season_str = f"S{season_number:02d}"
-            episode_str = f"E{episode_num:02d}"
             episode_filename = (
                 f"{safe_series_name} - {season_str}{episode_str} - 第 {episode_num} 集"
             )
@@ -2117,7 +2234,7 @@ class ScrapeService:
                 episode_cover_url = meta.cover_url
             thumb_success = await self.generate_episode_thumb(
                 season_dir, season_number, episode_num, episode_cover_url,
-                series_name=series_name
+                series_name=series_name_no_year
             )
             if thumb_success:
                 image_files.append(str(season_dir / f"{episode_filename}.jpg"))
@@ -2198,6 +2315,11 @@ class ScrapeService:
         for f in series_dir.iterdir():
             if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                 video_id = self._extract_video_id(f.stem)
+                # 如果无法从文件名提取 video_id，尝试从 NFO 文件查找
+                if not video_id or not video_id.isdigit():
+                    nfo_video_id = self._lookup_video_id_from_nfo(f)
+                    if nfo_video_id:
+                        video_id = nfo_video_id
                 entries.append({
                     "file_path": str(f),
                     "filename": f.name,
@@ -2217,6 +2339,11 @@ class ScrapeService:
                 for f in sub.iterdir():
                     if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                         video_id = self._extract_video_id(f.stem)
+                        # 如果无法从文件名提取 video_id，尝试从 NFO 文件查找
+                        if not video_id or not video_id.isdigit():
+                            nfo_video_id = self._lookup_video_id_from_nfo(f)
+                            if nfo_video_id:
+                                video_id = nfo_video_id
                         entries.append({
                             "file_path": str(f),
                             "filename": f.name,
@@ -2233,6 +2360,7 @@ class ScrapeService:
 
         格式1: {video_id}_{subtitle}  → video_id
         格式2: S01E01                → 空字符串（需要通过NFO查找）
+        格式3: 番剧名 - S01E01 - 第 1 集  → 空字符串（需要通过NFO查找）
         """
         # 尝试匹配 video_id_ 前缀
         match = re.match(r'^([a-zA-Z0-9]+?)_(.+)$', filename_stem)
@@ -2241,12 +2369,75 @@ class ScrapeService:
             if len(candidate_id) <= 20:
                 return candidate_id
 
-        # 尝试匹配 S01E01 格式
+        # 尝试匹配纯 S01E01 格式
         if re.match(r'^S\d+E\d+$', filename_stem, re.IGNORECASE):
+            return ""
+
+        # 尝试匹配 "番剧名 - S01E01 - 第 N 集" 格式（刮削后的重命名格式）
+        if re.search(r'S\d+E\d+', filename_stem, re.IGNORECASE):
             return ""
 
         # 如果都不匹配，使用整个文件名作为ID
         return filename_stem
+
+    def _lookup_video_id_from_nfo(self, video_path: Path) -> str:
+        """
+        从同名 NFO 文件中查找 video_id
+
+        NFO 文件中的 uniqueid 字段存储了 video_id，
+        例如: <uniqueid type="hanime" default="true">13007</uniqueid>
+        """
+        nfo_path = video_path.with_suffix(".nfo")
+        if not nfo_path.exists():
+            return ""
+        try:
+            tree = ET.parse(str(nfo_path))
+            root = tree.getroot()
+            # 查找 uniqueid 标签
+            uniqueid_elem = root.find("uniqueid")
+            if uniqueid_elem is not None and uniqueid_elem.text:
+                vid = uniqueid_elem.text.strip()
+                # 确认是有效的 video_id（纯数字）
+                if vid.isdigit():
+                    return vid
+        except Exception as e:
+            logger.warning(f"从 NFO 查找 video_id 失败: {nfo_path} - {e}")
+        return ""
+
+    async def _lookup_video_id_from_db(self, file_path: Path) -> str:
+        """
+        从数据库下载记录中查找 video_id
+
+        通过文件名匹配 downloads 表中的 filename 字段。
+        """
+        try:
+            import aiosqlite
+            db_path = settings.DB_PATH / "downloads.db"
+            if not db_path.exists():
+                return ""
+            async with aiosqlite.connect(db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                # 尝试通过文件名匹配
+                filename = file_path.name
+                # 先尝试精确匹配 video_id (从文件名开头提取数字)
+                async with conn.execute(
+                    "SELECT video_id FROM downloads WHERE filename LIKE ? AND status = 'completed'",
+                    (f"%{filename}%",)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row['video_id'].isdigit():
+                        return row['video_id']
+                # 再尝试用文件名的 stem 匹配
+                async with conn.execute(
+                    "SELECT video_id FROM downloads WHERE filename LIKE ? AND status = 'completed'",
+                    (f"%{file_path.stem}%",)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row['video_id'].isdigit():
+                        return row['video_id']
+        except Exception as e:
+            logger.warning(f"从数据库查找 video_id 失败: {file_path.name} - {e}")
+        return ""
 
     def _determine_episode_number(self, video_entries: List[Dict]) -> Dict[str, Dict]:
         """
