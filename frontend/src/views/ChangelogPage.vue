@@ -8,6 +8,57 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.7</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>每集一季策略 + 番剧名作为季标题：</strong>参考"梅林传奇 (2008)"的目录结构，同系列番剧的每一集都独立放在一个 Season 目录中，让绿联NAS影视中心能为每集显示独立的海报。季标题（season.nfo 的 title）改为使用番剧名/副标题，不再使用"第N季"（如"援助交配 10"而非"第10季"），在 NAS 中浏览时看到的是番剧本身的名字，更直观</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>统一的集号提取方案（支持数字和文字标签）：</strong>新增文字标签到季号的语义映射表，无论标题是数字格式（"援助交配 10"）还是文字格式（"上卷"、"下卷"），都能正确提取季号。支持的文字标签：上卷/前篇→Season 1，中卷→Season 2，下卷/后篇→Season 3，OVA/特典/番外→Season 99。季号冲突时自动递增直到找到空闲数字</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>系列基础名提取支持文字标签后缀：</strong>"某番剧 上卷" → "某番剧"，"某番剧 下卷" → "某番剧"，确保同系列视频（无论数字还是文字标识）都能正确合并到同一番剧目录</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>目录整理支持文字标签季号：</strong>根目录残留的视频文件整理到 Season 子目录时，能正确识别"上卷/下卷"等标签分配季号</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>集号提取逻辑统一：</strong>首次下载的视频也会从标题提取季号（如"援助交配 10" → Season 10），不再默认归入 Season 1。同系列不同集的视频现在各自独立成季，每集都有独立的海报和元数据</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.2.6</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复同系列番剧下载时季号分配错误：</strong>旧逻辑按 video_id 排序位置作为季号，导致同系列不同集的视频被错误分配到不同季（如"援助交配 10"和"援助交配 11"被分到 Season 3 和 Season 4）。现在改为从标题中提取季号信息（如"第2期"、"Season 2"），无季号标记时默认归入 Season 1，同系列视频正确合并到同一季</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.5</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

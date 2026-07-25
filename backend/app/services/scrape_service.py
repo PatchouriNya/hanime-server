@@ -555,10 +555,15 @@ class ScrapeService:
         dateadded_elem = ET.SubElement(root, "dateadded")
         dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 季标题
-        season_title = f"第 {season_number} 季"
+        # 季标题 - 用番剧名而不是"第N季"，这样NAS中显示的是番剧名
+        # 如果有副标题则用副标题（如"援助交配 10"），否则用番剧名
+        season_title = series_title
+        for meta in metadata_list:
+            if meta and hasattr(meta, "subtitle") and meta.subtitle:
+                season_title = meta.subtitle
+                break
         title_elem = ET.SubElement(root, "title")
-        title_elem.text = season_title
+        title_elem.text = self._sanitize_nfo_text(season_title)
 
         # 年份
         earliest_date = None
@@ -577,7 +582,7 @@ class ScrapeService:
 
         year_elem = ET.SubElement(root, "year")
         sorttitle_elem = ET.SubElement(root, "sorttitle")
-        sorttitle_elem.text = season_title
+        sorttitle_elem.text = self._sanitize_nfo_text(season_title)
         premiered_elem = ET.SubElement(root, "premiered")
         releasedate_elem = ET.SubElement(root, "releasedate")
         if earliest_date:
