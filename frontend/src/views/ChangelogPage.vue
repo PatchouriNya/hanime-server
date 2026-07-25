@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.8</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复每季 Season 目录的 poster.jpg 都相同的问题：</strong>旧逻辑直接从根目录复制 poster.jpg 到所有 Season 目录，导致每季海报都是第一次下载时的同一张图片。现在改为优先使用该季视频对应的 {video_id}.jpg（下载时保存的封面）生成 Season 目录的 poster.jpg，并放大到标准尺寸 1000x1426。season{NN}-poster.jpg 也同步使用该季独立的 poster，不再统一从根目录复制</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.7</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>

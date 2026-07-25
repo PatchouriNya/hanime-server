@@ -1,5 +1,17 @@
 # 更新日志
 
+## v3.2.8 (2026-07-26)
+
+### 修复
+
+1. **修复每季 Season 目录的 poster.jpg 都相同的问题**：
+   - 根因：旧逻辑直接从根目录复制 poster.jpg 到所有 Season 目录，导致每季海报都是第一次下载时的同一张图片
+   - 场景：下载"告白……"系列3集后，Season 1/2/3 目录里的 poster.jpg 完全一样（都是 890732 bytes），但根目录的 {video_id}.jpg 是各自不同的封面
+   - 修复：改为优先使用该季视频对应的 `{video_id}.jpg`（下载时保存的封面）生成 Season 目录的 poster.jpg，并放大到标准尺寸 1000x1426
+   - 回退策略：`{video_id}.jpg` 不存在时从该季视频的 cover_url 下载；都失败时才复制根目录 poster.jpg
+   - season{NN}-poster.jpg 也同步使用该季独立的 poster，不再统一从根目录复制
+   - 验证结果：Season 1 (1307329 bytes)、Season 2 (1317413 bytes)、Season 3 (890732 bytes) 三张海报各不相同
+
 ## v3.2.7 (2026-07-26)
 
 ### 新增

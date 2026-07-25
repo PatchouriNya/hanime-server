@@ -2169,24 +2169,58 @@ class ScrapeService:
             await self._write_nfo_file(season_nfo_path, season_nfo_content)
             nfo_files.append(str(season_nfo_path))
 
-            # 复制 poster.jpg 到 Season 目录
+            # 为 Season 目录生成独立的 poster.jpg
+            # 每集一季策略：每季使用该集视频自己的封面，而非根目录的统一海报
             season_poster_path = season_dir / POSTER_FILENAME
             if not season_poster_path.exists():
-                root_poster = series_dir / POSTER_FILENAME
-                if root_poster.exists():
+                # 优先使用该季视频对应的 {video_id}.jpg（下载时保存的封面）
+                season_cover_path = series_dir / f"{season_video_id}.jpg"
+                if season_cover_path.exists():
                     try:
-                        shutil.copy2(root_poster, season_poster_path)
+                        shutil.copy2(season_cover_path, season_poster_path)
+                        # 放大到标准尺寸 1000x1426
+                        self._upscale_to_standard(
+                            season_poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT
+                        )
                         image_files.append(str(season_poster_path))
+                        logger.info(f"Season {season_number} poster.jpg 从 {season_video_id}.jpg 生成")
                     except Exception as e:
-                        logger.warning(f"复制 poster.jpg 到 Season {season_number} 目录失败: {e}")
+                        logger.warning(f"Season {season_number} poster.jpg 从 {season_video_id}.jpg 生成失败: {e}")
 
-            # 生成 season{NN}-poster.jpg 到根目录（对齐参考格式"未来日记"）
+                # 如果 {video_id}.jpg 不存在，从该季视频的 cover_url 下载
+                if not season_poster_path.exists() and season_metadata:
+                    cover_url = ""
+                    if hasattr(season_metadata[0], "cover_url") and season_metadata[0].cover_url:
+                        cover_url = season_metadata[0].cover_url
+                    if cover_url:
+                        try:
+                            success = await self._download_cover_as_jpg(cover_url, season_poster_path)
+                            if success:
+                                self._upscale_to_standard(
+                                    season_poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT
+                                )
+                                image_files.append(str(season_poster_path))
+                                logger.info(f"Season {season_number} poster.jpg 从 cover_url 下载")
+                        except Exception as e:
+                            logger.warning(f"Season {season_number} poster.jpg 从 cover_url 下载失败: {e}")
+
+                # 最后回退：复制根目录的 poster.jpg（保证至少有海报）
+                if not season_poster_path.exists():
+                    root_poster = series_dir / POSTER_FILENAME
+                    if root_poster.exists():
+                        try:
+                            shutil.copy2(root_poster, season_poster_path)
+                            image_files.append(str(season_poster_path))
+                            logger.warning(f"Season {season_number} poster.jpg 回退使用根目录 poster")
+                        except Exception as e:
+                            logger.warning(f"复制 poster.jpg 到 Season {season_number} 目录失败: {e}")
+
+            # 生成 season{NN}-poster.jpg 到根目录（使用该季独立的 poster，对齐参考格式"未来日记"）
             season_numbered_poster_path = series_dir / SEASON_POSTER_FILENAME_PATTERN.format(season_number)
             if not season_numbered_poster_path.exists():
-                root_poster = series_dir / POSTER_FILENAME
-                if root_poster.exists():
+                if season_poster_path.exists():
                     try:
-                        shutil.copy2(root_poster, season_numbered_poster_path)
+                        shutil.copy2(season_poster_path, season_numbered_poster_path)
                         image_files.append(str(season_numbered_poster_path))
                         logger.info(f"season{season_number:02d}-poster.jpg 已生成: {season_numbered_poster_path}")
                     except Exception as e:
