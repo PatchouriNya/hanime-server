@@ -72,6 +72,9 @@ class DownloadManager:
         # 数据库路径
         self.db_path = settings.DB_PATH / "downloads.db"
 
+        # 视频文件扩展名集合
+        self.VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.ts'}
+
     
     async def init_db(self):
         """初始化数据库"""
@@ -108,6 +111,20 @@ class DownloadManager:
                 except:
                     pass  # 列已存在则忽略
             
+            # 系列表：记录多个番剧合并为一个系列的关系
+            await conn.execute("""
+            CREATE TABLE IF NOT EXISTS series (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                series_name TEXT NOT NULL,
+                video_id TEXT NOT NULL,
+                season_number INTEGER NOT NULL DEFAULT 1,
+                episode_offset INTEGER NOT NULL DEFAULT 0,
+                original_title TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(video_id)
+            )
+            """)
+
             await conn.commit()
     
     async def get_download_history(self, username: str) -> List[Dict[str, Any]]:
@@ -1180,6 +1197,210 @@ class DownloadManager:
         }
         logger.info(f"批量删除完成: 成功 {success_count}, 失败 {len(failed_ids)}, 删除文件={delete_files}")
         return result
+
+    async def merge_series_directories(
+        self,
+        series_name: str,
+        items: List[Dict[str, Any]],
+        username: str
+    ) -> Dict[str, Any]:
+        """
+        合并多个番剧目录为一个系列目录
+
+        流程：
+        1. 创建系列根目录
+        2. 对每个视频，将其从原始目录移动到系列目录的 Season N 子目录
+        3. 更新数据库记录中的 filename 字段
+        4. 保存系列关系到 series 表
+        5. 清理空目录
+
+        :param series_name: 合并后的系列根目录名
+        :param items: [{"video_id": "13007", "season_number": 1}, {"video_id": "13405", "season_number": 2}]
+        :param username: 用户名
+        """
+        await self.init_db()
+
+        series_dir = settings.DOWNLOAD_PATH / series_name
+        merged_items = []
+        errors = []
+
+        try:
+            # 创建系列根目录
+            series_dir.mkdir(parents=True, exist_ok=True)
+
+            for item in items:
+                video_id = item.get("video_id")
+                season_number = item.get("season_number", 1)
+
+                if not video_id:
+                    continue
+
+                # 查找该视频的下载记录
+                download_info = await self.check_existing_download(video_id, username)
+                if not download_info:
+                    errors.append({"video_id": video_id, "error": "下载记录不存在"})
+                    continue
+
+                filename = download_info.get("filename", "")
+                if not filename:
+                    errors.append({"video_id": video_id, "error": "文件名为空"})
+                    continue
+
+                # 找到原始文件路径
+                original_path = settings.DOWNLOAD_PATH / filename
+
+                # 如果文件不在原始路径，查找刮削后的路径（通过NFO查找）
+                actual_video_path = None
+                related_files = []
+
+                if not os.path.exists(original_path):
+                    original_series_name = filename.split('/')[0] if '/' in filename else None
+                    if original_series_name:
+                        original_series_dir = settings.DOWNLOAD_PATH / original_series_name
+                        nfo_files = await self._find_nfo_by_video_id(original_series_dir, video_id)
+                        if nfo_files:
+                            nfo_path = Path(nfo_files[0])
+                            nfo_stem = nfo_path.stem
+                            nfo_parent = nfo_path.parent
+                            for ext in self.VIDEO_EXTENSIONS:
+                                candidate = nfo_parent / f"{nfo_stem}{ext}"
+                                if candidate.exists():
+                                    actual_video_path = candidate
+                                    break
+                            # 收集相关的nfo和jpg
+                            for nfo_f in nfo_files:
+                                related_files.append(nfo_f)
+                                nfo_p = Path(nfo_f)
+                                thumb = nfo_p.parent / f"{nfo_p.stem}.jpg"
+                                if thumb.exists():
+                                    related_files.append(str(thumb))
+                        else:
+                            errors.append({"video_id": video_id, "error": f"找不到视频文件: {filename}"})
+                            continue
+                    else:
+                        errors.append({"video_id": video_id, "error": f"找不到视频文件: {filename}"})
+                        continue
+                else:
+                    actual_video_path = original_path
+
+                if not actual_video_path or not actual_video_path.exists():
+                    errors.append({"video_id": video_id, "error": f"视频文件不存在: {actual_video_path}"})
+                    continue
+
+                # 创建目标 Season 目录
+                season_dir = series_dir / f"Season {season_number}"
+                season_dir.mkdir(parents=True, exist_ok=True)
+
+                # 计算集号：该 Season 下已有的视频数量 + 1
+                existing_videos_in_season = [
+                    f for f in season_dir.iterdir()
+                    if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS
+                ]
+                episode_num = len(existing_videos_in_season) + 1
+
+                # 新文件名：系列名 - S01E01 - 第 1 集.mp4
+                safe_name = self._sanitize_filename(series_name)
+                new_filename = f"{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集{actual_video_path.suffix.lower()}"
+                new_path = season_dir / new_filename
+
+                # 移动视频文件
+                try:
+                    shutil.move(str(actual_video_path), str(new_path))
+                    logger.info(f"合并系列: 移动视频 {actual_video_path} -> {new_path}")
+                except Exception as e:
+                    errors.append({"video_id": video_id, "error": f"移动视频文件, {str(e)}"})
+                    continue
+
+                # 移动相关文件（NFO、缩略图）
+                for rel_file_path in related_files:
+                    if isinstance(rel_file_path, str):
+                        rel_file_path = Path(rel_file_path)
+                    if rel_file_path.exists():
+                        # NFO文件重命名
+                        if rel_file_path.suffix.lower() == '.nfo':
+                            new_nfo_name = f"{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.nfo"
+                            new_nfo_path = season_dir / new_nfo_name
+                            try:
+                                shutil.move(str(rel_file_path), str(new_nfo_path))
+                            except Exception as e:
+                                logger.warning(f"移动NFO失败: {e}")
+                        elif rel_file_path.suffix.lower() == '.jpg':
+                            new_thumb_name = f"{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.jpg"
+                            new_thumb_path = season_dir / new_thumb_name
+                            try:
+                                shutil.move(str(rel_file_path), str(new_thumb_path))
+                            except Exception as e:
+                                logger.warning(f"移动缩略图失败: {e}")
+
+                # 移动封面文件
+                original_series_name = filename.split('/')[0] if '/' in filename else None
+                if original_series_name:
+                    original_series_dir = settings.DOWNLOAD_PATH / original_series_name
+                    cover_file = original_series_dir / f"{video_id}.jpg"
+                    if cover_file.exists():
+                        # 第一个视频的封面作为系列封面 poster.jpg
+                        series_poster = series_dir / "poster.jpg"
+                        if not series_poster.exists() or season_number == 1:
+                            try:
+                                shutil.copy2(str(cover_file), str(series_poster))
+                                logger.info(f"复制封面为系列poster: {cover_file} -> {series_poster}")
+                            except Exception as e:
+                                logger.warning(f"复制封面失败: {e}")
+
+                # 更新数据库记录
+                new_relative_path = f"{series_name}/Season {season_number}/{new_filename}"
+                try:
+                    async with aiosqlite.connect(self.db_path) as conn:
+                        await conn.execute(
+                            "UPDATE downloads SET filename = ?, title = ? WHERE username = ? AND video_id = ?",
+                            (new_relative_path, series_name, username, video_id)
+                        )
+                        await conn.commit()
+                except Exception as e:
+                    logger.error(f"更新下载记录失败: {video_id} - {e}")
+
+                # 保存系列关系
+                try:
+                    async with aiosqlite.connect(self.db_path) as conn:
+                        await conn.execute(
+                            """INSERT OR REPLACE INTO series (series_name, video_id, season_number, episode_offset, original_title)
+                            VALUES (?, ?, ?, ?, ?)""",
+                            (series_name, video_id, season_number, (season_number - 1) * 10, download_info.get("title", ""))
+                        )
+                        await conn.commit()
+                except Exception as e:
+                    logger.error(f"保存系列关系失败: {video_id} - {e}")
+
+                # 清理空目录
+                if original_series_name:
+                    original_series_dir = settings.DOWNLOAD_PATH / original_series_name
+                    await self._cleanup_empty_series_dir(original_series_dir)
+
+                merged_items.append({
+                    "video_id": video_id,
+                    "season_number": season_number,
+                    "episode_number": episode_num,
+                    "new_path": new_relative_path
+                })
+
+            return {
+                "status": "success" if not errors else "partial",
+                "series_name": series_name,
+                "merged": merged_items,
+                "errors": errors,
+                "message": f"成功合并 {len(merged_items)} 个视频到系列「{series_name}」"
+                           + (f"，{len(errors)} 个失败" if errors else "")
+            }
+
+        except Exception as e:
+            logger.error(f"合并系列失败: {e}")
+            return {
+                "status": "error",
+                "series_name": series_name,
+                "merged": merged_items,
+                "errors": errors + [{"error": str(e)}],
+                "message": f"合并系列失败: {str(e)}"
+            }
 
     async def start_download(self, video_id: str, username: str, force: bool = False):
         """

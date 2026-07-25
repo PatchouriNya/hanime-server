@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.2</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>系列合并功能：</strong>视频详情页系列影片区域新增"合并到系列"按钮，当当前视频和至少一个系列视频都已下载时显示，支持编辑系列名称和调整季号；下载管理页面新增"合并系列"按钮，可选择多个已下载番剧合并到同一系列；系列名自动从标题中提取（如"不潔之星・赤"→"不潔之星"）</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削多季支持：</strong>合并后的系列刮削时自动识别 Season 1/Season 2 等目录，每季独立编号集号，为每季生成 season.nfo 和 season-poster.jpg，重命名文件使用正确的 S02E01 格式</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.1</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

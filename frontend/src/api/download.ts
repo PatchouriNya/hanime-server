@@ -223,5 +223,36 @@ export const DownloadApi = {
    */
   formatSpeed: (bytesPerSecond: number): string => {
     return `${DownloadApi.formatFileSize(bytesPerSecond)}/s`;
+  },
+
+  /**
+   * 检测视频的同系列信息
+   */
+  detectSeries: async (videoId: string): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/series/detect', {
+        video_id: videoId
+      });
+      return response.data;
+    } catch (error) {
+      console.error('检测系列信息失败:', error);
+      return { has_series: false, message: '检测失败' };
+    }
+  },
+
+  /**
+   * 合并多个番剧为一个系列
+   */
+  mergeSeries: async (seriesName: string, items: Array<{video_id: string, season_number: number}>): Promise<any> => {
+    try {
+      const response = await request.post('/downloads/series/merge', {
+        series_name: seriesName,
+        items: items
+      });
+      return response.data;
+    } catch (error) {
+      console.error('合并系列失败:', error);
+      return { status: 'error', message: '合并系列失败' };
+    }
   }
 }; 

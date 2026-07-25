@@ -8,12 +8,56 @@ from fastapi import APIRouter, Query, Depends
 from fastapi.responses import FileResponse
 from app.utils.auth import get_current_user, verify_token
 import os
+import re
+
+
+def _extract_series_name(title: str) -> str:
+    """
+    从番剧标题中提取系列名（去掉编号后缀）
+
+    示例：
+    "不潔之星・赤" -> "不潔之星"
+    "OVA ケガレボシ・赤" -> "OVA ケガレボシ"
+    "不洁之星 2" -> "不洁之星"
+    "某番剧 第2期" -> "某番剧"
+    """
+    if not title:
+        return title
+
+    # 去掉常见的编号后缀模式
+    patterns = [
+        r'[・\s][赤青黒白紅緑黄紫]$',              # 不潔之星・赤 -> 不潔之星
+        r'\s*[第ⅠⅡⅢ]\s*$',                      # 某番剧 第Ⅱ -> 某番剧
+        r'\s*\d+$',                               # 某番剧 2 -> 某番剧
+        r'\s*第\d+[期章部話]$',                    # 某番剧 第2期 -> 某番剧
+        r'\s*Season\s*\d+$',                      # 某番剧 Season 2 -> 某番剧
+        r'[・\-]\s*\d+$',                         # 某番剧・2 -> 某番剧
+    ]
+
+    result = title
+    for pattern in patterns:
+        new_result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+        if new_result != result and len(new_result) >= 2:
+            result = new_result
+
+    return result.strip()
 
 
 class BatchDeleteRequest(BaseModel):
     """批量删除请求"""
     video_ids: List[str]
     delete_files: bool = True
+
+
+class SeriesDetectRequest(BaseModel):
+    """系列检测请求"""
+    video_id: str
+
+
+class SeriesMergeRequest(BaseModel):
+    """系列合并请求"""
+    series_name: str                    # 合并后的系列根目录名
+    items: List[dict]                   # [{"video_id": "13007", "season_number": 1}, {"video_id": "13405", "season_number": 2}]
 
 router = APIRouter()
 
@@ -150,6 +194,103 @@ async def batch_delete_downloads(
                    f"{'（已删除源文件）' if request.delete_files else '（保留源文件）'}",
         **result
     }
+
+
+@router.post("/series/detect")
+async def detect_series(request: SeriesDetectRequest, user: dict = Depends(get_current_user)):
+    """
+    检测视频的同系列信息
+
+    返回：
+    - series_videos: 源站提供的同系列视频列表
+    - already_downloaded: 已下载的同系列视频（包含本地目录信息）
+    - suggested_series_name: 建议的系列名（去掉编号部分）
+    - merge_plan: 建议的合并方案
+    """
+    from app.services.video_service import VideoService
+    video_service = VideoService()
+
+    # 获取视频详情，拿到 series_videos
+    video_detail = await video_service.get_video_detail(request.video_id)
+    if not video_detail:
+        return {"has_series": False, "message": "无法获取视频详情"}
+
+    series_videos = video_detail.series_videos or []
+    if not series_videos:
+        return {"has_series": False, "message": "该视频没有同系列视频"}
+
+    # 检查哪些同系列视频已经下载
+    already_downloaded = []
+    for sv in series_videos:
+        existing = await download_manager.check_existing_download(sv.video_id, user["username"])
+        if existing and existing.get("status") == "completed":
+            already_downloaded.append({
+                "video_id": sv.video_id,
+                "title": sv.title,
+                "filename": existing.get("filename", ""),
+                "cover_url": sv.cover_url or ""
+            })
+
+    # 也检查当前视频本身是否已下载
+    current_existing = await download_manager.check_existing_download(request.video_id, user["username"])
+    if current_existing and current_existing.get("status") == "completed":
+        already_downloaded.append({
+            "video_id": request.video_id,
+            "title": video_detail.title,
+            "filename": current_existing.get("filename", ""),
+            "cover_url": video_detail.cover_url or ""
+        })
+
+    # 去重
+    seen = set()
+    unique_downloaded = []
+    for item in already_downloaded:
+        if item["video_id"] not in seen:
+            seen.add(item["video_id"])
+            unique_downloaded.append(item)
+
+    # 生成建议的系列名（去掉编号后缀）
+    suggested_name = _extract_series_name(video_detail.title)
+
+    # 生成合并方案：按视频ID排序，最小的为 Season 1
+    all_series_ids = sorted(set(
+        [sv.video_id for sv in series_videos] + [request.video_id]
+    ))
+    merge_plan = []
+    for idx, vid in enumerate(all_series_ids):
+        title = video_detail.title if vid == request.video_id else next((sv.title for sv in series_videos if sv.video_id == vid), vid)
+        is_downloaded = any(d["video_id"] == vid for d in unique_downloaded)
+        merge_plan.append({
+            "video_id": vid,
+            "title": title,
+            "season_number": idx + 1,
+            "is_downloaded": is_downloaded
+        })
+
+    return {
+        "has_series": True,
+        "current_video_id": request.video_id,
+        "current_title": video_detail.title,
+        "series_videos": [{"video_id": sv.video_id, "title": sv.title, "cover_url": sv.cover_url or ""} for sv in series_videos],
+        "already_downloaded": unique_downloaded,
+        "suggested_series_name": suggested_name,
+        "merge_plan": merge_plan
+    }
+
+
+@router.post("/series/merge")
+async def merge_series(request: SeriesMergeRequest, user: dict = Depends(get_current_user)):
+    """
+    合并多个番剧为一个系列
+
+    将多个已下载的番剧目录合并到一个根目录下，按 Season 编号组织
+    """
+    result = await download_manager.merge_series_directories(
+        series_name=request.series_name,
+        items=request.items,
+        username=user["username"]
+    )
+    return result
 
 
 @router.get("/file/{video_id}")

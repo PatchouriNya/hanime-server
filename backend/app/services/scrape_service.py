@@ -1685,7 +1685,7 @@ class ScrapeService:
         series_dir: Path,
         series_name: str,
         video_entries: List[Dict],
-        episode_mapping: Dict[str, int],
+        episode_mapping: Dict[str, Dict],
         scrape_mode: ScrapeMode,
         is_rename_file: bool,
         is_reorganize_directory: bool,
@@ -1695,14 +1695,16 @@ class ScrapeService:
         重命名视频文件并重组目录结构
 
         电视剧模式：
-          原始: 番剧名/video_id_subtitle.mp4
-          目标: 番剧名 (年份)/Season 1/番剧名 - S01E01 - 第 1 集.mp4
+          单季: 番剧名/Season 1/番剧名 - S01E01 - 第 1 集.mp4
+          多季: 番剧名/Season 1/番剧名 - S01E01 - 第 1 集.mp4
+                番剧名/Season 2/番剧名 - S02E01 - 第 1 集.mp4
 
         电影模式：
           原始: 番剧名/video_id_subtitle.mp4
           目标: 番剧名 (年份)/番剧名 (年份).mp4
 
         如果番剧目录名尚未包含年份，且能从元数据获取到年份，则重命名目录为 "番剧名 (年份)"。
+        多季时文件保留在其所属的 Season 目录中。
         """
         renamed_files = []
 
@@ -1741,26 +1743,29 @@ class ScrapeService:
                         logger.error(f"番剧目录重命名失败: {e}")
 
         if scrape_mode == ScrapeMode.TV_SHOW:
-            # 电视剧模式：创建 Season 1 目录（对齐参考格式，不带前导零）
-            if is_reorganize_directory:
-                season_dir = series_dir / f"{SEASON_DIR_PREFIX}1"
-                season_dir.mkdir(parents=True, exist_ok=True)
-            else:
-                season_dir = series_dir
-
             safe_series_name = self._sanitize_filename(series_name)
 
             for entry in video_entries:
                 video_path = Path(entry["file_path"])
                 video_id = entry["video_id"]
-                episode_num = episode_mapping.get(video_id, 0)
-
-                if episode_num == 0:
+                mapping = episode_mapping.get(video_id)
+                if not mapping:
                     continue
+
+                season_number = mapping["season"]
+                episode_num = mapping["episode"]
+
+                # 确定目标 Season 目录
+                if is_reorganize_directory:
+                    season_dir = series_dir / f"{SEASON_DIR_PREFIX}{season_number}"
+                    season_dir.mkdir(parents=True, exist_ok=True)
+                else:
+                    # 不重组目录时，保留在当前目录
+                    season_dir = video_path.parent
 
                 if is_rename_file:
                     # 新文件名格式：番剧名 - S01E01 - 第 1 集.mp4
-                    season_str = "S01"
+                    season_str = f"S{season_number:02d}"
                     episode_str = f"E{episode_num:02d}"
                     new_filename = (
                         f"{safe_series_name} - {season_str}{episode_str} - "
@@ -1889,15 +1894,17 @@ class ScrapeService:
             safe_series_name = self._sanitize_filename(series_name)
             for entry in video_entries:
                 video_id = entry["video_id"]
-                episode_num = episode_mapping.get(video_id, 0)
-                if episode_num == 0:
+                mapping = episode_mapping.get(video_id)
+                if not mapping:
                     continue
+                season_number = mapping["season"]
+                episode_num = mapping["episode"]
                 meta = next((m for i, m in enumerate(metadata_list)
                               if video_entries[i]["video_id"] == video_id), None)
                 episode_nfo = self.generate_episode_nfo(
-                    meta, 1, episode_num, series_name=series_name
+                    meta, season_number, episode_num, series_name=series_name
                 )
-                season_str = "S01"
+                season_str = f"S{season_number:02d}"
                 episode_str = f"E{episode_num:02d}"
                 episode_filename = (
                     f"{safe_series_name} - {season_str}{episode_str} - 第 {episode_num} 集"
@@ -1914,7 +1921,7 @@ class ScrapeService:
                 if original_name != new_name:
                     preview.rename_mapping.append({
                         "original": original_name,
-                        "new": f"Season 1/{new_name}"
+                        "new": f"Season {season_number}/{new_name}"
                     })
         else:
             # 预览 movie.nfo
@@ -1932,7 +1939,7 @@ class ScrapeService:
         series_name: str,
         video_entries: List[Dict],
         metadata_list: List[Optional[Any]],
-        episode_mapping: Dict[str, int]
+        episode_mapping: Dict[str, Dict]
     ) -> tuple:
         """
         生成电视剧模式的NFO和图片文件
@@ -1941,12 +1948,21 @@ class ScrapeService:
         番剧名 (年份)/
         ├── tvshow.nfo
         ├── poster.jpg, backdrop.jpg, fanart.jpg, landscape.jpg, thumb.jpg, banner.jpg
-        └── Season 1/
+        ├── season01-poster.jpg, season02-poster.jpg, ...
+        ├── Season 1/
+        │   ├── poster.jpg（复制根目录）
+        │   ├── season.nfo
+        │   ├── 番剧名 - S01E01 - 第 1 集.nfo
+        │   ├── 番剧名 - S01E01 - 第 1 集.jpg
+        │   └── ...
+        └── Season 2/
             ├── poster.jpg（复制根目录）
             ├── season.nfo
-            ├── 番剧名 - S01E01 - 第 1 集.nfo
-            ├── 番剧名 - S01E01 - 第 1 集.jpg
+            ├── 番剧名 - S02E01 - 第 1 集.nfo
             └── ...
+
+        支持多季：为每个季目录生成 season.nfo 和季海报，
+        单集 NFO 使用 episode_mapping 中的正确季/集号。
         """
         nfo_files = []
         image_files = []
@@ -1997,59 +2013,95 @@ class ScrapeService:
         if banner_success:
             image_files.append(str(series_dir / BANNER_FILENAME))
 
-        # 8. 创建 Season 1 目录（对齐参考格式，不带前导零）
-        season_dir = series_dir / f"{SEASON_DIR_PREFIX}1"
-        season_dir.mkdir(parents=True, exist_ok=True)
+        # 8. 收集所有季号（从 episode_mapping 和目录结构中获取）
+        season_numbers = set()
+        for entry in video_entries:
+            season_numbers.add(entry.get("season_number", 1))
+        # 也从 episode_mapping 中获取
+        for mapping_val in episode_mapping.values():
+            season_numbers.add(mapping_val["season"])
+        if not season_numbers:
+            season_numbers = {1}
 
-        # 9. 生成 season.nfo
-        season_nfo_content = self.generate_season_nfo(
-            series_name, metadata_list, first_video_id, 1
-        )
-        season_nfo_path = season_dir / SEASON_NFO_FILENAME
-        await self._write_nfo_file(season_nfo_path, season_nfo_content)
-        nfo_files.append(str(season_nfo_path))
-
-        # 10. 复制 poster.jpg 到 Season 目录
-        season_poster_path = season_dir / POSTER_FILENAME
-        if not season_poster_path.exists():
-            root_poster = series_dir / POSTER_FILENAME
-            if root_poster.exists():
-                try:
-                    shutil.copy2(root_poster, season_poster_path)
-                    image_files.append(str(season_poster_path))
-                except Exception as e:
-                    logger.warning(f"复制 poster.jpg 到 Season 目录失败: {e}")
-
-        # 10.1 生成 season01-poster.jpg 到根目录（对齐参考格式"未来日记"）
-        # 参考格式中根目录有 season01-poster.jpg，与 poster.jpg 内容相同，
-        # 绿联NAS通过此文件识别第1季的海报
-        season_numbered_poster_path = series_dir / SEASON_POSTER_FILENAME_PATTERN.format(1)
-        if not season_numbered_poster_path.exists():
-            root_poster = series_dir / POSTER_FILENAME
-            if root_poster.exists():
-                try:
-                    shutil.copy2(root_poster, season_numbered_poster_path)
-                    image_files.append(str(season_numbered_poster_path))
-                    logger.info(f"season01-poster.jpg 已生成: {season_numbered_poster_path}")
-                except Exception as e:
-                    logger.warning(f"生成 season01-poster.jpg 失败: {e}")
-
-        # 11. 为每集生成 NFO 和缩略图
+        # 9. 为每个季生成 Season 目录、season.nfo、季海报
         safe_series_name = self._sanitize_filename(series_name)
 
+        for season_number in sorted(season_numbers):
+            # 创建 Season 目录（对齐参考格式，不带前导零）
+            season_dir = series_dir / f"{SEASON_DIR_PREFIX}{season_number}"
+            season_dir.mkdir(parents=True, exist_ok=True)
+
+            # 生成 season.nfo
+            # 收集该季的元数据用于 season.nfo
+            season_metadata = []
+            for i, entry in enumerate(video_entries):
+                video_id = entry["video_id"]
+                mapping = episode_mapping.get(video_id)
+                if mapping and mapping["season"] == season_number:
+                    if i < len(metadata_list):
+                        season_metadata.append(metadata_list[i])
+            if not season_metadata:
+                season_metadata = metadata_list
+
+            # 使用该季第一个 video_id 作为 season 标识
+            season_video_id = ""
+            for entry in video_entries:
+                mapping = episode_mapping.get(entry["video_id"])
+                if mapping and mapping["season"] == season_number:
+                    season_video_id = entry["video_id"]
+                    break
+
+            season_nfo_content = self.generate_season_nfo(
+                series_name, season_metadata, season_video_id or first_video_id, season_number
+            )
+            season_nfo_path = season_dir / SEASON_NFO_FILENAME
+            await self._write_nfo_file(season_nfo_path, season_nfo_content)
+            nfo_files.append(str(season_nfo_path))
+
+            # 复制 poster.jpg 到 Season 目录
+            season_poster_path = season_dir / POSTER_FILENAME
+            if not season_poster_path.exists():
+                root_poster = series_dir / POSTER_FILENAME
+                if root_poster.exists():
+                    try:
+                        shutil.copy2(root_poster, season_poster_path)
+                        image_files.append(str(season_poster_path))
+                    except Exception as e:
+                        logger.warning(f"复制 poster.jpg 到 Season {season_number} 目录失败: {e}")
+
+            # 生成 season{NN}-poster.jpg 到根目录（对齐参考格式"未来日记"）
+            season_numbered_poster_path = series_dir / SEASON_POSTER_FILENAME_PATTERN.format(season_number)
+            if not season_numbered_poster_path.exists():
+                root_poster = series_dir / POSTER_FILENAME
+                if root_poster.exists():
+                    try:
+                        shutil.copy2(root_poster, season_numbered_poster_path)
+                        image_files.append(str(season_numbered_poster_path))
+                        logger.info(f"season{season_number:02d}-poster.jpg 已生成: {season_numbered_poster_path}")
+                    except Exception as e:
+                        logger.warning(f"生成 season{season_number:02d}-poster.jpg 失败: {e}")
+
+        # 10. 为每集生成 NFO 和缩略图
         for i, entry in enumerate(video_entries):
             video_id = entry["video_id"]
-            episode_num = episode_mapping.get(video_id, 0)
-            if episode_num == 0:
+            mapping = episode_mapping.get(video_id)
+            if not mapping:
                 continue
+
+            season_number = mapping["season"]
+            episode_num = mapping["episode"]
 
             meta = metadata_list[i] if i < len(metadata_list) else None
 
+            # 确定该集所在的 Season 目录
+            season_dir = series_dir / f"{SEASON_DIR_PREFIX}{season_number}"
+            season_dir.mkdir(parents=True, exist_ok=True)
+
             # 单集NFO（文件名：番剧名 - S01E01 - 第 1 集.nfo）
             episode_nfo_content = self.generate_episode_nfo(
-                meta, 1, episode_num, series_name=series_name
+                meta, season_number, episode_num, series_name=series_name
             )
-            season_str = "S01"
+            season_str = f"S{season_number:02d}"
             episode_str = f"E{episode_num:02d}"
             episode_filename = (
                 f"{safe_series_name} - {season_str}{episode_str} - 第 {episode_num} 集"
@@ -2064,7 +2116,7 @@ class ScrapeService:
             if meta and hasattr(meta, "cover_url") and meta.cover_url:
                 episode_cover_url = meta.cover_url
             thumb_success = await self.generate_episode_thumb(
-                season_dir, 1, episode_num, episode_cover_url,
+                season_dir, season_number, episode_num, episode_cover_url,
                 series_name=series_name
             )
             if thumb_success:
@@ -2135,10 +2187,14 @@ class ScrapeService:
         支持两种目录结构：
         1. 扁平结构: 番剧名/video_id_subtitle.mp4
         2. Season结构: 番剧名/Season 1/S01E01.mp4
+           多季结构: 番剧名/Season 1/... + 番剧名/Season 2/...
+
+        每个条目包含 season_number，从 Season 子目录名解析（如 "Season 2" → 2），
+        扁平结构中的文件默认为第 1 季。
         """
         entries = []
 
-        # 扫描根目录
+        # 扫描根目录（非 Season 子目录的视频文件，默认为第 1 季）
         for f in series_dir.iterdir():
             if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                 video_id = self._extract_video_id(f.stem)
@@ -2146,12 +2202,18 @@ class ScrapeService:
                     "file_path": str(f),
                     "filename": f.name,
                     "video_id": video_id,
-                    "is_season_subdir": False
+                    "is_season_subdir": False,
+                    "season_number": 1
                 })
 
         # 扫描 Season 子目录
         for sub in series_dir.iterdir():
             if sub.is_dir() and sub.name.startswith(SEASON_DIR_PREFIX):
+                # 从目录名解析季号（如 "Season 2" → 2）
+                season_number = 1
+                season_match = re.match(r'^Season\s+(\d+)$', sub.name, re.IGNORECASE)
+                if season_match:
+                    season_number = int(season_match.group(1))
                 for f in sub.iterdir():
                     if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                         video_id = self._extract_video_id(f.stem)
@@ -2159,7 +2221,8 @@ class ScrapeService:
                             "file_path": str(f),
                             "filename": f.name,
                             "video_id": video_id,
-                            "is_season_subdir": True
+                            "is_season_subdir": True,
+                            "season_number": season_number
                         })
 
         return entries
@@ -2185,35 +2248,65 @@ class ScrapeService:
         # 如果都不匹配，使用整个文件名作为ID
         return filename_stem
 
-    def _determine_episode_number(self, video_entries: List[Dict]) -> Dict[str, int]:
+    def _determine_episode_number(self, video_entries: List[Dict]) -> Dict[str, Dict]:
         """
-        确定每个视频的集号
+        确定每个视频的季号和集号
+
+        返回映射: video_id -> {"season": N, "episode": M}
+        每季独立编号（各季均从 E01 开始）。
 
         排序策略：
-        1. 如果文件名中包含S01E01格式，直接提取
-        2. 否则按文件创建时间排序，依次分配 1, 2, 3...
+        1. 如果文件名中包含S01E01格式，直接提取季号和集号
+        2. 否则使用条目中的 season_number（来自目录结构），按文件路径排序分配集号
         """
-        episode_mapping = {}
-        regular_entries = []
+        episode_mapping: Dict[str, Dict] = {}
+
+        # 按季分组：已解析 SxxExx 的 和 待自动分配的
+        parsed_by_season: Dict[int, List[tuple]] = {}   # season -> [(video_id, episode_num)]
+        regular_by_season: Dict[int, List[Dict]] = {}   # season -> [entry]
 
         for entry in video_entries:
             filename = entry["filename"]
-            # 尝试从S01E01格式提取集号
-            match = re.search(r'S\d+E(\d+)', filename, re.IGNORECASE)
-            if match:
-                episode_num = int(match.group(1))
-                episode_mapping[entry["video_id"]] = episode_num
-            else:
-                regular_entries.append(entry)
+            season_number = entry.get("season_number", 1)
 
-        # 对没有集号的条目按创建时间排序分配
-        if regular_entries:
+            # 尝试从S01E01格式提取季号和集号
+            match = re.search(r'S(\d+)E(\d+)', filename, re.IGNORECASE)
+            if match:
+                parsed_season = int(match.group(1))
+                episode_num = int(match.group(2))
+                # 文件名中的季号优先于目录推导的季号
+                if parsed_season not in parsed_by_season:
+                    parsed_by_season[parsed_season] = []
+                parsed_by_season[parsed_season].append((entry["video_id"], episode_num))
+            else:
+                if season_number not in regular_by_season:
+                    regular_by_season[season_number] = []
+                regular_by_season[season_number].append(entry)
+
+        # 处理已解析的条目
+        for season, items in parsed_by_season.items():
+            for video_id, episode_num in items:
+                episode_mapping[video_id] = {"season": season, "episode": episode_num}
+
+        # 对没有集号的条目，按季独立分配集号
+        all_seasons = set(regular_by_season.keys()) | set(parsed_by_season.keys())
+        for season in sorted(all_seasons):
+            if season not in regular_by_season:
+                continue
+            entries = regular_by_season[season]
             # 按文件路径排序
-            regular_entries.sort(key=lambda x: x["file_path"])
-            # 找到已分配的最大集号
-            max_episode = max(episode_mapping.values(), default=0)
-            for i, entry in enumerate(regular_entries):
-                episode_mapping[entry["video_id"]] = max_episode + i + 1
+            entries.sort(key=lambda x: x["file_path"])
+            # 找到该季已分配的最大集号
+            existing_episodes = [
+                v["episode"] for v in episode_mapping.values()
+                if v["season"] == season
+            ]
+            max_episode = max(existing_episodes, default=0)
+            for i, entry in enumerate(entries):
+                episode_mapping[entry["video_id"]] = {
+                    "season": season,
+                    "episode": max_episode + i + 1
+                }
 
         return episode_mapping
 

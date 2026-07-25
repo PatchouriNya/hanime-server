@@ -128,14 +128,26 @@
     />
 
     <!-- 系列视频 -->
-    <video-section
-        v-if="videoDetail.series_videos && videoDetail.series_videos.length"
-        :title="'系列影片'"
-        :videos="videoDetail.series_videos"
-        thumbnail-class="portrait"
-        item-class="latest-horizontal-item"
-        @video-click="goToVideo"
-    />
+    <div v-if="videoDetail.series_videos && videoDetail.series_videos.length" class="series-section">
+      <div class="series-section-header">
+        <h3 class="section-title" style="margin-bottom: 0;">系列影片</h3>
+        <el-button
+          v-if="canMergeSeries"
+          type="warning"
+          size="small"
+          @click="openMergeDialog"
+        >
+          <el-icon><Connection /></el-icon> 合并到系列
+        </el-button>
+      </div>
+      <video-section
+          :title="''"
+          :videos="videoDetail.series_videos"
+          thumbnail-class="portrait"
+          item-class="latest-horizontal-item"
+          @video-click="goToVideo"
+      />
+    </div>
 
     <!-- 相关视频 -->
     <div class="related-section" v-if="(videoDetail.basic_related_videos && videoDetail.basic_related_videos.length) || (videoDetail.detailed_related_videos && videoDetail.detailed_related_videos.length)">
@@ -255,6 +267,67 @@
       </template>
     </el-dialog>
 
+    <!-- 合并到系列对话框 -->
+    <el-dialog
+      v-model="mergeDialogVisible"
+      title="合并到系列"
+      width="80%"
+      class="series-merge-dialog"
+    >
+      <div class="merge-dialog-content" v-if="mergeSeriesInfo">
+        <div class="merge-info-row">
+          <span class="merge-label">系列名称：</span>
+          <el-input v-model="mergeSeriesName" placeholder="输入系列名称" style="flex: 1;" />
+        </div>
+
+        <div class="merge-plan" v-if="mergeSeriesInfo.merge_plan && mergeSeriesInfo.merge_plan.length">
+          <h4 class="merge-plan-title">合并计划</h4>
+          <el-table :data="mergeSeriesInfo.merge_plan" border stripe size="default" class="merge-table">
+            <el-table-column label="番剧名称" min-width="200">
+              <template #default="{ row }">
+                <div class="merge-video-name">
+                  <span>{{ row.title || row.video_id }}</span>
+                  <el-tag v-if="row.is_current" size="small" type="primary" style="margin-left: 6px;">当前</el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.is_downloaded ? 'success' : 'info'" size="small">
+                  {{ row.is_downloaded ? '已下载' : '未下载' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="季号" width="120" align="center">
+              <template #default="{ row, $index }">
+                <el-input-number
+                  v-model="mergeItems[$index].season_number"
+                  :min="1"
+                  :max="99"
+                  size="small"
+                  controls-position="right"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div class="merge-tip" v-if="mergeSeriesInfo.already_downloaded && mergeSeriesInfo.already_downloaded.length">
+          <el-icon><InfoFilled /></el-icon>
+          <span>已有 {{ mergeSeriesInfo.already_downloaded.length }} 个系列视频已下载，合并后将在同一目录下组织</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="mergeDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="isMerging" @click="executeMerge">
+            确认合并
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 返回顶部按钮 -->
     <el-backtop :right="20" :bottom="20"></el-backtop>
   </div>
@@ -270,8 +343,9 @@ import VideoSection from '../components/VideoSection.vue';
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
 import VideoPlayer from './VideoPlayer.vue';
 import VideoComments from './VideoComments.vue';
-import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled, Star, StarFilled, Clock, FolderAdd, Picture } from '@element-plus/icons-vue';
+import { View, Calendar, ArrowUp, ArrowDown, Download, VideoCamera, Collection, InfoFilled, Star, StarFilled, Clock, FolderAdd, Picture, Connection } from '@element-plus/icons-vue';
 import { useDownloadStore } from '../stores/download';
+import { DownloadApi } from '../api/download';
 import { AccountApi, UserPlaylist } from '../api/account';
 import request from '../utils/request';
 import defaultAvatar from '../assets/default-avatar.svg';
@@ -295,7 +369,8 @@ export default defineComponent({
     StarFilled,
     Clock,
     FolderAdd,
-    Picture
+    Picture,
+    Connection
   },
   setup() {
     const route = useRoute();
@@ -324,6 +399,13 @@ export default defineComponent({
     const newPlaylistName = ref('');
     const isCreatingPlaylist = ref(false);
 
+    // 合并系列相关状态
+    const mergeDialogVisible = ref(false);
+    const mergeSeriesInfo = ref<any>(null);
+    const mergeSeriesName = ref('');
+    const mergeItems = ref<Array<{video_id: string, season_number: number}>>([]);
+    const isMerging = ref(false);
+
     // 视频详情数据
     const videoDetail = ref<VideoDetail>({
       video_id: '',
@@ -342,6 +424,17 @@ export default defineComponent({
     // 计算是否有系列视频
     const hasSeriesVideos = computed(() => {
       return videoDetail.value.series_videos && videoDetail.value.series_videos.length > 0;
+    });
+
+    // 计算是否可以合并系列：当前视频已下载 + 至少一个系列视频也已下载
+    const canMergeSeries = computed(() => {
+      if (!hasSeriesVideos.value || !videoDetail.value.series_videos) return false;
+      const currentDownloaded = isVideoAlreadyDownloaded(videoDetail.value.video_id);
+      if (!currentDownloaded) return false;
+      const otherSeriesDownloaded = videoDetail.value.series_videos.filter(
+        v => v.video_id !== videoDetail.value.video_id && isVideoAlreadyDownloaded(v.video_id)
+      ).length;
+      return otherSeriesDownloaded > 0;
     });
 
     // 使用下载状态管理
@@ -939,6 +1032,66 @@ export default defineComponent({
       }
     });
 
+    // 打开合并系列对话框
+    const openMergeDialog = async () => {
+      try {
+        const result = await DownloadApi.detectSeries(videoDetail.value.video_id);
+        if (result.has_series) {
+          mergeSeriesInfo.value = result;
+          mergeSeriesName.value = result.suggested_series_name || '';
+          // 初始化合并项
+          if (result.merge_plan && result.merge_plan.length) {
+            mergeItems.value = result.merge_plan.map((item: any) => ({
+              video_id: item.video_id,
+              season_number: item.season_number || 1
+            }));
+          } else {
+            // 如果没有合并计划，用系列视频构建
+            mergeItems.value = (videoDetail.value.series_videos || []).map((v: any) => ({
+              video_id: v.video_id,
+              season_number: 1
+            }));
+          }
+          mergeDialogVisible.value = true;
+        } else {
+          ElMessage.warning(result.message || '未检测到可合并的系列信息');
+        }
+      } catch (error) {
+        console.error('检测系列信息失败:', error);
+        ElMessage.error('检测系列信息失败');
+      }
+    };
+
+    // 执行合并
+    const executeMerge = async () => {
+      if (!mergeSeriesName.value.trim()) {
+        ElMessage.warning('请输入系列名称');
+        return;
+      }
+      if (!mergeItems.value.length) {
+        ElMessage.warning('没有可合并的项目');
+        return;
+      }
+
+      isMerging.value = true;
+      try {
+        const result = await DownloadApi.mergeSeries(mergeSeriesName.value.trim(), mergeItems.value);
+        if (result.status === 'success') {
+          ElMessage.success(result.message || '合并成功');
+          mergeDialogVisible.value = false;
+          // 刷新下载状态
+          await downloadStore.initializeDownloads();
+        } else {
+          ElMessage.error(result.message || '合并失败');
+        }
+      } catch (error) {
+        console.error('合并系列失败:', error);
+        ElMessage.error('合并系列失败');
+      } finally {
+        isMerging.value = false;
+      }
+    };
+
     // 下载封面海报（后端只下载 /image/cover/ 格式的竖版海报，不混用预览图）
     const handleDownloadCover = async () => {
       if (!videoDetail.value.video_id || !videoDetail.value.title) return;
@@ -1015,7 +1168,16 @@ export default defineComponent({
       openPlaylistDialog,
       addToPlaylist,
       createNewPlaylist,
-      handleDownloadCover
+      handleDownloadCover,
+      // 合并系列
+      canMergeSeries,
+      mergeDialogVisible,
+      mergeSeriesInfo,
+      mergeSeriesName,
+      mergeItems,
+      isMerging,
+      openMergeDialog,
+      executeMerge
     };
   }
 });
@@ -1785,6 +1947,96 @@ export default defineComponent({
   color: var(--text-secondary-color);
 }
 
+/* 系列视频区块标题 */
+.series-section {
+  margin-bottom: 20px;
+}
+
+.series-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+/* 合并到系列对话框样式 */
+.series-merge-dialog {
+  background-color: var(--bg-secondary-color) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.series-merge-dialog :deep(.el-dialog__header) {
+  background-color: var(--bg-secondary-color);
+  padding: 15px 20px;
+}
+
+.series-merge-dialog :deep(.el-dialog__title) {
+  color: var(--text-color);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.series-merge-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: var(--text-secondary-color);
+}
+
+.series-merge-dialog :deep(.el-dialog__body) {
+  background-color: var(--bg-color);
+  padding: 20px;
+}
+
+.merge-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.merge-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.merge-label {
+  font-size: 14px;
+  color: var(--text-color);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.merge-plan-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 12px;
+}
+
+.merge-table {
+  width: 100%;
+}
+
+.merge-video-name {
+  display: flex;
+  align-items: center;
+}
+
+.merge-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary-color);
+}
+
+.merge-tip .el-icon {
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
 /* PC端大气布局 */
 @media (min-width: 769px) {
   .page-container {
@@ -1845,6 +2097,36 @@ export default defineComponent({
 
   .video-info-container {
     margin-bottom: 36px;
+  }
+
+  .series-section-header {
+    margin-bottom: 18px;
+  }
+
+  .merge-plan-title {
+    font-size: 17px;
+  }
+
+  .merge-label {
+    font-size: 15px;
+  }
+}
+
+/* 手机端合并对话框适配 */
+@media (max-width: 768px) {
+  .merge-info-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .merge-label {
+    margin-bottom: 4px;
+  }
+
+  .series-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 }
 </style>

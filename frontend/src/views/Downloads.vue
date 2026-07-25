@@ -62,6 +62,13 @@
             <el-icon><Delete /></el-icon>
             {{ downloadStore.batchDeleteMode ? '退出批量' : '批量删除' }}
           </el-button>
+          <el-button
+            size="small"
+            type="warning"
+            @click="openMergeSeriesDialog"
+          >
+            <el-icon><Connection /></el-icon> 合并系列
+          </el-button>
         </div>
         <div class="right-actions">
           <el-button-group>
@@ -300,6 +307,93 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 合并系列对话框 -->
+    <el-dialog
+      v-model="mergeSeriesDialogVisible"
+      title="合并系列"
+      width="80%"
+      :width="isMobile ? '95%' : '80%'"
+      class="merge-series-dialog"
+    >
+      <div class="merge-series-content">
+        <div class="merge-series-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span>选择两个或更多已下载的番剧，合并到同一个系列中</span>
+        </div>
+
+        <div class="merge-series-name-row">
+          <span class="merge-label">系列名称：</span>
+          <el-input v-model="mergeSeriesNameInput" placeholder="输入系列名称" style="flex: 1;" />
+        </div>
+
+        <div class="merge-series-select">
+          <h4 class="merge-select-title">选择番剧</h4>
+          <el-table
+            ref="mergeSelectTableRef"
+            :data="completedDownloadsList"
+            border
+            stripe
+            size="default"
+            @selection-change="handleMergeSelectionChange"
+            class="merge-select-table"
+          >
+            <el-table-column type="selection" width="50" align="center" />
+            <el-table-column label="番剧名称" min-width="200">
+              <template #default="{ row }">
+                <span>{{ extractFilename(row.filename) || row.title }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="系列" width="150">
+              <template #default="{ row }">
+                <span>{{ row.series_name || '未分组' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="100" align="center">
+              <template #default="{ row }">
+                <span>{{ formatFileSize(row.total_size) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div class="merge-series-plan" v-if="mergeSelectedDownloads.length > 0">
+          <h4 class="merge-select-title">季号分配</h4>
+          <el-table :data="mergeSelectedDownloads" border size="default" class="merge-plan-table">
+            <el-table-column label="番剧名称" min-width="200">
+              <template #default="{ row }">
+                <span>{{ extractFilename(row.filename) || row.title }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="季号" width="120" align="center">
+              <template #default="{ $index }">
+                <el-input-number
+                  v-model="mergeSeasonNumbers[$index]"
+                  :min="1"
+                  :max="99"
+                  size="small"
+                  controls-position="right"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="mergeSeriesDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="isMergingSeries"
+            :disabled="mergeSelectedDownloads.length < 2 || !mergeSeriesNameInput.trim()"
+            @click="executeMergeSeries"
+          >
+            确认合并 ({{ mergeSelectedDownloads.length }})
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -309,7 +403,7 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
 import { ScrapeApi } from '../api/scrape';
@@ -666,6 +760,75 @@ const closeVideoPlayer = () => {
   setTimeout(() => {
     currentVideo.value = { video_id: '', url: '', title: '', cover_url: '' };
   }, 200);
+};
+
+// 合并系列相关状态
+const mergeSeriesDialogVisible = ref(false);
+const mergeSeriesNameInput = ref('');
+const mergeSelectedDownloads = ref<any[]>([]);
+const mergeSeasonNumbers = ref<number[]>([]);
+const isMergingSeries = ref(false);
+const mergeSelectTableRef = ref<any>(null);
+
+// 已完成下载列表（用于合并选择）
+const completedDownloadsList = computed(() => {
+  return downloadStore.completedDownloads || [];
+});
+
+// 打开合并系列对话框
+const openMergeSeriesDialog = () => {
+  mergeSeriesDialogVisible.value = true;
+  mergeSeriesNameInput.value = '';
+  mergeSelectedDownloads.value = [];
+  mergeSeasonNumbers.value = [];
+};
+
+// 处理合并选择变化
+const handleMergeSelectionChange = (selection: any[]) => {
+  mergeSelectedDownloads.value = selection;
+  // 初始化季号数组
+  mergeSeasonNumbers.value = selection.map((_, index) => {
+    return mergeSeasonNumbers.value[index] || (index + 1);
+  });
+  // 如果只选了一个，自动用其 series_name 作为系列名称
+  if (selection.length === 1 && selection[0].series_name) {
+    mergeSeriesNameInput.value = selection[0].series_name;
+  }
+};
+
+// 执行合并系列
+const executeMergeSeries = async () => {
+  if (mergeSelectedDownloads.value.length < 2) {
+    ElMessage.warning('请至少选择两个番剧进行合并');
+    return;
+  }
+  if (!mergeSeriesNameInput.value.trim()) {
+    ElMessage.warning('请输入系列名称');
+    return;
+  }
+
+  isMergingSeries.value = true;
+  try {
+    const items = mergeSelectedDownloads.value.map((dl, index) => ({
+      video_id: dl.video_id,
+      season_number: mergeSeasonNumbers.value[index] || (index + 1)
+    }));
+
+    const result = await DownloadApi.mergeSeries(mergeSeriesNameInput.value.trim(), items);
+    if (result.status === 'success') {
+      ElMessage.success(result.message || '合并成功');
+      mergeSeriesDialogVisible.value = false;
+      await downloadStore.initializeDownloads();
+      if (viewMode.value === 'group') await loadGroups();
+    } else {
+      ElMessage.error(result.message || '合并失败');
+    }
+  } catch (error) {
+    console.error('合并系列失败:', error);
+    ElMessage.error('合并系列失败');
+  } finally {
+    isMergingSeries.value = false;
+  }
 };
 
 // 初始化
@@ -1094,6 +1257,80 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
+/* 合并系列对话框 */
+.merge-series-dialog :deep(.el-dialog__header) {
+  background-color: var(--bg-secondary-color);
+  padding: 15px 20px;
+}
+
+.merge-series-dialog :deep(.el-dialog__title) {
+  color: var(--text-color);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.merge-series-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: var(--text-secondary-color);
+}
+
+.merge-series-dialog :deep(.el-dialog__body) {
+  background-color: var(--bg-color);
+  padding: 20px;
+}
+
+.merge-series-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.merge-series-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary-color);
+}
+
+.merge-series-hint .el-icon {
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.merge-series-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.merge-label {
+  font-size: 14px;
+  color: var(--text-color);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.merge-select-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 12px;
+}
+
+.merge-select-table,
+.merge-plan-table {
+  width: 100%;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 /* PC端大气布局 */
 @media (min-width: 769px) {
   .downloads-page {
@@ -1200,10 +1437,17 @@ onUnmounted(() => {
   .stat-card { padding: 8px; }
   .stat-value { font-size: 16px; }
   .stat-label { font-size: 12px; }
-  /* 手机端每行2个按钮，5个按钮=3行（2+2+1） */
+  /* 手机端每行2个按钮，6个按钮=3行（2+2+2） */
   .left-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .right-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .group-title { font-size: 13px; }
+  .merge-series-name-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .merge-label {
+    margin-bottom: 4px;
+  }
 }
 </style>
