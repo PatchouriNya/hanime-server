@@ -4,6 +4,7 @@ import time
 import math
 import json
 import shutil
+from pathlib import Path
 from typing import Dict, Optional, List, Set, Any
 from fastapi import WebSocket
 from datetime import datetime
@@ -980,51 +981,121 @@ class DownloadManager:
             logger.error(f"删除下载失败: {str(e)}")
             return False
 
+    async def _find_nfo_by_video_id(self, series_dir, video_id: str) -> List:
+        """
+        递归搜索番剧目录，查找包含指定 video_id 的 NFO 文件
+
+        通过匹配 NFO 中的 <uniqueid type="hanime" default="true">{video_id}</uniqueid> 来定位
+
+        :param series_dir: 番剧根目录路径
+        :param video_id: 视频ID
+        :return: 匹配的 NFO 文件路径列表
+        """
+        matched_nfo_files = []
+        uniqueid_pattern = f'<uniqueid type="hanime" default="true">{video_id}</uniqueid>'
+
+        try:
+            if not await aiofiles.os.path.exists(series_dir):
+                return matched_nfo_files
+
+            for root, dirs, files in os.walk(series_dir):
+                for f in files:
+                    if not f.lower().endswith('.nfo'):
+                        continue
+                    nfo_path = os.path.join(root, f)
+                    try:
+                        async with aiofiles.open(nfo_path, 'r', encoding='utf-8', errors='ignore') as nf:
+                            content = await nf.read()
+                            if uniqueid_pattern in content:
+                                matched_nfo_files.append(nfo_path)
+                    except Exception as e:
+                        logger.warning(f"读取NFO文件失败: {nfo_path} - {e}")
+        except Exception as e:
+            logger.error(f"搜索NFO文件异常: {series_dir} - {e}")
+
+        return matched_nfo_files
+
     async def _delete_video_and_scrape_files(self, filename: str, video_id: str) -> None:
         """
         删除视频文件及其关联的刮削文件
 
-        删除范围：
-        1. 视频文件本身（settings.DOWNLOAD_PATH / filename）
-        2. 与视频同名的 .nfo 文件（刮削生成的单集 NFO）
-        3. 与视频同名的 .jpg 文件（刮削生成的单集缩略图）
-        4. 如果番剧目录下没有其他视频文件了，删除整个番剧目录（包括所有 NFO 和图片）
+        删除策略：
+        1. 先尝试删除原始路径的视频文件（未刮削的下载）
+        2. 再通过 NFO 中的 uniqueid 查找刮削后重命名的文件
+        3. 删除 NFO、对应的视频文件和缩略图
+        4. 删除番剧根目录下的 video_id.jpg 封面
+        5. 清理空目录
 
         :param filename: 数据库中存储的文件名（可能包含 series_name/ 前缀）
-        :param video_id: 视频ID（用于查找 video_id.jpg 封面）
+        :param video_id: 视频ID（用于查找 video_id.jpg 封面和 NFO 匹配）
         """
         if not filename:
             return
 
+        video_extensions = {'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.ts'}
+
         try:
             file_path = settings.DOWNLOAD_PATH / filename
+            series_name = filename.split('/')[0] if '/' in filename else None
 
-            # 1. 删除视频文件
+            # 1. 先尝试删除原始路径的视频文件（未刮削的场景）
             try:
                 if await aiofiles.os.path.exists(file_path):
                     await aiofiles.os.remove(file_path)
-                    logger.info(f"删除视频文件成功: {file_path}")
+                    logger.info(f"删除原始视频文件成功: {file_path}")
+
+                    # 删除与原始视频同名的 .nfo 和 .jpg
+                    video_stem = file_path.stem
+                    video_parent = file_path.parent
+                    for ext in [".nfo", ".jpg"]:
+                        scrape_file = video_parent / f"{video_stem}{ext}"
+                        try:
+                            if await aiofiles.os.path.exists(scrape_file):
+                                await aiofiles.os.remove(scrape_file)
+                                logger.info(f"删除刮削文件成功: {scrape_file}")
+                        except Exception as e:
+                            logger.warning(f"删除刮削文件失败: {scrape_file} - {e}")
             except Exception as file_error:
-                logger.error(f"删除视频文件失败: {str(file_error)}")
+                logger.error(f"删除原始视频文件失败: {str(file_error)}")
 
-            # 2. 删除与视频同名的 .nfo 和 .jpg（刮削生成的单集文件）
-            video_stem = file_path.stem  # 不含扩展名
-            video_parent = file_path.parent  # 视频所在目录（可能是 Season 1 目录）
-
-            scrape_extensions = [".nfo", ".jpg"]
-            for ext in scrape_extensions:
-                scrape_file = video_parent / f"{video_stem}{ext}"
-                try:
-                    if await aiofiles.os.path.exists(scrape_file):
-                        await aiofiles.os.remove(scrape_file)
-                        logger.info(f"删除刮削文件成功: {scrape_file}")
-                except Exception as e:
-                    logger.warning(f"删除刮削文件失败: {scrape_file} - {e}")
-
-            # 3. 删除番剧根目录下的 video_id.jpg 封面（如果有）
-            series_name = filename.split('/')[0] if '/' in filename else None
+            # 2. 通过 NFO 查找刮削后重命名的文件
             if series_name:
                 series_dir = settings.DOWNLOAD_PATH / series_name
+                nfo_files = await self._find_nfo_by_video_id(series_dir, video_id)
+
+                for nfo_path in nfo_files:
+                    nfo_path_obj = Path(nfo_path)
+                    nfo_stem = nfo_path_obj.stem
+                    nfo_parent = nfo_path_obj.parent
+
+                    # 删除 NFO 文件
+                    try:
+                        if await aiofiles.os.path.exists(nfo_path):
+                            await aiofiles.os.remove(nfo_path)
+                            logger.info(f"删除NFO文件成功: {nfo_path}")
+                    except Exception as e:
+                        logger.warning(f"删除NFO文件失败: {nfo_path} - {e}")
+
+                    # 删除与 NFO 同名的视频文件
+                    for ext in video_extensions:
+                        video_file = nfo_parent / f"{nfo_stem}{ext}"
+                        try:
+                            if await aiofiles.os.path.exists(video_file):
+                                await aiofiles.os.remove(video_file)
+                                logger.info(f"删除刮削后视频文件成功: {video_file}")
+                        except Exception as e:
+                            logger.warning(f"删除刮削后视频文件失败: {video_file} - {e}")
+
+                    # 删除与 NFO 同名的缩略图 .jpg
+                    thumb_file = nfo_parent / f"{nfo_stem}.jpg"
+                    try:
+                        if await aiofiles.os.path.exists(thumb_file):
+                            await aiofiles.os.remove(thumb_file)
+                            logger.info(f"删除单集缩略图成功: {thumb_file}")
+                    except Exception as e:
+                        logger.warning(f"删除单集缩略图失败: {thumb_file} - {e}")
+
+                # 3. 删除番剧根目录下的 video_id.jpg 封面
                 cover_file = series_dir / f"{video_id}.jpg"
                 try:
                     if await aiofiles.os.path.exists(cover_file):
@@ -1033,7 +1104,7 @@ class DownloadManager:
                 except Exception as e:
                     logger.warning(f"删除封面文件失败: {cover_file} - {e}")
 
-                # 4. 检查番剧目录是否还有其他视频文件，如果没有则删除整个目录
+                # 4. 清理空目录
                 await self._cleanup_empty_series_dir(series_dir)
 
         except Exception as e:
@@ -1391,19 +1462,24 @@ class DownloadManager:
 
     async def scan_and_restore_downloads(self, username: str) -> Dict[str, Any]:
         """
-        扫描下载目录，恢复丢失的下载记录
-        从文件系统中发现已下载但数据库中无记录的文件，自动补建记录
+        扫描下载目录，恢复丢失的下载记录，并清理文件已不存在的无效记录
+
+        第一阶段：从文件系统中发现已下载但数据库中无记录的文件，自动补建记录
+        第二阶段：检查所有已完成的下载记录，如果对应文件已不存在（原始路径和刮削后路径都找不到），
+                 则删除数据库记录
         """
         import re
-        
+
         restored = []
         skipped = []
         errors = []
-        
+        removed = []
+
         download_path = settings.DOWNLOAD_PATH
         if not download_path.exists():
-            return {"restored": [], "skipped": [], "errors": ["下载目录不存在"]}
-        
+            return {"restored": [], "skipped": [], "errors": ["下载目录不存在"], "removed": []}
+
+        # ========== 第一阶段：扫描恢复 ==========
         # 获取当前用户的所有下载记录video_id集合
         await self.init_db()
         async with aiosqlite.connect(self.db_path) as db:
@@ -1413,25 +1489,25 @@ class DownloadManager:
             ) as cursor:
                 rows = await cursor.fetchall()
                 existing_ids = {row['video_id'] for row in rows}
-        
+
         # 扫描下载目录
         for series_dir in download_path.iterdir():
             if not series_dir.is_dir():
                 continue
-            
+
             series_name = series_dir.name
-            
+
             # 遍历番剧目录中的视频文件
             for video_file in series_dir.iterdir():
                 if not video_file.is_file():
                     continue
                 if not video_file.suffix.lower() in ('.mp4', '.mkv', '.avi', '.wmv'):
                     continue
-                
+
                 # 从文件名解析 video_id（格式：{video_id}_{subtitle}.mp4）
                 filename_stem = video_file.stem
                 video_id = None
-                
+
                 # 尝试匹配 video_id_ 前缀
                 match = re.match(r'^([a-zA-Z0-9]+?)_(.+)$', filename_stem)
                 if match:
@@ -1439,7 +1515,7 @@ class DownloadManager:
                     # video_id 通常是纯数字或包含字母的短ID
                     if len(candidate_id) <= 20:
                         video_id = candidate_id
-                
+
                 if not video_id:
                     # 如果无法解析video_id，跳过
                     skipped.append({
@@ -1448,7 +1524,7 @@ class DownloadManager:
                         "reason": "无法解析video_id"
                     })
                     continue
-                
+
                 # 检查是否已有记录
                 if video_id in existing_ids:
                     skipped.append({
@@ -1457,24 +1533,24 @@ class DownloadManager:
                         "reason": "记录已存在"
                     })
                     continue
-                
+
                 # 获取文件大小
                 file_size = video_file.stat().st_size
-                
+
                 # 构建相对路径（与start_download格式一致）
                 relative_path = f"{series_name}/{video_file.name}"
-                
+
                 # 检查是否有本地封面
                 cover_url = ""
                 cover_path = series_dir / f"{video_id}.jpg"
                 if cover_path.exists():
                     cover_url = f"/api/downloads/cover/{video_id}"
-                
+
                 # 补建下载记录
                 try:
                     async with aiosqlite.connect(self.db_path) as conn:
                         await conn.execute(
-                            """INSERT OR REPLACE INTO downloads 
+                            """INSERT OR REPLACE INTO downloads
                             (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count, created_at, completed_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                             (
@@ -1493,7 +1569,7 @@ class DownloadManager:
                             )
                         )
                         await conn.commit()
-                    
+
                     existing_ids.add(video_id)
                     restored.append({
                         "video_id": video_id,
@@ -1502,7 +1578,7 @@ class DownloadManager:
                         "size": file_size
                     })
                     logger.info(f"恢复下载记录: {video_id} - {series_name}/{video_file.name}")
-                    
+
                 except Exception as e:
                     errors.append({
                         "video_id": video_id,
@@ -1510,12 +1586,73 @@ class DownloadManager:
                         "error": str(e)
                     })
                     logger.error(f"恢复下载记录失败: {video_id} - {str(e)}")
-        
+
+        # ========== 第二阶段：清理无效记录 ==========
+        # 检查所有已完成的下载记录，如果文件已不存在则删除记录
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT video_id, filename, status FROM downloads WHERE username = ? AND status = ?",
+                (username, DownloadStatus.COMPLETED)
+            ) as cursor:
+                completed_rows = await cursor.fetchall()
+
+        for row in completed_rows:
+            vid = row['video_id']
+            filename = row['filename']
+
+            if not filename:
+                continue
+
+            # 1. 检查原始路径文件是否存在
+            original_path = settings.DOWNLOAD_PATH / filename
+            if await aiofiles.os.path.exists(original_path):
+                continue
+
+            # 2. 检查刮削后文件是否仍存在（通过 NFO 查找）
+            series_name = filename.split('/')[0] if '/' in filename else None
+            file_found_via_nfo = False
+            if series_name:
+                series_dir = settings.DOWNLOAD_PATH / series_name
+                nfo_files = await self._find_nfo_by_video_id(series_dir, vid)
+                if nfo_files:
+                    file_found_via_nfo = True
+
+            # 3. 原始路径和刮削后路径都找不到文件，删除记录
+            if not file_found_via_nfo:
+                try:
+                    async with aiosqlite.connect(self.db_path) as conn:
+                        await conn.execute(
+                            "DELETE FROM downloads WHERE username = ? AND video_id = ?",
+                            (username, vid)
+                        )
+                        await conn.commit()
+
+                    # 清理内存中的记录
+                    if vid in self.active_downloads:
+                        del self.active_downloads[vid]
+
+                    removed.append({
+                        "video_id": vid,
+                        "filename": filename,
+                        "reason": "文件不存在（原始路径和刮削后路径均未找到）"
+                    })
+                    logger.info(f"清理无效下载记录: {vid} - {filename}")
+                except Exception as e:
+                    errors.append({
+                        "video_id": vid,
+                        "filename": filename,
+                        "error": f"清理记录失败: {str(e)}"
+                    })
+                    logger.error(f"清理无效下载记录失败: {vid} - {str(e)}")
+
         return {
             "restored": restored,
             "skipped": skipped,
             "errors": errors,
-            "total_restored": len(restored)
+            "removed": removed,
+            "total_restored": len(restored),
+            "total_removed": len(removed)
         }
 
     async def search_downloads(self, username: str, query: str = "", status: str = "") -> List[Dict[str, Any]]:

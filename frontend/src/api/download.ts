@@ -43,7 +43,7 @@ export const DownloadApi = {
       return response.data;
     } catch (error) {
       console.error('扫描恢复失败:', error);
-      return { restored: [], errors: ['请求失败'], total_restored: 0 };
+      return { restored: [], errors: ['请求失败'], total_restored: 0, removed: [], total_removed: 0 };
     }
   },
 

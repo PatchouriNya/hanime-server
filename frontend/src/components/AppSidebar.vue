@@ -41,7 +41,7 @@
           <el-icon :size="20"><Timer /></el-icon> 稍后观看
         </router-link>
         <router-link to="/favorites" class="nav-item" @click="closeSidebar">
-          <el-icon :size="20"><Star /></el-icon> 喜欢的影片
+          <el-icon :size="20"><Star /></el-icon> 收藏的番剧
         </router-link>
         <router-link to="/playlists" class="nav-item" @click="closeSidebar">
           <el-icon :size="20"><Film /></el-icon> 播放清单

@@ -8,6 +8,30 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.1</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复删除下载记录时无法删除刮削后重命名的文件：</strong>刮削服务会将视频从原始命名重命名为 S01E01 标准格式，旧删除逻辑只查找原始路径导致文件残留。现在通过 NFO 中的 uniqueid 标签递归搜索番剧目录，精确定位刮削后的视频文件、NFO、缩略图和封面并一并删除</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>扫描恢复增加清理无效记录：</strong>检查所有已完成的下载记录，如果文件在原始路径和刮削后路径都不存在，自动清理数据库记录，避免"幽灵"下载项</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>菜单"喜欢的影片"更名为"收藏的番剧"：</strong>侧边栏菜单和收藏页面标题统一更名为"收藏的番剧"</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.2.0</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

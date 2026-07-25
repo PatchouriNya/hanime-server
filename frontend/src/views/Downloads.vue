@@ -525,21 +525,28 @@ const handleScrapeSeries = async (seriesName: string) => {
 const handleScanRestore = async () => {
   try {
     await ElMessageBox.confirm(
-      '将扫描下载目录，自动恢复文件存在但记录丢失的下载项。是否继续？',
+      '将扫描下载目录，自动恢复文件存在但记录丢失的下载项，并清理文件已不存在的无效记录。是否继续？',
       '扫描恢复',
       { confirmButtonText: '开始扫描', cancelButtonText: '取消', type: 'info' }
     );
   } catch { return; }
-  
+
   isScanning.value = true;
   try {
     const result = await DownloadApi.scanAndRestore();
+    const messages = [];
     if (result.total_restored > 0) {
-      ElMessage.success(`成功恢复 ${result.total_restored} 条下载记录`);
+      messages.push(`恢复 ${result.total_restored} 条记录`);
+    }
+    if (result.total_removed > 0) {
+      messages.push(`清理 ${result.total_removed} 条无效记录`);
+    }
+    if (messages.length > 0) {
+      ElMessage.success(messages.join('，'));
       await downloadStore.initializeDownloads();
       if (viewMode.value === 'group') await loadGroups();
     } else {
-      ElMessage.info('未发现需要恢复的下载记录');
+      ElMessage.info('未发现需要恢复或清理的记录');
     }
   } catch (e) {
     ElMessage.error('扫描恢复失败');

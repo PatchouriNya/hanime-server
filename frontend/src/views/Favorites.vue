@@ -1,7 +1,7 @@
 <template>
   <div class="favorites-page">
     <div class="page-header">
-      <h1 class="page-title">喜欢的影片</h1>
+      <h1 class="page-title">收藏的番剧</h1>
       <div class="header-actions">
         <el-button v-if="favorites.length > 0" @click="showConfirmDialog = true" type="danger" plain>
           <el-icon><Delete /></el-icon> 清空收藏
