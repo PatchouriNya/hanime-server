@@ -93,6 +93,43 @@ class ScrapeService:
 
     # ==================== 主流程 ====================
 
+    async def fix_nfo_empty_tags(self, series_name: str = None) -> dict:
+        """
+        修复已有 NFO 文件中的空日期标签
+
+        绿联影视中心将 <year/>、<premiered/> 等空标签解析为 1970-01-01。
+        此方法扫描 NFO 文件，移除所有空日期标签。
+
+        :param series_name: 指定番剧目录名，为 None 则修复所有
+        :return: 修复统计 {"total": N, "fixed": N}
+        """
+        total = 0
+        fixed = 0
+
+        download_path = settings.DOWNLOAD_PATH
+        if series_name:
+            scan_dirs = [download_path / series_name]
+        else:
+            scan_dirs = [d for d in download_path.iterdir() if d.is_dir()] if download_path.exists() else []
+
+        for series_dir in scan_dirs:
+            if not series_dir.exists():
+                continue
+            # 扫描所有 .nfo 文件（包括子目录中的 episode nfo）
+            for nfo_path in series_dir.rglob("*.nfo"):
+                try:
+                    content = nfo_path.read_text(encoding="utf-8")
+                    cleaned = self._EMPTY_DATE_TAG_RE.sub('', content)
+                    if cleaned != content:
+                        nfo_path.write_text(cleaned, encoding="utf-8")
+                        fixed += 1
+                        logger.info(f"修复空日期标签: {nfo_path}")
+                    total += 1
+                except Exception as e:
+                    logger.warning(f"修复 NFO 失败: {nfo_path} - {e}")
+
+        return {"total": total, "fixed": fixed}
+
     async def scrape_series(
         self,
         series_name: str,
@@ -2317,13 +2354,21 @@ class ScrapeService:
         """将已有图片文件转换为JPG格式"""
         return self._convert_to_jpg(source_path, target_path)
 
+    # 需要清理空标签的日期字段（空标签会导致绿联显示 1970-01-01）
+    _EMPTY_DATE_TAG_RE = re.compile(
+        r'^\s*<(year|premiered|releasedate|aired|enddate)\s*/>\s*$',
+        re.MULTILINE
+    )
+
     async def _write_nfo_file(self, nfo_path: Path, content: str):
-        """写入NFO文件"""
+        """写入NFO文件（自动移除日期相关的空标签）"""
         try:
             nfo_path.parent.mkdir(parents=True, exist_ok=True)
+            # 移除空日期标签，避免绿联影视中心将空值解析为 1970-01-01
+            cleaned = self._EMPTY_DATE_TAG_RE.sub('', content)
             import aiofiles
             async with aiofiles.open(nfo_path, "w", encoding="utf-8") as f:
-                await f.write(content)
+                await f.write(cleaned)
             logger.info(f"NFO文件已生成: {nfo_path}")
         except Exception as e:
             logger.error(f"写入NFO文件失败: {nfo_path} - {e}")

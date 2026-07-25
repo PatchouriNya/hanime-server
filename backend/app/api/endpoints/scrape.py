@@ -108,6 +108,17 @@ async def scan_scrapable_series(user: dict = Depends(get_current_user)):
     return await scrape_service.scan_scrapable_series()
 
 
+@router.post("/fix-nfo")
+async def fix_nfo_empty_tags(user: dict = Depends(get_current_user)):
+    """
+    修复已有 NFO 文件中的空日期标签
+
+    绿联影视中心将 <year/>、<premiered/> 等空标签解析为 1970-01-01，
+    此接口扫描所有 NFO 文件并移除空标签。
+    """
+    return await scrape_service.fix_nfo_empty_tags()
+
+
 def _save_scrape_settings_to_file(config: ScrapeConfig):
     """将刮削设置持久化到文件"""
     try:

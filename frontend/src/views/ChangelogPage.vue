@@ -8,6 +8,29 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.1.9</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>彻底修复绿联显示 1970 年问题：</strong>NFO 写入时自动移除空日期标签；新增"修复NFO"按钮可一键扫描修复所有已有 NFO 文件中的空标签</span>
+            </li>
+          </ul>
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复NFO工具：</strong>下载管理页面新增"修复NFO"按钮，一键扫描并移除 NFO 中的空日期标签，解决绿联影视中心显示 1970-01-01 的问题</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.1.8</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>

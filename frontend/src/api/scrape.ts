@@ -85,4 +85,9 @@ export class ScrapeApi {
     const response = await request.get('/scrape/scan');
     return response.data;
   }
+
+  static async fixNfoEmptyTags(): Promise<{ total: number; fixed: number }> {
+    const response = await request.post('/scrape/fix-nfo');
+    return response.data;
+  }
 }

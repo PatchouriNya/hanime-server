@@ -45,6 +45,9 @@
           <el-button size="small" @click="handleBatchScrape" :loading="isBatchScraping">
             <el-icon><Film /></el-icon> 批量刮削
           </el-button>
+          <el-button size="small" @click="handleFixNfo" :loading="isFixingNfo">
+            <el-icon><EditPen /></el-icon> 修复NFO
+          </el-button>
           <el-button size="small" @click="confirmClearCompleted" :disabled="!completedDownloads?.length">
             <el-icon><Delete /></el-icon> 清除已完成
           </el-button>
@@ -306,7 +309,7 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
 import { ScrapeApi } from '../api/scrape';
@@ -350,6 +353,7 @@ const isScanning = ref(false);
 
 // 刮削状态
 const isBatchScraping = ref(false);
+const isFixingNfo = ref(false);
 
 // 搜索过滤
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -468,6 +472,33 @@ const handleBatchScrape = async () => {
     ElMessage.error('批量刮削失败');
   } finally {
     isBatchScraping.value = false;
+  }
+};
+
+// 修复NFO空标签
+const handleFixNfo = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将扫描所有 NFO 文件，移除空日期标签（如 <year/>、<premiered/>），修复绿联影视中心显示 1970 年的问题。',
+      '修复 NFO 日期标签',
+      { confirmButtonText: '开始修复', cancelButtonText: '取消', type: 'info' }
+    );
+  } catch {
+    return;
+  }
+
+  isFixingNfo.value = true;
+  try {
+    const result = await ScrapeApi.fixNfoEmptyTags();
+    if (result.fixed > 0) {
+      ElMessage.success(`修复完成: 扫描 ${result.total} 个 NFO，修复 ${result.fixed} 个文件`);
+    } else {
+      ElMessage.success(`扫描 ${result.total} 个 NFO，无需修复`);
+    }
+  } catch (e) {
+    ElMessage.error('修复 NFO 失败');
+  } finally {
+    isFixingNfo.value = false;
   }
 };
 
