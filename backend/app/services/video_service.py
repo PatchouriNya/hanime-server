@@ -617,24 +617,47 @@ class VideoService:
 
             description_wrapper_elem = soup.find('div', class_=lambda x: x and 'video-description-panel' in x)
 
-            video_views_ele = description_wrapper_elem.find('div') if description_wrapper_elem else None
-
+            # 遍历所有直接子 div，找到包含 "次" 和日期的那个
             views_match = None
             views_str = ""
             upload_date_str = ""
+            subtitle = ""
+            description = ""
 
-            if video_views_ele:
-                views_match = re.search(r'(\d+(?:\.\d+)?(?:萬|万|千)?)次\s+(\d{4}-\d{2}-\d{2})', video_views_ele.get_text(strip=True))
+            if description_wrapper_elem:
+                child_divs = description_wrapper_elem.find_all('div', recursive=False)
+                for child_div in child_divs:
+                    child_text = child_div.get_text(strip=True)
+                    # 匹配 "XXX次  YYYY-MM-DD" 格式
+                    match = re.search(r'(\d+(?:\.\d+)?(?:萬|万|千)?)次\s+(\d{4}-\d{2}-\d{2})', child_text)
+                    if match:
+                        views_match = match
+                        views_str = match.group(1)
+                        upload_date_str = match.group(2)
+                        break
 
-            if views_match:
-                views_str = views_match.group(1)
-                upload_date_str = views_match.group(2)
+                # subtitle: 不包含观看次数的子div中，取非描述性的短文本
+                for child_div in child_divs:
+                    child_text = child_div.get_text(strip=True)
+                    # 跳过包含观看次数的 div 和过长的描述文本
+                    if '次' in child_text and re.search(r'\d{4}-\d{2}-\d{2}', child_text):
+                        continue
+                    if len(child_text) > 200:
+                        continue
+                    # 跳过仅包含上传者信息的 div（通常以"上傳者"结尾）
+                    if child_text.endswith('上傳者') or child_text.endswith('上传者'):
+                        continue
+                    # 第一个符合条件的短文本作为 subtitle
+                    subtitle = child_text
+                    break
 
-            subtitle_ele = description_wrapper_elem.find_all('div')[1] if description_wrapper_elem and len(description_wrapper_elem.find_all('div')) > 1 else None
-            subtitle = subtitle_ele.get_text(strip=True) if subtitle_ele else ''
-
-            description_ele = description_wrapper_elem.find_all('div')[2] if description_wrapper_elem and len(description_wrapper_elem.find_all('div')) > 2 else None
-            description = description_ele.get_text(strip=True) if description_ele else ''
+                # description: 最长的子div文本
+                for child_div in child_divs:
+                    child_text = child_div.get_text(strip=True)
+                    if len(child_text) > len(description) and not (child_text.endswith('上傳者') or child_text.endswith('上传者')):
+                        # 排除观看次数行
+                        if not ('次' in child_text and re.search(r'\d{4}-\d{2}-\d{2}', child_text) and len(child_text) < 50):
+                            description = child_text
 
             tags = self._extract_tags(soup)
 

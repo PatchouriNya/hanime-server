@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.2.0</el-tag>
+          <span class="version-date">2026-07-25</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复视频详情页日期解析失败的问题：</strong>源站页面结构中"观看次数+日期"不在第一个子div中，旧代码只取第一个div导致正则匹配失败。现在遍历所有子div查找包含"次+日期"格式的元素，确保无论页面结构如何变化都能正确解析上传日期和观看次数</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复副标题被错误解析为"观看次数"的问题：</strong>之前 subtitle 会显示为"观看次数：363.2万次 2017-09-28"，现在正确识别为番剧副标题</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.1.9</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>
