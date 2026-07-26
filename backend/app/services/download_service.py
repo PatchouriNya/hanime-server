@@ -1547,11 +1547,15 @@ class DownloadManager:
         username: str
     ) -> None:
         """
-        确保系列目录下的已有视频被正确组织到独立的 Season 子目录
+        确保系列目录下的已有视频被正确组织到 Season 1 子目录
 
-        每集一季策略：每个根目录下的视频分配到独立的 Season 目录。
-        季号优先从数据库中的副标题提取（支持数字和文字标签），
-        无标识时按顺序分配。
+        一季多集策略（v3.3.3 回归标准电视剧结构）：
+        - 所有根目录下的视频统一放入 Season 1
+        - 文件名重命名为 S01E{NN} 格式，集号按顺序分配
+        - 对齐绿联NAS标准电视剧识别格式（参考"未来日记 (2011)"结构）
+
+        之前的"每集一季"策略（v3.2.7~v3.3.2）导致每季只有 E01，
+        没有剧集顺序，NAS 无法识别为剧集，被当成独立电影拆分。
 
         :param series_dir: 系列根目录路径
         :param series_name: 系列名称
@@ -1559,37 +1563,6 @@ class DownloadManager:
         """
         import re as _re
         import aiosqlite
-
-        # 文字标签到季号的语义映射（与 _detect_series_directory 保持一致）
-        _LABEL_TO_SEASON_NUMBER = {
-            '上卷': 1, '上巻': 1, '前篇': 1, '前編': 1, '上篇': 1,
-            '中卷': 2, '中巻': 2, '中篇': 2, '中編': 2,
-            '下卷': 3, '下巻': 3, '後篇': 3, '後編': 3, '下篇': 3,
-            '后篇': 3, '后編': 3, '下编': 3,
-            'OVA': 99, '特典': 99, '番外': 99, '特別': 99, '特别': 99,
-        }
-
-        def _extract_season_from_subtitle(subtitle: str) -> int:
-            """从副标题提取季号，支持数字和文字标签，未找到返回0"""
-            if not subtitle:
-                return 0
-            # 1. 末尾数字
-            m = _re.search(r'(\d+)\s*$', subtitle.strip())
-            if m:
-                return int(m.group(1))
-            # 2. 第N期/章/部
-            m = _re.search(r'第\s*(\d+)\s*[期章部]', subtitle)
-            if m:
-                return int(m.group(1))
-            # 3. Season N
-            m = _re.search(r'[Ss]eason\s*(\d+)', subtitle)
-            if m:
-                return int(m.group(1))
-            # 4. 文字标签
-            for label in sorted(_LABEL_TO_SEASON_NUMBER.keys(), key=len, reverse=True):
-                if label in subtitle:
-                    return _LABEL_TO_SEASON_NUMBER[label]
-            return 0
 
         # 查找根目录下的视频文件（未整理到 Season 目录的）
         root_videos = []
@@ -1600,83 +1573,68 @@ class DownloadManager:
         if not root_videos:
             return  # 没有需要整理的视频
 
-        # 收集已存在的季号
-        existing_seasons = [d for d in series_dir.iterdir()
-                           if d.is_dir() and d.name.startswith('Season ')]
-        existing_season_nums = set()
-        for sd in existing_seasons:
-            m = _re.search(r'Season\s+(\d+)', sd.name)
-            if m:
-                existing_season_nums.add(int(m.group(1)))
+        # 收集 Season 1 中已存在的集号，避免冲突
+        season_1_dir = series_dir / "Season 1"
+        used_episodes = set()
+        if season_1_dir.exists():
+            for f in season_1_dir.iterdir():
+                if f.is_file():
+                    # 从文件名提取 S01E{NN} 的集号
+                    m = _re.search(r'S\d+E(\d+)', f.name, _re.IGNORECASE)
+                    if m:
+                        used_episodes.add(int(m.group(1)))
 
         safe_name = self._sanitize_filename(series_name)
         # 去掉年份后缀
         safe_name = _re.sub(r'\s*\(\d{4}\)\s*$', '', safe_name).strip()
 
-        for idx, video_file in enumerate(root_videos):
+        # 创建 Season 1 目录
+        season_1_dir.mkdir(parents=True, exist_ok=True)
+
+        # 为每个视频分配集号
+        next_episode = max(used_episodes, default=0) + 1
+
+        for video_file in root_videos:
             # 尝试从文件名提取 video_id（格式: {video_id}_{filename}.mp4）
             video_id = None
             m = _re.match(r'^(\d+)_', video_file.name)
             if m:
                 video_id = m.group(1)
 
-            # 尝试从数据库获取副标题
-            subtitle = None
-            if video_id:
-                try:
-                    async with aiosqlite.connect(self.db_path) as conn:
-                        conn.row_factory = aiosqlite.Row
-                        async with conn.execute(
-                            "SELECT title FROM downloads WHERE video_id = ? AND status = 'completed'",
-                            (video_id,)
-                        ) as cursor:
-                            row = await cursor.fetchone()
-                            if row:
-                                subtitle = row['title']
-                except Exception as e:
-                    logger.warning(f"查询副标题失败: {e}")
+            # 分配集号
+            while next_episode in used_episodes:
+                next_episode += 1
+            episode_num = next_episode
+            used_episodes.add(episode_num)
+            next_episode += 1
 
-            # 从副标题提取季号（支持数字和文字标签）
-            season_number = 0
-            if subtitle:
-                season_number = _extract_season_from_subtitle(subtitle)
-
-            if season_number == 0:
-                # 没有提取到季号，按顺序分配
-                season_number = idx + 1
-                while season_number in existing_season_nums:
-                    season_number += 1
-
-            # 确保季号不冲突
-            while season_number in existing_season_nums:
-                season_number += 1
-            existing_season_nums.add(season_number)
-
-            # 创建 Season 目录
-            season_dir = series_dir / f"Season {season_number}"
-            season_dir.mkdir(parents=True, exist_ok=True)
-
-            # 新文件名：系列名 - S{season}E01 - 第 1 集.mp4
-            new_filename = f"{safe_name} - S{season_number:02d}E01 - 第 1 集{video_file.suffix.lower()}"
-            new_path = season_dir / new_filename
+            # 新文件名：系列名 - S01E{NN} - 第 {N} 集.mp4
+            new_filename = (
+                f"{safe_name} - S01E{episode_num:02d} - "
+                f"第 {episode_num} 集{video_file.suffix.lower()}"
+            )
+            new_path = season_1_dir / new_filename
 
             try:
                 shutil.move(str(video_file), str(new_path))
-                logger.info(f"系列整理: {video_file.name} -> Season {season_number}/{new_filename}")
+                logger.info(f"系列整理: {video_file.name} -> Season 1/{new_filename}")
 
                 # 移动同名 NFO 和缩略图
                 for ext in ['.nfo', '.jpg']:
                     old_assoc = video_file.parent / f"{video_file.stem}{ext}"
                     if old_assoc.exists():
-                        new_assoc_name = f"{safe_name} - S{season_number:02d}E01 - 第 1 集{ext}"
-                        new_assoc = season_dir / new_assoc_name
+                        new_assoc_name = (
+                            f"{safe_name} - S01E{episode_num:02d} - "
+                            f"第 {episode_num} 集{ext}"
+                        )
+                        new_assoc = season_1_dir / new_assoc_name
                         try:
                             shutil.move(str(old_assoc), str(new_assoc))
                         except Exception as e:
                             logger.warning(f"移动关联文件失败: {old_assoc} - {e}")
 
                 # 更新数据库记录
-                new_relative = f"{series_name}/Season {season_number}/{new_filename}"
+                new_relative = f"{series_name}/Season 1/{new_filename}"
                 async with aiosqlite.connect(self.db_path) as conn:
                     old_relative = f"{series_name}/{video_file.name}"
                     await conn.execute(
@@ -1950,34 +1908,14 @@ class DownloadManager:
                             season_dirs = [d for d in actual_series_dir.iterdir()
                                           if d.is_dir() and d.name.startswith('Season ')]
 
-                            # === 每集一季策略 ===
-                            # 每个视频分配到独立的季目录，这样每集都有独立的海报
-
-                            # 优先用副标题（中文格式更规范），没有就用标题
-                            title_for_extract = current_subtitle if current_subtitle else current_title
-                            extracted_num = _extract_episode_number_from_title(title_for_extract)
-
-                            if extracted_num > 0:
-                                # 从标题中提取到了数字，用作季号
-                                season_number = extracted_num
-                            else:
-                                # 无数字编号（如"上卷"、"下卷"），按已下载同系列视频数量+1
-                                # 统计已有的 Season 目录数量
-                                existing_count = len(season_dirs)
-                                season_number = existing_count + 1
-
-                            # 确保季号不与已存在的季号冲突
-                            existing_season_nums = set()
-                            for sd in season_dirs:
-                                m = _re.search(r'Season\s+(\d+)', sd.name)
-                                if m:
-                                    existing_season_nums.add(int(m.group(1)))
-                            while season_number in existing_season_nums:
-                                season_number += 1
+                            # === 一季多集策略（v3.3.3 回归标准电视剧结构）===
+                            # 所有同系列视频统一放入 Season 1，对齐绿联NAS标准识别格式
+                            # 集号由下载时按 Season 1 中已有视频数量+1 自动分配
+                            season_number = 1
 
                             logger.info(f"检测到同系列已下载: {target_series_name}，"
                                       f"当前视频 {video_id} 副标题={current_subtitle}，"
-                                      f"分配到 Season {season_number}（每集一季）")
+                                      f"分配到 Season {season_number}（一季多集）")
 
                             return target_series_name, season_number, True
 
@@ -1988,36 +1926,14 @@ class DownloadManager:
             season_dirs = [d for d in existing_dir.iterdir()
                           if d.is_dir() and d.name.startswith('Season ')]
             if season_dirs:
-                # 已有 Season 目录，新视频分配到独立的季
-                existing_season_nums = set()
-                max_season = 0
-                for sd in season_dirs:
-                    match = _re.search(r'Season\s+(\d+)', sd.name)
-                    if match:
-                        snum = int(match.group(1))
-                        existing_season_nums.add(snum)
-                        max_season = max(max_season, snum)
-                # 优先从标题提取季号
-                title_for_extract = current_subtitle if current_subtitle else current_title
-                extracted_num = _extract_episode_number_from_title(title_for_extract)
-                if extracted_num > 0 and extracted_num not in existing_season_nums:
-                    season_number = extracted_num
-                else:
-                    season_number = max_season + 1
-                    while season_number in existing_season_nums:
-                        season_number += 1
-                return existing_dir.name, season_number, True
+                # 已有 Season 目录，新视频统一放入 Season 1（一季多集策略）
+                return existing_dir.name, 1, True
 
         # 第一个视频下载（没有同系列已下载视频）
-        # 也从标题提取季号，让每集一季策略对所有视频都生效
-        title_for_extract = current_subtitle if current_subtitle else current_title
-        extracted_num = _extract_episode_number_from_title(title_for_extract)
-        if extracted_num > 0:
-            logger.info(f"系列检测: 首次下载 video_id={video_id}，"
-                       f"副标题={current_subtitle}，分配到 Season {extracted_num}（每集一季）")
-            return default_series_name, extracted_num, True
-
-        return default_series_name, 0, False
+        # 一季多集策略：所有视频都放入 Season 1
+        logger.info(f"系列检测: 首次下载 video_id={video_id}，"
+                   f"副标题={current_subtitle}，分配到 Season 1（一季多集）")
+        return default_series_name, 1, True
 
     def _sanitize_filename(self, filename):
         """处理文件名，移除非法字符"""

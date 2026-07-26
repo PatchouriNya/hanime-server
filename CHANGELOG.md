@@ -1,5 +1,46 @@
 # 更新日志
 
+## v3.3.3 (2026-07-26)
+
+### 重构
+
+**根本性修复绿联NAS把同系列多季识别为独立剧集的问题**（基于官方文档研究）
+
+经过联网搜索绿联NAS影视中心合集识别机制的官方文档和论坛产品运营回复，发现真正的根因：
+
+1. **绿联NAS合集识别机制**：
+   - 官方原文：「自动添加到合集：服务将识别**视频元数据中的视频系列字段**，自动创建该系列合集」
+   - 多季识别基于「相似命名+剧集顺序」（绿联产品运营明确回复）
+   - 依赖 TMDB series ID 作为合集识别的核心字段
+
+2. **之前的"每集一季"策略是错误的方向**（v3.2.7~v3.3.2）：
+   - 每季只有 E01 一集，没有"剧集顺序"，NAS 无法判断这是剧集，被当成独立电影
+   - v3.3.2 移除 season.nfo 的 uniqueid 也是错误方向——参考目录"未来日记"的 season.nfo **是有 uniqueid 的**，关键是所有季都用同一个 series ID
+
+3. **回归标准电视剧结构**（参考"未来日记 (2011)"）：
+   - 所有同系列视频统一放入 Season 1 目录
+   - 文件名格式：`番剧名 - S01E01 - 第 1 集.mp4`、`番剧名 - S01E02 - 第 2 集.mp4`...
+   - 这样绿联NAS 能通过"相似命名+剧集顺序"识别为剧集合集
+
+4. **修复 season.nfo 的 uniqueid**：
+   - 之前每季使用不同的 video_id 作为 uniqueid，导致 NAS 把每季识别为独立剧集
+   - 现在所有 season.nfo 都使用**同一个 series ID**（tvshow.nfo 的 first_video_id）
+   - 对齐"未来日记"参考格式：tvshow.nfo 和 season.nfo 使用相同的 series ID
+
+5. **每集独立海报通过 episode.jpg 实现**：
+   - 每集的封面文件 `番剧名 - S01E01 - 第 1 集.jpg`（与视频同名）
+   - 绿联NAS 会自动识别为每集的小封面，不需要每集一季
+
+### 修改的文件
+
+- `backend/app/services/scrape_service.py`：
+  - `generate_season_nfo`：添加 uniqueid 标签，使用与 tvshow.nfo 相同的 series ID
+  - `_generate_tv_show_files`：调用 `generate_season_nfo` 时传入 `first_video_id`（series ID）
+  - `_determine_episode_number`：所有视频 season=1，episode 从文件名提取或按顺序分配
+- `backend/app/services/download_service.py`：
+  - `_ensure_series_season_structure`：所有根目录视频放入 Season 1，文件名 S01E{NN}
+  - `_detect_series_directory`：season_number 固定为 1（不再从标题提取）
+
 ## v3.3.2 (2026-07-26)
 
 ### 修复

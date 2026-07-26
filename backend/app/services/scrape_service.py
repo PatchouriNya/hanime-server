@@ -632,11 +632,17 @@ class ScrapeService:
             premiered_elem.text = earliest_date.strftime("%Y-%m-%d")
             releasedate_elem.text = earliest_date.strftime("%Y-%m-%d")
 
-        # 唯一标识符 - 不在 season.nfo 中添加 uniqueid
-        # 原因：绿联NAS 通过 uniqueid 判断季的归属，如果各季 uniqueid 不同，
-        # 会把每季识别为独立剧集，导致合集被拆分。
-        # 参考国色芳华的 season.nfo：完全没有 uniqueid 标签，NAS 仍能正确识别季的归属。
-        # 季的归属由目录结构（Season N/ 在系列目录下）和 seasonnumber 标签决定。
+        # 唯一标识符 - 使用与 tvshow.nfo 相同的 series ID
+        # 对齐"未来日记 (2011)"参考格式：
+        #   tvshow.nfo:      <uniqueid type="tmdb">46671</uniqueid>
+        #   Season 1/season.nfo: <uniqueid type="tvdb">249827</uniqueid>  ← 与 tvshow.nfo 同一个 series ID
+        # 关键点：所有季的 season.nfo 都使用同一个 series ID（不是每季不同的 video_id），
+        # 这样绿联NAS 才能通过 uniqueid 识别所有季属于同一个合集。
+        # 之前的错误：每季使用不同的 video_id 作为 uniqueid，导致 NAS 把每季识别为独立剧集。
+        if video_id:
+            uniqueid_elem = ET.SubElement(root, "uniqueid")
+            uniqueid_elem.set("type", "hanime")
+            uniqueid_elem.text = video_id
 
         # 季号
         seasonnumber_elem = ET.SubElement(root, "seasonnumber")
@@ -2204,7 +2210,7 @@ class ScrapeService:
                     break
 
             season_nfo_content = self.generate_season_nfo(
-                series_name_no_year, season_metadata, season_video_id or first_video_id, season_number
+                series_name_no_year, season_metadata, first_video_id, season_number
             )
             season_nfo_path = season_dir / SEASON_NFO_FILENAME
             await self._write_nfo_file(season_nfo_path, season_nfo_content)
@@ -2600,60 +2606,52 @@ class ScrapeService:
         确定每个视频的季号和集号
 
         返回映射: video_id -> {"season": N, "episode": M}
-        每季独立编号（各季均从 E01 开始）。
 
-        排序策略：
-        1. 如果文件名中包含S01E01格式，直接提取季号和集号
-        2. 否则使用条目中的 season_number（来自目录结构），按文件路径排序分配集号
+        一季多集策略（v3.3.3 回归标准电视剧结构）：
+        - 所有同系列视频统一放入 Season 1
+        - 如果文件名中包含 S01E01 格式，提取集号（冲突时递增）
+        - 否则按文件路径排序分配集号 E01, E02, E03...
+        - 所有的 season 固定为 1，对齐绿联NAS标准电视剧识别格式
+
+        这样绿联NAS 能通过"相似命名+剧集顺序"识别为剧集合集，
+        而不是把每集当成独立电影。
+
+        之前的"每集一季"策略（v3.2.7~v3.3.2）导致每季只有 E01，
+        没有剧集顺序，NAS 无法识别为剧集，被当成独立电影拆分。
         """
         episode_mapping: Dict[str, Dict] = {}
 
-        # 按季分组：已解析 SxxExx 的 和 待自动分配的
-        parsed_by_season: Dict[int, List[tuple]] = {}   # season -> [(video_id, episode_num)]
-        regular_by_season: Dict[int, List[Dict]] = {}   # season -> [entry]
+        # 按文件路径排序，确保集号分配稳定
+        sorted_entries = sorted(video_entries, key=lambda x: x["file_path"])
 
-        for entry in video_entries:
+        # 收集已解析的集号（从文件名 SxxExx 格式提取）
+        used_episodes: Set[int] = set()
+        regular_entries: List[Dict] = []
+
+        for entry in sorted_entries:
             filename = entry["filename"]
-            season_number = entry.get("season_number", 1)
+            video_id = entry["video_id"]
 
-            # 尝试从S01E01格式提取季号和集号
-            match = re.search(r'S(\d+)E(\d+)', filename, re.IGNORECASE)
+            # 尝试从 S01E01 格式提取集号（忽略季号，只取集号）
+            match = re.search(r'S\d+E(\d+)', filename, re.IGNORECASE)
             if match:
-                parsed_season = int(match.group(1))
-                episode_num = int(match.group(2))
-                # 文件名中的季号优先于目录推导的季号
-                if parsed_season not in parsed_by_season:
-                    parsed_by_season[parsed_season] = []
-                parsed_by_season[parsed_season].append((entry["video_id"], episode_num))
+                episode_num = int(match.group(1))
+                # 避免集号冲突（例如旧的每集一季命名 S01E01、S02E01、S03E01 都提取出 1）
+                while episode_num in used_episodes:
+                    episode_num += 1
+                used_episodes.add(episode_num)
+                episode_mapping[video_id] = {"season": 1, "episode": episode_num}
             else:
-                if season_number not in regular_by_season:
-                    regular_by_season[season_number] = []
-                regular_by_season[season_number].append(entry)
+                regular_entries.append(entry)
 
-        # 处理已解析的条目
-        for season, items in parsed_by_season.items():
-            for video_id, episode_num in items:
-                episode_mapping[video_id] = {"season": season, "episode": episode_num}
-
-        # 对没有集号的条目，按季独立分配集号
-        all_seasons = set(regular_by_season.keys()) | set(parsed_by_season.keys())
-        for season in sorted(all_seasons):
-            if season not in regular_by_season:
-                continue
-            entries = regular_by_season[season]
-            # 按文件路径排序
-            entries.sort(key=lambda x: x["file_path"])
-            # 找到该季已分配的最大集号
-            existing_episodes = [
-                v["episode"] for v in episode_mapping.values()
-                if v["season"] == season
-            ]
-            max_episode = max(existing_episodes, default=0)
-            for i, entry in enumerate(entries):
-                episode_mapping[entry["video_id"]] = {
-                    "season": season,
-                    "episode": max_episode + i + 1
-                }
+        # 为未解析的条目按顺序分配集号
+        max_episode = max(used_episodes, default=0)
+        for entry in regular_entries:
+            max_episode += 1
+            episode_mapping[entry["video_id"]] = {
+                "season": 1,
+                "episode": max_episode
+            }
 
         return episode_mapping
 

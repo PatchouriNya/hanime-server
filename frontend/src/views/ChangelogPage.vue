@@ -8,6 +8,30 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.3.3</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">重构</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>根本性修复绿联NAS把同系列多季识别为独立剧集的问题：</strong>经过联网搜索绿联NAS影视中心合集识别机制的官方文档和论坛产品运营回复，发现真正的根因是"每集一季"策略导致每季只有 E01 一集，没有"剧集顺序"，NAS 无法判断这是剧集，被当成独立电影拆分。现在回归标准电视剧结构（参考"未来日记 (2011)"），所有同系列视频统一放入 Season 1 目录，文件名格式为 S01E01/S01E02/S01E03...，让绿联NAS 能通过"相似命名+剧集顺序"正确识别为剧集合集</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复 season.nfo 的 uniqueid 标签：</strong>之前每季使用不同的 video_id 作为 uniqueid，导致 NAS 把每季识别为独立剧集。现在所有 season.nfo 都使用同一个 series ID（tvshow.nfo 的 first_video_id），对齐"未来日记"参考格式：tvshow.nfo 和 season.nfo 使用相同的 series ID</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>每集独立海报通过 episode.jpg 实现：</strong>不再需要"每集一季"策略。每集的封面文件（番剧名 - S01E01 - 第 1 集.jpg，与视频同名）会被绿联NAS 自动识别为每集的小封面，在剧集详情页展示每集独立的海报</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.3.2</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>
