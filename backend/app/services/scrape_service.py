@@ -1553,17 +1553,26 @@ class ScrapeService:
         if thumb_path.exists():
             return True
 
-        # 1. 优先：每集自己的 cover_url（竖版海报）
+        # 1. 优先：每集自己的 cover_url（理想情况为竖版海报）
         # 这是该集独立的封面，保证每集封面各不相同
         if cover_url:
             try:
                 success = await self._download_cover_as_jpg(cover_url, thumb_path)
                 if success:
-                    # 放大到标准海报尺寸 1000x1426（保留竖版，不裁剪为横版）
-                    self._upscale_to_standard(
-                        thumb_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT
-                    )
-                    logger.info(f"单集封面从 cover URL 下载（竖版海报）: {thumb_path.name}")
+                    # 检测下载图的实际方向（源站可能返回横版 thumbnail 而非竖版海报）
+                    if self._is_landscape_image(thumb_path):
+                        # 横版图（说明 cover_url 实际是 thumbnail 预览图 1024x576）
+                        # 放大到 1920x1080 标准横版尺寸，不要强行拉伸为竖版
+                        self._upscale_to_standard(
+                            thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
+                        )
+                        logger.info(f"单集封面从 cover URL 下载（横版 thumbnail）: {thumb_path.name}")
+                    else:
+                        # 竖版图（真海报 268x394），放大到标准海报 1000x1426
+                        self._upscale_to_standard(
+                            thumb_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT
+                        )
+                        logger.info(f"单集封面从 cover URL 下载（竖版海报）: {thumb_path.name}")
                     return True
             except Exception as e:
                 logger.warning(f"单集封面从 cover URL 下载失败: {e}")

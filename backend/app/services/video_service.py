@@ -497,6 +497,10 @@ class VideoService:
 
         关键：cover 文件名可能是哈希ID（如 OmjQkYr），不能用正则匹配 video_id，
         必须用 BeautifulSoup 查找 <a href="/watch?v={video_id}"> 链接内的 cover 图片。
+
+        v3.3.7 修复：之前只遍历前5个相关视频，部分视频（如 39468）要遍历到第6个
+        才找到 cover 链接。现在改为遍历所有相关视频（最多 30 个），找到立即返回。
+        同时支持 thumbnail 链接→cover 链接的发现（链接中可能同时存在两种图片）。
         """
         try:
             # 从当前页面的 soup 提取相关视频ID（避免重复请求当前页面）
@@ -511,10 +515,12 @@ class VideoService:
                 logger.info(f"当前页面未找到相关视频，无法获取 video_id={video_id} 的 cover URL")
                 return ""
 
-            logger.info(f"从当前页面提取到 {len(related_ids)} 个相关视频，将遍历前5个查找 cover: {related_ids[:5]}")
+            # v3.3.7: 扩大遍历范围到 30 个（原来只 5 个，部分视频要遍历到第6个才找到）
+            max_check = min(len(related_ids), 30)
+            logger.info(f"从当前页面提取到 {len(related_ids)} 个相关视频，将遍历前 {max_check} 个查找 cover")
 
             # 遍历相关视频的详情页，查找指向当前视频的链接及其 cover 图片
-            for related_id in related_ids[:5]:
+            for related_id in related_ids[:max_check]:
                 try:
                     related_page_content = await self.cf_bypasser.get_request(
                         f"{settings.HANIME_BASE_URL}/watch?v={related_id}"
@@ -525,18 +531,34 @@ class VideoService:
                     related_soup = BeautifulSoup(related_page_content, 'lxml')
 
                     # 查找指向当前视频的链接
-                    for link in related_soup.find_all('a', href=lambda x: x and f'/watch?v={video_id}' in str(x)):
+                    links_to_current = related_soup.find_all(
+                        'a', href=lambda x: x and f'/watch?v={video_id}' in str(x)
+                    )
+                    for link in links_to_current:
+                        # 优先找 cover 图片（竖版海报）
                         img = link.find('img', src=lambda x: x and '/image/cover/' in str(x))
                         if img:
                             cover_src = img.get('src', '')
                             if cover_src:
                                 logger.info(f"从相关视频 {related_id} 的详情页找到 cover URL: {cover_src}")
                                 return cover_src
+
+                    # v3.3.7 新增：如果该相关视频页面找到了指向当前视频的链接，
+                    # 但链接内没有 cover 图片，检查页面中是否有以当前视频 ID 命名的 cover 图片
+                    # （源站部分页面的 cover 图片不在 <a> 标签内，而是单独的 <img>）
+                    if links_to_current:
+                        # 用 video_id 直接拼路径尝试（cover 文件名 = video_id 的情况）
+                        direct_cover_url = f"https://vdownload.hembed.com/image/cover/{video_id}.jpg"
+                        logger.info(f"相关视频 {related_id} 页面有指向当前视频的链接，尝试直接 cover URL: {direct_cover_url}")
+                        # 验证该 URL 是否出现在页面源码中
+                        if direct_cover_url in related_page_content or f"/image/cover/{video_id}.jpg" in related_page_content:
+                            logger.info(f"✓ 在页面源码中找到 video_id={video_id} 的 cover 图片引用")
+                            return direct_cover_url
                 except Exception as e:
                     logger.warning(f"获取相关视频 {related_id} 的详情页失败: {e}")
                     continue
 
-            logger.info(f"在相关视频详情页中未找到 video_id={video_id} 的 cover URL")
+            logger.info(f"遍历 {max_check} 个相关视频详情页后，未找到 video_id={video_id} 的 cover URL")
             return ""
         except Exception as e:
             logger.warning(f"从相关视频获取封面失败: {e}")

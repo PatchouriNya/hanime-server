@@ -8,6 +8,47 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.3.7</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复部分老番剧集封面找不到竖版海报的问题：</strong>用户报告援助交配 (2020) 第8集（video_id=39468）刮出来的封面不是海报，被 v3.3.6 当作"源站没有竖版海报"处理。实际上源站<strong>有</strong>这集的海报（文件名 L3i9R0L.jpg），只是 <code>_get_cover_from_related_pages</code> 方法只遍历前 5 个相关视频的详情页，而 39468 这集要遍历到第 6 个相关视频（38387）才找到带 cover 的链接，导致前 5 个都失败后回退到 thumbnail。修复方案：</span>
+              <ul class="changelog-sublist">
+                <li>1. 将遍历范围从 5 个扩大到 30 个相关视频</li>
+                <li>2. 一旦在某个相关视频页面找到 cover URL 立即返回，不浪费后续请求</li>
+                <li>3. 新增直接 URL 拼接兜底：如果相关视频页面有指向当前视频的链接，尝试 <code>/image/cover/{video_id}.jpg</code> 直接 URL，并验证是否出现在页面源码中</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.3.6</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复部分剧集封面被强行拉伸变形：</strong>v3.3.5 把所有 <code>cover_url</code> 都按竖版海报放大到 1000x1426，但源站对部分老番（如援助交配第8集 video_id=39468）只提供横版 thumbnail 预览图（1024x576），导致横版图被强行拉伸为竖版变形。现在下载后先检测图像实际方向：</span>
+              <ul class="changelog-sublist">
+                <li>横版图（cover_url 实际是 thumbnail）→ 放大到 1920x1080 横版标准</li>
+                <li>竖版图（真海报）→ 放大到 1000x1426 海报标准</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.3.5</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>
