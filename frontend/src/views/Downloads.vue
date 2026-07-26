@@ -394,6 +394,112 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 批量刮削进度对话框（v3.3.9 新增） -->
+    <el-dialog
+      v-model="batchScrapeProgress.visible"
+      title="批量刮削进度"
+      width="600px"
+      :width="isMobile ? '95%' : '600px'"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div class="batch-progress-content">
+        <div class="progress-summary">
+          <el-progress
+            :percentage="batchScrapeProgress.percentage"
+            :status="batchScrapeProgress.status"
+            :stroke-width="10"
+          />
+          <div class="progress-text">
+            {{ batchScrapeProgress.completed }} / {{ batchScrapeProgress.total }}
+            <span v-if="batchScrapeProgress.successCount > 0" class="progress-success">
+              成功 {{ batchScrapeProgress.successCount }}
+            </span>
+            <span v-if="batchScrapeProgress.failCount > 0" class="progress-fail">
+              失败 {{ batchScrapeProgress.failCount }}
+            </span>
+          </div>
+        </div>
+        <div class="progress-current" v-if="batchScrapeProgress.currentSeries">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在处理: {{ batchScrapeProgress.currentSeries }}</span>
+        </div>
+        <div class="progress-list" v-if="batchScrapeProgress.results.length > 0">
+          <div class="progress-list-header">处理结果</div>
+          <div class="progress-list-body">
+            <div
+              v-for="(item, idx) in batchScrapeProgress.results"
+              :key="idx"
+              class="progress-list-item"
+              :class="{ 'is-success': item.is_success, 'is-fail': !item.is_success }"
+            >
+              <el-icon v-if="item.is_success"><CircleCheck /></el-icon>
+              <el-icon v-else><CircleClose /></el-icon>
+              <span class="item-name">{{ item.series_name }}</span>
+              <span v-if="!item.is_success" class="item-error">{{ item.error_message }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button
+          v-if="!batchScrapeProgress.running"
+          type="primary"
+          @click="closeBatchScrapeProgress"
+        >
+          关闭
+        </el-button>
+        <el-button v-else disabled :loading="true">处理中...</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 修复 NFO 进度对话框（v3.3.9 新增） -->
+    <el-dialog
+      v-model="fixNfoProgress.visible"
+      title="修复 NFO 进度"
+      width="500px"
+      :width="isMobile ? '95%' : '500px'"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div class="batch-progress-content">
+        <div class="progress-summary">
+          <el-progress
+            :percentage="100"
+            :status="fixNfoProgress.status"
+            :stroke-width="10"
+          />
+        </div>
+        <div class="progress-text" v-if="fixNfoProgress.running">
+          正在扫描 NFO 文件...
+        </div>
+        <div v-else class="fix-nfo-result">
+          <div class="result-row">
+            <span class="result-label">扫描文件总数</span>
+            <span class="result-value">{{ fixNfoProgress.total }}</span>
+          </div>
+          <div class="result-row">
+            <span class="result-label">修复文件数量</span>
+            <span class="result-value" :class="{ 'has-fixed': fixNfoProgress.fixed > 0 }">
+              {{ fixNfoProgress.fixed }}
+            </span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button
+          v-if="!fixNfoProgress.running"
+          type="primary"
+          @click="closeFixNfoProgress"
+        >
+          关闭
+        </el-button>
+        <el-button v-else disabled :loading="true">处理中...</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -403,7 +509,7 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
 import { ScrapeApi } from '../api/scrape';
@@ -448,6 +554,58 @@ const isScanning = ref(false);
 // 刮削状态
 const isBatchScraping = ref(false);
 const isFixingNfo = ref(false);
+
+// v3.3.9: 批量刮削进度状态
+interface BatchScrapeProgress {
+  visible: boolean;
+  running: boolean;
+  total: number;
+  completed: number;
+  successCount: number;
+  failCount: number;
+  currentSeries: string;
+  results: Array<{ series_name: string; is_success: boolean; error_message?: string }>;
+  percentage: number;
+  status: '' | 'success' | 'exception' | 'warning';
+}
+
+const batchScrapeProgress = ref<BatchScrapeProgress>({
+  visible: false,
+  running: false,
+  total: 0,
+  completed: 0,
+  successCount: 0,
+  failCount: 0,
+  currentSeries: '',
+  results: [],
+  percentage: 0,
+  status: ''
+});
+
+const closeBatchScrapeProgress = () => {
+  batchScrapeProgress.value.visible = false;
+};
+
+// v3.3.9: 修复 NFO 进度状态
+interface FixNfoProgress {
+  visible: boolean;
+  running: boolean;
+  total: number;
+  fixed: number;
+  status: '' | 'success' | 'exception' | 'warning';
+}
+
+const fixNfoProgress = ref<FixNfoProgress>({
+  visible: false,
+  running: false,
+  total: 0,
+  fixed: 0,
+  status: ''
+});
+
+const closeFixNfoProgress = () => {
+  fixNfoProgress.value.visible = false;
+};
 
 // 搜索过滤
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -540,7 +698,7 @@ const handleEpisodeClick = (dl: any) => {
   }
 };
 
-// 批量刮削
+// 批量刮削（v3.3.9: 改为逐个刮削 + 进度反馈，避免单一请求超时且无反馈）
 const handleBatchScrape = async () => {
   try {
     await ElMessageBox.confirm(
@@ -550,26 +708,93 @@ const handleBatchScrape = async () => {
     );
   } catch { return; }
 
-  isBatchScraping.value = true;
+  // 先扫描可刮削的番剧列表
+  let seriesList: string[] = [];
   try {
-    const results = await ScrapeApi.batchScrape([], 'tv_show');
-    const successCount = results.filter(r => r.is_success).length;
-    const failCount = results.filter(r => !r.is_success).length;
-    if (successCount > 0) {
-      ElMessage.success(`刮削完成: ${successCount} 个成功${failCount > 0 ? `, ${failCount} 个失败` : ''}`);
-    } else if (results.length === 0) {
-      ElMessage.info('未发现可刮削的番剧目录');
-    } else {
-      ElMessage.error('刮削全部失败');
-    }
+    const scrapable = await ScrapeApi.scanScrapableSeries();
+    seriesList = scrapable.map(s => s.series_name);
   } catch (e) {
-    ElMessage.error('批量刮削失败');
-  } finally {
-    isBatchScraping.value = false;
+    ElMessage.error('扫描番剧列表失败');
+    return;
   }
+
+  if (seriesList.length === 0) {
+    ElMessage.info('未发现可刮削的番剧目录');
+    return;
+  }
+
+  // 重置进度状态
+  batchScrapeProgress.value = {
+    visible: true,
+    running: true,
+    total: seriesList.length,
+    completed: 0,
+    successCount: 0,
+    failCount: 0,
+    currentSeries: '',
+    results: [],
+    percentage: 0,
+    status: ''
+  };
+
+  isBatchScraping.value = true;
+
+  // 逐个刮削（避免单请求超时，可实时显示进度）
+  for (const name of seriesList) {
+    batchScrapeProgress.value.currentSeries = name;
+    try {
+      const result = await ScrapeApi.scrapeSeries({
+        series_name: name,
+        scrape_mode: 'tv_show',
+        is_rename_file: true,
+        is_reorganize_directory: true
+      });
+      batchScrapeProgress.value.results.push({
+        series_name: name,
+        is_success: result.is_success,
+        error_message: result.error_message
+      });
+      if (result.is_success) {
+        batchScrapeProgress.value.successCount++;
+      } else {
+        batchScrapeProgress.value.failCount++;
+      }
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.detail || e?.message || '请求失败';
+      batchScrapeProgress.value.results.push({
+        series_name: name,
+        is_success: false,
+        error_message: errorMsg
+      });
+      batchScrapeProgress.value.failCount++;
+    }
+    batchScrapeProgress.value.completed++;
+    batchScrapeProgress.value.percentage = Math.round(
+      (batchScrapeProgress.value.completed / batchScrapeProgress.value.total) * 100
+    );
+  }
+
+  // 完成
+  batchScrapeProgress.value.running = false;
+  batchScrapeProgress.value.currentSeries = '';
+  if (batchScrapeProgress.value.failCount === 0) {
+    batchScrapeProgress.value.status = 'success';
+    ElMessage.success(`批量刮削完成: ${batchScrapeProgress.value.successCount} 个成功`);
+  } else if (batchScrapeProgress.value.successCount === 0) {
+    batchScrapeProgress.value.status = 'exception';
+    ElMessage.error(`批量刮削失败: ${batchScrapeProgress.value.failCount} 个失败`);
+  } else {
+    batchScrapeProgress.value.status = 'warning';
+    ElMessage.warning(`批量刮削部分成功: ${batchScrapeProgress.value.successCount} 成功, ${batchScrapeProgress.value.failCount} 失败`);
+  }
+
+  isBatchScraping.value = false;
+
+  // 刷新分组视图（如果有）
+  if (viewMode.value === 'group') await loadGroups();
 };
 
-// 修复NFO空标签
+// 修复NFO空标签（v3.3.9: 增加进度弹窗）
 const handleFixNfo = async () => {
   try {
     await ElMessageBox.confirm(
@@ -581,17 +806,32 @@ const handleFixNfo = async () => {
     return;
   }
 
+  // 重置进度状态
+  fixNfoProgress.value = {
+    visible: true,
+    running: true,
+    total: 0,
+    fixed: 0,
+    status: ''
+  };
+
   isFixingNfo.value = true;
   try {
     const result = await ScrapeApi.fixNfoEmptyTags();
+    fixNfoProgress.value.total = result.total;
+    fixNfoProgress.value.fixed = result.fixed;
     if (result.fixed > 0) {
+      fixNfoProgress.value.status = 'success';
       ElMessage.success(`修复完成: 扫描 ${result.total} 个 NFO，修复 ${result.fixed} 个文件`);
     } else {
+      fixNfoProgress.value.status = 'success';
       ElMessage.success(`扫描 ${result.total} 个 NFO，无需修复`);
     }
   } catch (e) {
+    fixNfoProgress.value.status = 'exception';
     ElMessage.error('修复 NFO 失败');
   } finally {
+    fixNfoProgress.value.running = false;
     isFixingNfo.value = false;
   }
 };
@@ -851,6 +1091,145 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 24px 20px;
   overflow-x: hidden;
+}
+
+/* ========== v3.3.9: 批量刮削进度对话框 ========== */
+.batch-progress-content {
+  padding: 8px 4px;
+}
+
+.progress-summary {
+  margin-bottom: 16px;
+}
+
+.progress-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary-color, #909399);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-success {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.progress-fail {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
+.progress-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background-color: rgba(64, 158, 255, 0.08);
+  border: 1px solid rgba(64, 158, 255, 0.15);
+  border-radius: 8px;
+  color: #409eff;
+  font-size: 13px;
+}
+
+.progress-list {
+  margin-top: 12px;
+}
+
+.progress-list-header {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-color, #303133);
+}
+
+.progress-list-body {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #ebeef5);
+  border-radius: 6px;
+  padding: 4px 0;
+}
+
+.progress-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color, #ebeef5);
+}
+
+.progress-list-item:last-child {
+  border-bottom: none;
+}
+
+.progress-list-item.is-success {
+  color: #67c23a;
+}
+
+.progress-list-item.is-fail {
+  color: #f56c6c;
+}
+
+.progress-list-item .item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-list-item .item-error {
+  font-size: 12px;
+  opacity: 0.8;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fix-nfo-result {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+}
+
+:global(.light) .result-row {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.result-label {
+  font-size: 13px;
+  color: var(--text-secondary-color, #909399);
+}
+
+.result-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color, #303133);
+}
+
+.result-value.has-fixed {
+  color: #67c23a;
+}
+
+.progress-text {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary-color, #909399);
+  text-align: center;
 }
 
 .downloads-header {

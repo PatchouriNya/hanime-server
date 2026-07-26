@@ -372,26 +372,45 @@ class ScrapeService:
         is_rename_file: bool = True,
         is_reorganize_directory: bool = True
     ) -> List[ScrapeResult]:
-        """批量刮削所有番剧目录"""
-        if series_names is None or len(series_names) == 0:
-            # 扫描所有番剧目录
-            series_names = []
-            for item in settings.DOWNLOAD_PATH.iterdir():
-                if item.is_dir():
-                    # 检查目录中是否有视频文件
-                    has_video = any(
-                        f.suffix.lower() in VIDEO_EXTENSIONS
-                        for f in item.iterdir() if f.is_file()
-                    ) or any(
-                        f.suffix.lower() in VIDEO_EXTENSIONS
-                        for sub in item.iterdir() if sub.is_dir()
-                        for f in sub.iterdir() if f.is_file()
-                    )
-                    if has_video:
-                        series_names.append(item.name)
+        """
+        批量刮削所有番剧目录
 
-        results = []
-        for name in series_names:
+        v3.3.9 优化：
+        - 扫描目录时递归查找 Season 子目录中的视频文件
+        - 跳过没有视频文件的目录（covers 等）
+        - 详细记录每个目录的处理结果，方便前端展示进度
+        """
+        if series_names is None or len(series_names) == 0:
+            # 扫描所有番剧目录（递归检查 Season 子目录）
+            series_names = []
+            if not settings.DOWNLOAD_PATH.exists():
+                logger.warning(f"下载目录不存在: {settings.DOWNLOAD_PATH}")
+                return []
+            for item in settings.DOWNLOAD_PATH.iterdir():
+                if not item.is_dir():
+                    continue
+                # 跳过中央封面目录（包含 .nomedia 的目录）
+                if (item / ".nomedia").exists():
+                    continue
+                # 递归查找视频文件（包括 Season 子目录）
+                has_video = False
+                try:
+                    for f in item.rglob("*"):
+                        if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                            has_video = True
+                            break
+                except PermissionError:
+                    continue
+                if has_video:
+                    series_names.append(item.name)
+                else:
+                    logger.info(f"批量刮削: 跳过无视频文件的目录: {item.name}")
+
+        logger.info(f"批量刮削: 共 {len(series_names)} 个目录待处理")
+
+        results: List[ScrapeResult] = []
+        for idx, name in enumerate(series_names, start=1):
+            logger.info(f"批量刮削 [{idx}/{len(series_names)}]: {name}")
             result = await self.scrape_series(
                 series_name=name,
                 scrape_mode=scrape_mode,
@@ -581,12 +600,17 @@ class ScrapeService:
         series_title: str,
         metadata_list: List[Optional[Any]],
         video_id: str,
-        season_number: int
+        season_number: int,
+        total_seasons: int = 1
     ) -> str:
         """
         生成 season.nfo（季信息）
 
         完全对齐绿联4800plus NAS影视中心的识别格式
+
+        v3.3.8 调整：当整个合集只有 1 季时，season.nfo 的 title 直接用番剧名
+        （不再加"第 1 季"后缀），避免在 NAS 上显示冗余的"第1季"字样。
+        只有 total_seasons >= 2 时才使用"第 N 季"格式。
         """
         root = ET.Element("season")
 
@@ -611,10 +635,13 @@ class ScrapeService:
         dateadded_elem = ET.SubElement(root, "dateadded")
         dateadded_elem.text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 季标题 - 使用"第 N 季"格式（对齐梅林传奇参考格式）
-        # 这样绿联NAS能正确识别为剧集的季，而不是独立的电影
+        # 季标题
+        # v3.3.8: 单季合集直接用番剧名（不加"第 1 季"），多季合集才用"第 N 季"
         # 合集层面由 tvshow.nfo 的 title 显示番剧名
-        season_title = f"第 {season_number} 季"
+        if total_seasons >= 2:
+            season_title = f"第 {season_number} 季"
+        else:
+            season_title = series_title
         title_elem = ET.SubElement(root, "title")
         title_elem.text = self._sanitize_nfo_text(season_title)
 
@@ -635,6 +662,7 @@ class ScrapeService:
 
         year_elem = ET.SubElement(root, "year")
         sorttitle_elem = ET.SubElement(root, "sorttitle")
+        # v3.3.8: sorttitle 与 title 保持一致（单季用番剧名，多季用"第 N 季"）
         sorttitle_elem.text = self._sanitize_nfo_text(season_title)
         premiered_elem = ET.SubElement(root, "premiered")
         releasedate_elem = ET.SubElement(root, "releasedate")
@@ -2242,7 +2270,8 @@ class ScrapeService:
                     break
 
             season_nfo_content = self.generate_season_nfo(
-                series_name_no_year, season_metadata, first_video_id, season_number
+                series_name_no_year, season_metadata, first_video_id, season_number,
+                total_seasons=len(season_numbers)
             )
             season_nfo_path = season_dir / SEASON_NFO_FILENAME
             await self._write_nfo_file(season_nfo_path, season_nfo_content)
@@ -2963,7 +2992,13 @@ class ScrapeService:
         return cleaned
 
     async def _fetch_metadata(self, video_entries: List[Dict]) -> List[Optional[Any]]:
-        """从VideoService获取每个视频的元数据"""
+        """
+        从VideoService获取每个视频的元数据
+
+        v3.3.9: 如果启用翻译，会就地翻译元数据中的 description（简介）
+        """
+        from app.services.translation_service import translation_service
+
         metadata_list = []
         for entry in video_entries:
             video_id = entry["video_id"]
@@ -2972,6 +3007,26 @@ class ScrapeService:
                 continue
             try:
                 detail = await self.video_service.get_video_detail(video_id)
+                # v3.3.9: 启用翻译时，翻译简介
+                if detail and settings.TRANSLATE_PLOT_ENABLED:
+                    target_lang = settings.TRANSLATE_TARGET_LANG
+                    if target_lang and target_lang != "off":
+                        original_desc = getattr(detail, "description", "") or ""
+                        if original_desc:
+                            translated = await translation_service.translate(
+                                original_desc, target_lang
+                            )
+                            if translated and translated != original_desc:
+                                try:
+                                    detail.description = translated
+                                    logger.info(
+                                        f"翻译简介 video_id={video_id}: "
+                                        f"{len(original_desc)} -> {len(translated)} 字符 "
+                                        f"(目标语言: {target_lang})"
+                                    )
+                                except Exception:
+                                    # description 可能是 frozen，跳过
+                                    pass
                 metadata_list.append(detail)
             except Exception as e:
                 logger.warning(f"获取视频元数据失败 video_id={video_id}: {e}")
@@ -3100,8 +3155,12 @@ class ScrapeService:
         return self._convert_to_jpg(source_path, target_path)
 
     # 需要清理空标签的日期字段（空标签会导致绿联显示 1970-01-01）
+    # v3.3.9 修复：同时匹配两种空标签形式：
+    #   1. 自闭合：<year/>、<premiered />
+    #   2. 开闭合空内容：<year></year>、<premiered>   </premiered>
     _EMPTY_DATE_TAG_RE = re.compile(
-        r'^\s*<(year|premiered|releasedate|aired|enddate)\s*/>\s*$',
+        r'^\s*<(year|premiered|releasedate|aired|enddate)(\s[^>]*)?\s*/>\s*$'
+        r'|^\s*<(year|premiered|releasedate|aired|enddate)(\s[^>]*)?\s*>\s*</\3\s*>\s*$',
         re.MULTILINE
     )
 

@@ -8,6 +8,65 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.3.9</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>简介自动翻译：</strong>刮削时自动翻译番剧简介到目标语言。新增翻译服务 <code>translation_service.py</code>，使用 Google Translate 公开端点（无需 API Key），支持长文本分段翻译，失败时保留原文不影响刮削。设置页"刮削"区块新增"自动翻译简介"开关 + "翻译目标语言"下拉，支持 <strong>简体中文（默认）/ 日文 / 英文 / 不翻译</strong>四种选项。设置持久化到 <code>db/scrape_settings.json</code>。</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 16px;">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>版本号统一管理：</strong>新增 <code>useVersion</code> composable 从后端 <code>/settings/version</code> 接口动态获取版本号，多组件共用缓存。设置页"关于"区块和页头徽章全部改用动态版本号，告别硬编码，避免每次升级遗漏同步。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>批量刮削进度反馈：</strong>用户反馈原"批量刮削"按钮点击后没反馈。重写为串行逐个刮削，新增进度对话框：实时显示总进度百分比、当前处理番剧、成功/失败计数、详细处理结果列表，单个失败不中断后续。同时把单请求超时从 30s 提升到 5~10min，避免大批量刮削超时。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>修复 NFO 进度反馈：</strong>新增进度对话框，扫描中显示加载状态，扫描完成显示扫描文件总数和修复文件数量。</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 16px;">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>AppHeader 版本徽章显示 undefined：</strong>模板引用 <code>{{ displayVersion }}</code> 但 setup 未定义该变量，导致页面顶部徽章显示"undefined"。修复为正确使用 <code>useVersion</code>。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.3.8</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>单季合集不再显示"第1季"后缀：</strong>用户反馈，合集只有 1 季时显示"第1季"是冗余信息（比如"援助交配 第1季"看起来多余）。现在调整为：</span>
+              <ul class="changelog-sublist">
+                <li><strong>单季合集</strong>（total_seasons = 1）：season.nfo 的 title 直接用番剧名（如"援助交配"），不再加"第1季"</li>
+                <li><strong>多季合集</strong>（total_seasons ≥ 2）：保持原行为，使用"第 N 季"格式（如"第1季"、"第2季"）</li>
+              </ul>
+              <span>sorttitle 字段同步调整，与 title 保持一致。合集层面的标题（tvshow.nfo 的 title）不受影响，始终是番剧名。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.3.7</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>

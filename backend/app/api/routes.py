@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.api.endpoints import videos, downloads, accounts, settings, auth, scrape
 from app.services.download_service import download_manager
-from app.config import logger
+from app.config import logger, settings as app_settings
 from app.utils.auth import get_current_user
 
 api_router = APIRouter()
@@ -11,6 +11,16 @@ api_router.include_router(
     auth.router,
     tags=["认证"]
 )
+
+# 应用版本信息（v3.3.9: 公开接口，前端未登录状态也能获取版本徽章）
+@api_router.get("/settings/version", tags=["设置"])
+async def get_app_version_public():
+    """获取应用版本信息（公开接口，不需要登录）"""
+    return {
+        "version": app_settings.APP_VERSION,
+        "app_name": app_settings.APP_NAME,
+        "app_description": app_settings.APP_DESCRIPTION
+    }
 
 # 视频相关路由（需要登录）
 api_router.include_router(

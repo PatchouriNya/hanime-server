@@ -24,6 +24,9 @@ class ScrapeConfig(BaseModel):
     is_reorganize_directory: bool = True
     is_convert_cover_to_jpg: bool = True
     is_generate_fanart: bool = False
+    # v3.3.9 新增：翻译设置
+    is_translate_plot_enabled: bool = True
+    translate_target_lang: str = "zh-CN"  # zh-CN / ja / en / off
 
 
 class ScrapeRequest(BaseModel):

@@ -9,7 +9,7 @@
       </button>
       <div class="title-wrapper">
         <h1 class="app-title" @click="goToHome">HanimeViewer</h1>
-        <span class="version-badge">v3.3.7</span>
+        <span class="version-badge">{{ displayVersion }}</span>
       </div>
     </div>
     <div class="header-right">
@@ -37,6 +37,7 @@ import { defineComponent, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { Menu, Back, Calendar, Search, Moon, Sunny, Document } from '@element-plus/icons-vue';
 import { mitt } from '../utils/mitt';
+import { useVersion } from '../composables/useVersion';
 
 export default defineComponent({
   name: 'AppHeader',
@@ -63,6 +64,8 @@ export default defineComponent({
   setup(props, { emit }) {
     const router = useRouter();
     const route = useRoute();
+    const { prefixedVersion } = useVersion();
+    const displayVersion = computed(() => prefixedVersion());
 
     const showBackButton = computed(() => {
       return route.path !== '/';
@@ -103,6 +106,7 @@ export default defineComponent({
 
     return {
       showBackButton,
+      displayVersion,
       toggleSidebar,
       toggleTheme,
       goBack,

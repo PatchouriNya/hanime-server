@@ -77,6 +77,22 @@
               <el-switch v-model="scrapeForm.convertCover" />
               <span class="form-hint">绿联影视中心仅识别JPG格式封面</span>
             </el-form-item>
+            <el-form-item label="自动翻译简介">
+              <el-switch v-model="scrapeForm.translatePlot" />
+              <span class="form-hint">刮削时自动翻译番剧简介到目标语言</span>
+            </el-form-item>
+            <el-form-item label="翻译目标语言" :disabled="!scrapeForm.translatePlot">
+              <el-select
+                v-model="scrapeForm.translateLang"
+                :disabled="!scrapeForm.translatePlot"
+                style="width: 100%;"
+              >
+                <el-option label="简体中文（默认）" value="zh-CN" />
+                <el-option label="日文" value="ja" />
+                <el-option label="英文" value="en" />
+                <el-option label="不翻译（保留原文）" value="off" />
+              </el-select>
+            </el-form-item>
           </el-form>
           <div class="scrape-hint">
             <el-icon><Warning /></el-icon>
@@ -231,11 +247,11 @@
           <div class="about-info">
             <div class="about-row">
               <span class="about-key">版本</span>
-              <span class="about-value">v3.3.4</span>
+              <span class="about-value">{{ displayVersion }}</span>
             </div>
             <div class="about-row">
               <span class="about-key">描述</span>
-              <span class="about-value">Hanime视频聚合平台</span>
+              <span class="about-value">{{ appDescription || 'Hanime视频聚合平台' }}</span>
             </div>
             <div class="about-row">
               <span class="about-key">功能</span>
@@ -284,6 +300,10 @@ import { Delete, Download, Upload, Connection, CircleCheck, CircleClose, FolderO
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useContentSettings } from '../composables/useContentSettings';
+import { useVersion } from '../composables/useVersion';
+
+const { prefixedVersion, appDescription } = useVersion();
+const displayVersion = prefixedVersion();
 
 interface ProxySettings {
   use_proxy: boolean;
@@ -324,7 +344,10 @@ const scrapeForm = reactive({
   autoScrape: true,
   renameFile: true,
   reorganizeDir: true,
-  convertCover: true
+  convertCover: true,
+  // v3.3.9 新增：翻译设置
+  translatePlot: true,
+  translateLang: 'zh-CN' as 'zh-CN' | 'ja' | 'en' | 'off'
 });
 
 const loadScrapeConfig = async () => {
@@ -335,6 +358,8 @@ const loadScrapeConfig = async () => {
     scrapeForm.renameFile = config.is_rename_file;
     scrapeForm.reorganizeDir = config.is_reorganize_directory;
     scrapeForm.convertCover = config.is_convert_cover_to_jpg;
+    scrapeForm.translatePlot = config.is_translate_plot_enabled;
+    scrapeForm.translateLang = config.translate_target_lang;
   } catch (error) {
     console.error('加载刮削配置失败:', error);
   }
@@ -348,7 +373,9 @@ const saveScrapeSettings = async () => {
       is_rename_file: scrapeForm.renameFile,
       is_reorganize_directory: scrapeForm.reorganizeDir,
       is_convert_cover_to_jpg: scrapeForm.convertCover,
-      is_generate_fanart: false
+      is_generate_fanart: false,
+      is_translate_plot_enabled: scrapeForm.translatePlot,
+      translate_target_lang: scrapeForm.translateLang
     });
     ElMessage.success('刮削设置已保存');
   } catch (error) {

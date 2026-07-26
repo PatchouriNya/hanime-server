@@ -30,7 +30,9 @@ async def get_scrape_config():
         is_rename_file=settings.SCRAPE_RENAME_FILE,
         is_reorganize_directory=settings.SCRAPE_REORGANIZE_DIRECTORY,
         is_convert_cover_to_jpg=settings.SCRAPE_CONVERT_COVER_JPG,
-        is_generate_fanart=False
+        is_generate_fanart=False,
+        is_translate_plot_enabled=settings.TRANSLATE_PLOT_ENABLED,
+        translate_target_lang=settings.TRANSLATE_TARGET_LANG
     )
 
 
@@ -43,6 +45,9 @@ async def update_scrape_config(config: ScrapeConfig, user: dict = Depends(get_cu
         settings.SCRAPE_RENAME_FILE = config.is_rename_file
         settings.SCRAPE_REORGANIZE_DIRECTORY = config.is_reorganize_directory
         settings.SCRAPE_CONVERT_COVER_JPG = config.is_convert_cover_to_jpg
+        # v3.3.9: 翻译设置
+        settings.TRANSLATE_PLOT_ENABLED = config.is_translate_plot_enabled
+        settings.TRANSLATE_TARGET_LANG = config.translate_target_lang
 
         # 持久化到文件
         _save_scrape_settings_to_file(config)
@@ -51,7 +56,9 @@ async def update_scrape_config(config: ScrapeConfig, user: dict = Depends(get_cu
                      f"auto={config.is_auto_scrape}, "
                      f"rename={config.is_rename_file}, "
                      f"reorganize={config.is_reorganize_directory}, "
-                     f"convert_jpg={config.is_convert_cover_to_jpg}")
+                     f"convert_jpg={config.is_convert_cover_to_jpg}, "
+                     f"translate_enabled={config.is_translate_plot_enabled}, "
+                     f"translate_lang={config.translate_target_lang}")
         return {"status": "success", "message": "刮削配置已保存"}
     except Exception as e:
         logger.error(f"更新刮削配置失败: {e}")
@@ -131,6 +138,8 @@ def _save_scrape_settings_to_file(config: ScrapeConfig):
             "is_rename_file": config.is_rename_file,
             "is_reorganize_directory": config.is_reorganize_directory,
             "is_convert_cover_to_jpg": config.is_convert_cover_to_jpg,
+            "is_translate_plot_enabled": config.is_translate_plot_enabled,
+            "translate_target_lang": config.translate_target_lang,
         }, ensure_ascii=False), encoding="utf-8")
         logger.info("刮削设置已持久化")
     except Exception as e:

@@ -19,6 +19,13 @@ class DownloadDirSettings(BaseModel):
     download_path: str
 
 
+class VersionInfo(BaseModel):
+    """应用版本信息（v3.3.9: 已迁移到 routes.py 作为公开接口，无需登录）"""
+    version: str
+    app_name: str
+    app_description: str
+
+
 @router.get("/proxy", response_model=ProxySettings)
 async def get_proxy_settings():
     """获取当前代理设置"""

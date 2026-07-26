@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "3.3.7")
+    APP_VERSION: str = os.getenv("APP_VERSION", "3.3.9")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -77,6 +77,12 @@ class Settings(BaseModel):
     SCRAPE_RENAME_FILE: bool = os.getenv("SCRAPE_RENAME_FILE", "True").lower() in ("true", "1", "t")
     SCRAPE_REORGANIZE_DIRECTORY: bool = os.getenv("SCRAPE_REORGANIZE_DIRECTORY", "True").lower() in ("true", "1", "t")
     SCRAPE_CONVERT_COVER_JPG: bool = os.getenv("SCRAPE_CONVERT_COVER_JPG", "True").lower() in ("true", "1", "t")
+
+    # 翻译设置（v3.3.9 新增）
+    # scrape 时自动翻译简介/描述
+    # off=不翻译（保留原文），zh-CN=简体中文，ja=日文，en=英文
+    TRANSLATE_PLOT_ENABLED: bool = os.getenv("TRANSLATE_PLOT_ENABLED", "True").lower() in ("true", "1", "t")
+    TRANSLATE_TARGET_LANG: str = os.getenv("TRANSLATE_TARGET_LANG", "zh-CN")
 
     # MySQL 设置（云数据库）
     MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -131,6 +137,11 @@ if _scrape_file.exists():
             settings.SCRAPE_REORGANIZE_DIRECTORY = bool(_sdata["is_reorganize_directory"])
         if _sdata.get("is_convert_cover_to_jpg") is not None:
             settings.SCRAPE_CONVERT_COVER_JPG = bool(_sdata["is_convert_cover_to_jpg"])
+        # v3.3.9 新增：翻译设置
+        if _sdata.get("is_translate_plot_enabled") is not None:
+            settings.TRANSLATE_PLOT_ENABLED = bool(_sdata["is_translate_plot_enabled"])
+        if _sdata.get("translate_target_lang"):
+            settings.TRANSLATE_TARGET_LANG = str(_sdata["translate_target_lang"])
         logger.info(f"已从持久化文件恢复刮削设置: SCRAPE_MODE={settings.SCRAPE_MODE}")
     except Exception as e:
         logger.warning(f"恢复刮削设置失败: {e}")

@@ -1,5 +1,65 @@
 # 更新日志
 
+## v3.3.9 (2026-07-26)
+
+### 新功能
+
+1. **简介自动翻译**（核心新功能）：
+   - 用户需求：刮削时自动翻译番剧简介，可在设置中开关，支持中文/日文/英文/不翻译四种选项
+   - 新增翻译服务 `translation_service.py`，使用 Google Translate 公开端点（无需 API Key）：
+     - 支持长文本分段翻译（> 4500 字符自动分段并发翻译）
+     - 失败时保留原文，不影响刮削主流程
+     - 复用项目代理配置，支持代理环境
+   - 后端配置：`TRANSLATE_PLOT_ENABLED`（开关）+ `TRANSLATE_TARGET_LANG`（语言代码：`zh-CN`/`ja`/`en`/`off`），持久化到 `db/scrape_settings.json`
+   - API：`/scrape/config` 新增 `is_translate_plot_enabled` 和 `translate_target_lang` 字段
+   - 刮削流程：`scrape_service._fetch_metadata` 在获取视频元数据后，按用户设置翻译 `description`，写入 NFO `<plot>`/`<outline>` 标签
+   - 前端：设置页"刮削"区块新增"自动翻译简介"开关 + "翻译目标语言"下拉选择
+
+### 优化
+
+1. **版本号统一管理**：
+   - 用户反馈：之前每次升级版本号要手动改多个文件（设置页、页头徽章等），容易遗漏
+   - 新增 `useVersion` composable：从后端 `/settings/version` 接口动态获取版本号，多组件共用缓存
+   - 新增后端 `/settings/version` 接口：返回 `version`/`app_name`/`app_description`
+   - 设置页"关于"区块改用动态版本号，不再硬编码 `v3.3.4`
+   - 页头徽章 `AppHeader.vue` 改用动态版本号，自动同步后端配置
+
+2. **批量刮削进度反馈**（核心优化）：
+   - 用户反馈：原"批量刮削"按钮点击后没有可见反馈，不知道是否在执行
+   - 重写 `handleBatchScrape`：先扫描可刮削列表，逐个番剧串行刮削（避免单请求超时）
+   - 新增进度对话框：实时显示总进度百分比、当前处理番剧、成功/失败计数、详细处理结果列表
+   - 单个番剧刮削失败不会中断后续刮削，全部完成后显示汇总结果
+   - 刷新分组视图（如果在分组视图下）
+
+3. **修复 NFO 进度反馈**：
+   - 用户反馈：原"修复NFO"按钮点击后没有可见反馈
+   - 新增进度对话框：扫描中显示加载状态，扫描完成显示扫描文件总数和修复文件数量
+
+4. **API 请求超时优化**：
+   - 单个番剧刮削：超时从 30s 提升到 5min（番剧封面/元数据下载耗时较长）
+   - 批量刮削：超时从 30s 提升到 10min
+   - 修复 NFO：超时从 30s 提升到 5min
+   - 避免大批量番剧刮削时单请求超时失败
+
+### 修复
+
+1. **AppHeader 版本徽章显示 undefined**：
+   - 根因：模板引用 `{{ displayVersion }}` 但 setup 未定义该变量，导致页面顶部徽章显示 "undefined"
+   - 修复：正确导入 `useVersion` composable 并暴露 `displayVersion`
+
+## v3.3.8 (2026-07-26)
+
+### 优化
+
+1. **单季合集不再显示"第1季"后缀**：
+   - 用户反馈：合集只有 1 季时显示"第1季"是冗余信息（比如"援助交配 第1季"看起来多余）
+   - 修改 `generate_season_nfo` 方法新增 `total_seasons` 参数：
+     - 单季合集（total_seasons = 1）：season.nfo 的 title 直接用番剧名（如"援助交配"），不再加"第1季"
+     - 多季合集（total_seasons ≥ 2）：保持原行为，使用"第 N 季"格式（如"第1季"、"第2季"）
+   - sorttitle 字段同步调整，与 title 保持一致
+   - 合集层面的标题（tvshow.nfo 的 title）不受影响，始终是番剧名
+   - 修改位置：`scrape_service.py` 的 `generate_season_nfo` 方法及调用方
+
 ## v3.3.7 (2026-07-26)
 
 ### 修复

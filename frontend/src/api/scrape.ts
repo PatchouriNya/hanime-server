@@ -9,6 +9,9 @@ export interface ScrapeConfig {
   is_reorganize_directory: boolean;
   is_convert_cover_to_jpg: boolean;
   is_generate_fanart: boolean;
+  // v3.3.9 新增：翻译设置
+  is_translate_plot_enabled: boolean;
+  translate_target_lang: string; // 'zh-CN' | 'ja' | 'en' | 'off'
 }
 
 export interface ScrapeRequest {
@@ -57,7 +60,8 @@ export class ScrapeApi {
   }
 
   static async scrapeSeries(req: ScrapeRequest): Promise<ScrapeResult> {
-    const response = await request.post('/scrape/series', req);
+    // 单个番剧刮削需要下载多个封面和元数据，使用 5 分钟超时
+    const response = await request.post('/scrape/series', req, { timeout: 300000 });
     return response.data;
   }
 
@@ -67,12 +71,17 @@ export class ScrapeApi {
     isRenameFile: boolean = true,
     isReorganizeDirectory: boolean = true
   ): Promise<ScrapeResult[]> {
-    const response = await request.post('/scrape/batch', {
-      series_names: seriesNames,
-      scrape_mode: mode,
-      is_rename_file: isRenameFile,
-      is_reorganize_directory: isReorganizeDirectory
-    });
+    // 批量刮削耗时较长（每个番剧需要下载多个封面/元数据），使用 10 分钟超时
+    const response = await request.post(
+      '/scrape/batch',
+      {
+        series_names: seriesNames,
+        scrape_mode: mode,
+        is_rename_file: isRenameFile,
+        is_reorganize_directory: isReorganizeDirectory
+      },
+      { timeout: 600000 }
+    );
     return response.data;
   }
 
@@ -87,7 +96,8 @@ export class ScrapeApi {
   }
 
   static async fixNfoEmptyTags(): Promise<{ total: number; fixed: number }> {
-    const response = await request.post('/scrape/fix-nfo');
+    // 扫描所有 NFO 文件可能耗时较长（番剧很多时），使用 5 分钟超时
+    const response = await request.post('/scrape/fix-nfo', {}, { timeout: 300000 });
     return response.data;
   }
 }
