@@ -8,6 +8,65 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.3.5</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>每集封面改用该集自己的海报：</strong>之前 <code>generate_episode_thumb</code> 优先从视频文件截取画面作为每集封面，导致每集封面都是视频中间的某一帧，缺乏辨识度。现在调整优先级为：</span>
+              <ul class="changelog-sublist">
+                <li>1. 优先下载该集自己的 <code>cover_url</code>（竖版海报 268x394，放大到 1000x1426 标准海报尺寸）</li>
+                <li>2. 回退到 <code>thumbnail URL</code>（横版高分辨率 1024x576）</li>
+                <li>3. 最后兜底从视频文件截取画面</li>
+              </ul>
+              <span>同时新增 <code>force_regenerate</code> 参数，刮削时强制重新下载每集封面，确保使用最新的 <code>cover_url</code> 而非旧的截图。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.3.4</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="changelog-list">
+            <li>
+              <span><strong>集号识别准确性大幅提升：</strong>下载和刮削时不再按"已有视频数量+1"顺序分配集号，改为从视频标题/副标题中提取真实集号。支持以下格式：</span>
+              <ul class="changelog-sublist">
+                <li>中文数字"第十一話"→11、"第二十話"→20、"第二十一話"→21（支持 1-99）</li>
+                <li>阿拉伯数字"第2話"→2、"第15話"→15</li>
+                <li>英文标记"Episode 5"、"Ep. 12"、"EP 3"</li>
+                <li>"＃11"、"#5" 数字标记</li>
+                <li>"Season N" 季号标记</li>
+                <li>罗马数字"第Ⅱ"→2、"Ⅲ"→3</li>
+                <li>文字标签"前編"→1、"中編"→2、"後編"→3、"上巻"→1、"下巻"→3、"OVA"→99</li>
+                <li>末尾阿拉伯数字"援助交配 10"→10（自动排除 1900-2099 的年份）</li>
+              </ul>
+              <span>冲突时自动递增到下一个可用位置。</span>
+            </li>
+            <li>
+              <span><strong>系列识别修复：</strong>增强 <code>_extract_series_base</code>，处理标题中间的"第N話/话/期/章/部"集号标记。之前"○○交配 第一話 ..."和"○○交配 第十一話 ... 前編 [中文字幕]"会被识别为两个不同的系列，现在统一提取为基础名"○○交配 毎日お世話してくれる彼女はエルフのお姫様"。同时修复"Season N"末尾后缀被"末尾数字"规则误吞的问题。</span>
+            </li>
+            <li>
+              <span><strong>刮削后清理空残留目录：</strong>新增 <code>_cleanup_empty_series_directories</code> 方法，刮削完成后扫描整个下载目录，自动清理：</span>
+              <ul class="changelog-sublist">
+                <li>完全空的残留目录（之前系列识别错误创建的目录，视频已被移走）</li>
+                <li>仅含孤立附属文件（NFO/.jpg）但没有视频的目录</li>
+              </ul>
+              <span>解决"○○交配 第十一話 毎日お世話してくれる彼女はエルフのお姫様 前編 [中文字幕]"这类原始目录残留问题。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.3.3</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>

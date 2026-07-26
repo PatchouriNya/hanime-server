@@ -178,8 +178,8 @@ class ScrapeService:
             # 2. 获取元数据
             metadata_list = await self._fetch_metadata(video_entries)
 
-            # 3. 确定集号
-            episode_mapping = self._determine_episode_number(video_entries)
+            # 3. 确定集号（v3.3.4: 传入元数据用于真实集号识别）
+            episode_mapping = self._determine_episode_number(video_entries, metadata_list)
 
             # 4. 生成 NFO 和图片
             if scrape_mode == ScrapeMode.TV_SHOW:
@@ -251,6 +251,17 @@ class ScrapeService:
                     logger.info(f"已清理旧的 .covers/ 目录: {old_covers_dir}")
                 except Exception as e:
                     logger.warning(f"清理 .covers/ 目录失败: {e}")
+
+            # 8. 清理空的残留目录（v3.3.4 新增）
+            # 旧版本（v3.3.3 及之前）系列识别错误时，可能为同一系列创建多个目录
+            # 例如："○○交配 第一話 ..." 和 "○○交配 第十一話 ... 前編" 是两个独立目录
+            # 系列识别修复后，这些目录的视频会被移动到正确的目录，但是空目录残留
+            # 这里清理：
+            #   a) 整个 DOWNLOAD_PATH 下没有任何视频文件和有效内容（只有空 Season 子目录）的目录
+            #   b) 仅包含 .nfo/.jpg 等附属文件但没有视频文件的目录（视频已被移走）
+            cleaned_dirs = self._cleanup_empty_series_directories(series_dir)
+            if cleaned_dirs:
+                result.renamed_files.extend([f"清理空目录: {d}" for d in cleaned_dirs])
 
             logger.success(f"刮削完成: {series_name}, "
                            f"NFO {len(nfo_files)} 个, "
@@ -1502,14 +1513,24 @@ class ScrapeService:
         season_number: int,
         episode_number: int,
         cover_url: str = "",
-        series_name: str = ""
+        series_name: str = "",
+        force_regenerate: bool = False
     ) -> bool:
         """
-        生成单集缩略图（横版，1920x1080 或原生分辨率）
+        生成单集封面图（v3.3.5 调整：优先使用每集自己的 cover_url 竖版海报）
 
         文件名格式：番剧名 - S01E01 - 第 1 集.jpg
         与视频文件同名（.jpg），绿联自动识别。
-        优先从同名视频文件截取真实画面，回退使用 thumbnail URL，最后使用 cover URL。
+
+        v3.3.5 优先级（高→低）：
+        1. 每集自己的 cover_url（竖版海报 268x394，放大到 1000x1426）
+           - 保证每集封面各不相同
+        2. thumbnail URL（横版高分辨率 1024x576）
+           - cover_url 失败时回退
+        3. 从视频文件截取真实画面（ffmpeg 50% 位置）
+           - 最后兜底
+
+        :param force_regenerate: True 时强制重新生成（删除现有 .jpg）
         """
         safe_name = self._sanitize_filename(series_name) if series_name else ""
         season_str = f"S{season_number:02d}"
@@ -1521,63 +1542,65 @@ class ScrapeService:
             thumb_filename = f"{season_str}{episode_str}-thumb.jpg"
         thumb_path = season_dir / thumb_filename
 
+        # 强制重生：删除现有文件
+        if force_regenerate and thumb_path.exists():
+            try:
+                thumb_path.unlink()
+                logger.info(f"强制重生单集封面，已删除旧文件: {thumb_path.name}")
+            except Exception as e:
+                logger.warning(f"删除旧 episode thumb 失败: {e}")
+
         if thumb_path.exists():
             return True
 
-        # 优先：从同名视频文件截取真实画面
-        # 视频文件名 = 缩略图文件名去掉 .jpg 后缀 + 视频扩展名
-        video_base_name = thumb_filename[:-4]  # 去掉 ".jpg"
-        for ext in VIDEO_EXTENSIONS:
-            video_candidate = season_dir / f"{video_base_name}{ext}"
-            if video_candidate.exists():
-                try:
-                    # 截取该集视频 50% 位置的画面
-                    success = await self._extract_frame_from_video(
-                        video_candidate, thumb_path, seek_pct=0.5
+        # 1. 优先：每集自己的 cover_url（竖版海报）
+        # 这是该集独立的封面，保证每集封面各不相同
+        if cover_url:
+            try:
+                success = await self._download_cover_as_jpg(cover_url, thumb_path)
+                if success:
+                    # 放大到标准海报尺寸 1000x1426（保留竖版，不裁剪为横版）
+                    self._upscale_to_standard(
+                        thumb_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT
                     )
-                    if success:
-                        # 调整到标准尺寸 1920x1080（裁剪+缩放）
-                        self._resize_to_standard(
-                            thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
-                        )
-                        logger.info(f"单集缩略图从视频截取: {thumb_path}")
-                        return True
-                except Exception as e:
-                    logger.warning(f"单集缩略图从视频截取失败: {e}")
-                break  # 只尝试第一个匹配的视频文件
+                    logger.info(f"单集封面从 cover URL 下载（竖版海报）: {thumb_path.name}")
+                    return True
+            except Exception as e:
+                logger.warning(f"单集封面从 cover URL 下载失败: {e}")
 
-        # 回退：使用 thumbnail URL（横版高分辨率）
+        # 2. 回退：使用 thumbnail URL（横版高分辨率）
         thumbnail_url = self._get_horizontal_thumbnail_url(cover_url)
         if thumbnail_url:
             try:
                 success = await self._download_cover_as_jpg(thumbnail_url, thumb_path)
                 if success:
-                    # 放大到 1920x1080 标准尺寸（对齐参考格式）
-                    self._upscale_to_standard(thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
-                    logger.info(f"单集缩略图下载成功: {thumb_path}")
+                    # 放大到 1920x1080 标准尺寸
+                    self._upscale_to_standard(
+                        thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
+                    )
+                    logger.info(f"单集封面从 thumbnail URL 下载（横版）: {thumb_path.name}")
                     return True
             except Exception as e:
-                logger.warning(f"单集缩略图从 thumbnail 下载失败: {e}")
+                logger.warning(f"单集封面从 thumbnail 下载失败: {e}")
 
-        # 最后回退：使用原 cover_url
-        if cover_url:
-            try:
-                success = await self._download_cover_as_jpg(cover_url, thumb_path)
-                if success:
-                    # 如果是竖版，裁剪为横版
-                    if not self._is_landscape_image(thumb_path):
-                        tmp_path = season_dir / f".tmp_{thumb_filename}"
-                        shutil.move(str(thumb_path), str(tmp_path))
-                        crop_success = self._crop_landscape_from_poster(tmp_path, thumb_path)
-                        if tmp_path.exists():
-                            tmp_path.unlink()
-                        if not crop_success:
-                            shutil.copy2(cover_url, thumb_path)
-                    self._upscale_to_standard(thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT)
-                    logger.info(f"单集缩略图从 cover URL 下载: {thumb_path}")
-                    return True
-            except Exception as e:
-                logger.warning(f"单集缩略图下载失败: {e}")
+        # 3. 最后回退：从同名视频文件截取真实画面
+        video_base_name = thumb_filename[:-4]  # 去掉 ".jpg"
+        for ext in VIDEO_EXTENSIONS:
+            video_candidate = season_dir / f"{video_base_name}{ext}"
+            if video_candidate.exists():
+                try:
+                    success = await self._extract_frame_from_video(
+                        video_candidate, thumb_path, seek_pct=0.5
+                    )
+                    if success:
+                        self._resize_to_standard(
+                            thumb_path, BACKDROP_STANDARD_WIDTH, BACKDROP_STANDARD_HEIGHT
+                        )
+                        logger.info(f"单集封面从视频截取（兜底）: {thumb_path.name}")
+                        return True
+                except Exception as e:
+                    logger.warning(f"单集封面从视频截取失败: {e}")
+                break
 
         return False
 
@@ -2029,7 +2052,7 @@ class ScrapeService:
 
         video_entries = self._scan_series_directory(series_dir)
         metadata_list = await self._fetch_metadata(video_entries)
-        episode_mapping = self._determine_episode_number(video_entries)
+        episode_mapping = self._determine_episode_number(video_entries, metadata_list)
 
         preview = NfoPreview(
             series_name=series_name,
@@ -2390,13 +2413,17 @@ class ScrapeService:
             await self._write_nfo_file(episode_nfo_path, episode_nfo_content)
             nfo_files.append(str(episode_nfo_path))
 
-            # 单集缩略图（文件名：番剧名 - S01E01 - 第 1 集.jpg，与视频同名）
+            # 单集封面图（v3.3.5：优先用每集自己的 cover_url 竖版海报）
+            # 文件名：番剧名 - S01E01 - 第 1 集.jpg，与视频同名
             episode_cover_url = ""
             if meta and hasattr(meta, "cover_url") and meta.cover_url:
                 episode_cover_url = meta.cover_url
+            # force_regenerate=True：每次刮削都重新下载每集自己的封面，
+            # 确保使用最新的 cover_url（而不是旧的视频截帧）
             thumb_success = await self.generate_episode_thumb(
                 season_dir, season_number, episode_num, episode_cover_url,
-                series_name=series_name_no_year
+                series_name=series_name_no_year,
+                force_regenerate=True
             )
             if thumb_success:
                 image_files.append(str(season_dir / f"{episode_filename}.jpg"))
@@ -2601,7 +2628,11 @@ class ScrapeService:
             logger.warning(f"从数据库查找 video_id 失败: {file_path.name} - {e}")
         return ""
 
-    def _determine_episode_number(self, video_entries: List[Dict]) -> Dict[str, Dict]:
+    def _determine_episode_number(
+        self,
+        video_entries: List[Dict],
+        metadata_list: Optional[List[Optional[Any]]] = None
+    ) -> Dict[str, Dict]:
         """
         确定每个视频的季号和集号
 
@@ -2609,34 +2640,85 @@ class ScrapeService:
 
         一季多集策略（v3.3.3 回归标准电视剧结构）：
         - 所有同系列视频统一放入 Season 1
-        - 如果文件名中包含 S01E01 格式，提取集号（冲突时递增）
-        - 否则按文件路径排序分配集号 E01, E02, E03...
         - 所有的 season 固定为 1，对齐绿联NAS标准电视剧识别格式
 
-        这样绿联NAS 能通过"相似命名+剧集顺序"识别为剧集合集，
-        而不是把每集当成独立电影。
+        集号识别优先级（v3.3.4 修正）：
+        1. 从视频元数据（title/subtitle）提取真实集号 ← 最高优先级
+           - 支持"第十一話"→11、"第2話"→2、"Episode 5"→5
+           - 支持中文数字（一/二/.../十一/.../九十九）
+           - 支持罗马数字、文字标签（前編=1, 後編=2 等）
+        2. 从文件名前缀 video_id_subtitle.mp4 中提取标题再识别
+        3. 从文件名 S01Exx 格式提取（仅用于已刮削过的旧数据回退）
+        4. 无法识别时按文件路径排序分配 E01, E02, E03...
 
-        之前的"每集一季"策略（v3.2.7~v3.3.2）导致每季只有 E01，
-        没有剧集顺序，NAS 无法识别为剧集，被当成独立电影拆分。
+        冲突解决：真实集号已被占用时递增到下一个可用位置。
+
+        注意（v3.3.4 修正）：
+        旧版本优先从文件名 S01Exx 提取集号，导致旧刮削数据中错误的
+        S01E01（实际是第十一話）无法被修正为 S01E11。现在改为
+        元数据真实集号优先，文件名集号仅作回退。
         """
         episode_mapping: Dict[str, Dict] = {}
 
         # 按文件路径排序，确保集号分配稳定
         sorted_entries = sorted(video_entries, key=lambda x: x["file_path"])
 
-        # 收集已解析的集号（从文件名 SxxExx 格式提取）
+        # 构建 video_id -> metadata 的映射
+        meta_map: Dict[str, Any] = {}
+        if metadata_list:
+            for i, entry in enumerate(video_entries):
+                if i < len(metadata_list) and metadata_list[i]:
+                    vid = entry.get("video_id", "")
+                    if vid:
+                        meta_map[vid] = metadata_list[i]
+
+        # 收集已解析的集号
         used_episodes: Set[int] = set()
         regular_entries: List[Dict] = []
 
         for entry in sorted_entries:
             filename = entry["filename"]
             video_id = entry["video_id"]
+            real_episode = 0
+            file_episode = 0  # 文件名中的 S01Exx 集号（仅作回退）
 
-            # 尝试从 S01E01 格式提取集号（忽略季号，只取集号）
-            match = re.search(r'S\d+E(\d+)', filename, re.IGNORECASE)
-            if match:
-                episode_num = int(match.group(1))
-                # 避免集号冲突（例如旧的每集一季命名 S01E01、S02E01、S03E01 都提取出 1）
+            # 1. 优先从元数据（title/subtitle）提取真实集号
+            meta = meta_map.get(video_id)
+            if meta:
+                title = getattr(meta, "title", "") or ""
+                subtitle = getattr(meta, "subtitle", "") or ""
+                real_episode = self._extract_episode_number_from_metadata(title, subtitle)
+                logger.info(f"集号识别[{video_id}]: 从元数据提取, "
+                          f"title='{title[:40]}', subtitle='{subtitle[:40]}', "
+                          f"识别集号={real_episode}")
+
+            # 2. 如果元数据没有，从文件名 video_id_subtitle.mp4 中提取标题再识别
+            if real_episode == 0:
+                fn_stem = Path(entry["file_path"]).stem
+                if "_" in fn_stem:
+                    title_from_filename = fn_stem.split("_", 1)[1]
+                    real_episode = self._extract_episode_number_from_metadata(
+                        title_from_filename, ""
+                    )
+                    if real_episode > 0:
+                        logger.info(f"集号识别[{video_id}]: 从文件名标题提取, "
+                                  f"title='{title_from_filename[:40]}', "
+                                  f"识别集号={real_episode}")
+
+            # 3. 如果真实集号识别失败，回退到文件名 S01Exx 格式
+            if real_episode == 0:
+                match = re.search(r'S\d+E(\d+)', filename, re.IGNORECASE)
+                if match:
+                    file_episode = int(match.group(1))
+                    logger.info(f"集号识别[{video_id}]: 真实集号无法识别，"
+                              f"回退到文件名 S01Exx={file_episode}")
+
+            # 选择最终集号：真实集号优先，回退到文件名集号
+            resolved_episode = real_episode if real_episode > 0 else file_episode
+
+            if resolved_episode > 0:
+                episode_num = resolved_episode
+                # 冲突时递增
                 while episode_num in used_episodes:
                     episode_num += 1
                 used_episodes.add(episode_num)
@@ -2654,6 +2736,222 @@ class ScrapeService:
             }
 
         return episode_mapping
+
+    def _extract_episode_number_from_metadata(self, title: str, subtitle: str) -> int:
+        """
+        从视频元数据 title/subtitle 中提取真实集号（阿拉伯数字），失败返回 0
+
+        优先级（高→低）：
+        1. "第N話/话/期/章/部/卷/篇/編" - 含中文数字 "第十一話"→11
+        2. "Episode N"、"Ep. N"、"EP N"
+        3. "＃N"、"#N"
+        4. "Season N" - 仅作为集号参考
+        5. 罗马数字 "第Ⅱ"、"Ⅱ"
+        6. 文字标签（前編=1, 後編=2, 上巻=1, 下巻=2, OVA=99）
+        7. 末尾阿拉伯数字 - 排除 1900-2099 的年份
+
+        支持 1-99 的中文数字转换。
+        """
+        if not title and not subtitle:
+            return 0
+
+        # 中文数字到阿拉伯数字的转换表
+        cn_digit_map = {
+            '零': 0, '〇': 0,
+            '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
+            '六': 6, '七': 7, '八': 8, '九': 9,
+        }
+
+        def cn_to_arabic(cn: str) -> int:
+            """中文数字转阿拉伯数字（1-99）"""
+            if not cn:
+                return 0
+            if cn.isdigit():
+                return int(cn)
+            if len(cn) == 1:
+                if cn == '十':
+                    return 10
+                return cn_digit_map.get(cn, 0)
+            if cn.startswith('十'):
+                return 10 + cn_digit_map.get(cn[1:], 0)
+            if cn.endswith('十'):
+                return cn_digit_map.get(cn[0], 0) * 10
+            if '十' in cn:
+                parts = cn.split('十')
+                if len(parts) == 2:
+                    return cn_digit_map.get(parts[0], 0) * 10 + cn_digit_map.get(parts[1], 0)
+            return 0
+
+        # subtitle 优先（中文副标题更规范）
+        candidates = []
+        if subtitle:
+            candidates.append(subtitle)
+        if title:
+            candidates.append(title)
+
+        # 文字标签到集号的映射
+        label_to_episode = {
+            '上卷': 1, '上巻': 1, '前篇': 1, '前編': 1, '上篇': 1,
+            '中卷': 2, '中巻': 2, '中篇': 2, '中編': 2,
+            '下卷': 3, '下巻': 3, '後篇': 3, '後編': 3, '下篇': 3,
+            '后篇': 3, '后編': 3, '下编': 3,
+            'OVA': 99, '特典': 99, '番外': 99, '特別': 99, '特别': 99,
+        }
+
+        for text in candidates:
+            if not text:
+                continue
+            text = text.strip()
+
+            # 1. "第N話/话/期/章/部/卷/篇/編" - 含中文数字和阿拉伯数字
+            m = re.search(r'第\s*([零〇一二三四五六七八九十两\d]+)\s*[話话期章部卷篇編]', text)
+            if m:
+                num_str = m.group(1)
+                if num_str.isdigit():
+                    n = int(num_str)
+                else:
+                    n = cn_to_arabic(num_str)
+                if n > 0:
+                    return n
+
+            # 2. "Episode N"、"Ep. N"、"EP N"
+            m = re.search(r'(?:episode|ep\.?)\s*(\d+)', text, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+
+            # 3. "＃N" 或 "#N"
+            m = re.search(r'[＃#]\s*(\d+)', text)
+            if m:
+                return int(m.group(1))
+
+            # 4. "Season N"
+            m = re.search(r'[Ss]eason\s*(\d+)', text)
+            if m:
+                return int(m.group(1))
+
+            # 5. 罗马数字
+            roman_map = {'Ⅰ': 1, 'Ⅱ': 2, 'Ⅲ': 3, 'Ⅳ': 4, 'Ⅴ': 5,
+                         'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5}
+            m = re.search(r'第\s*([ⅠⅡⅢⅣⅤ]+)\s*[話话期章部]?', text)
+            if m and m.group(1) in roman_map:
+                return roman_map[m.group(1)]
+            m = re.search(r'\s([ⅠⅡⅢⅣⅤ])\s*$', text)
+            if m and m.group(1) in roman_map:
+                return roman_map[m.group(1)]
+
+            # 6. 文字标签
+            for label in sorted(label_to_episode.keys(), key=len, reverse=True):
+                if label in text:
+                    return label_to_episode[label]
+
+            # 7. 末尾阿拉伯数字（排除年份）
+            text_no_bracket = re.sub(r'\s*\[[^\]]*\]\s*$', '', text).strip()
+            m = re.search(r'(\d+)\s*$', text_no_bracket)
+            if m:
+                n = int(m.group(1))
+                if not (1900 <= n <= 2099):
+                    return n
+
+        return 0
+
+    def _cleanup_empty_series_directories(self, current_series_dir: Path) -> List[str]:
+        """
+        清理 DOWNLOAD_PATH 下的空残留目录（v3.3.4 新增）
+
+        旧版本系列识别错误时，可能为同一系列创建多个目录，例如：
+          ○○交配 第一話 毎日お世話してくれる彼女はエルフのお姫様
+          ○○交配 第十一話 毎日お世話してくれる彼女はエルフのお姫様 前編 [中文字幕]
+        系列识别修复后，这些目录的视频会被移到正确的目录，但空目录会残留。
+
+        清理策略：
+        1. 扫描 DOWNLOAD_PATH 下所有目录
+        2. 跳过当前正在刮削的 series_dir（避免影响正在进行的流程）
+        3. 跳过 Season 子目录（不属于独立系列）
+        4. 跳过 COVER_PATH 等特殊目录
+        5. 对每个其他目录，统计视频文件数量（包括 Season 子目录中的视频）
+        6. 如果目录中没有视频文件，但包含 NFO/.jpg/.png 等附属文件（视频已被移走），
+           则删除这些孤立附属文件和目录
+        7. 完全空的目录也一并删除
+
+        :param current_series_dir: 当前正在刮削的系列目录
+        :return: 已清理的目录名列表（用于日志记录）
+        """
+        cleaned: List[str] = []
+
+        try:
+            download_path = settings.DOWNLOAD_PATH
+            if not download_path.exists():
+                return cleaned
+
+            # 不需要清理的特殊目录
+            special_dirs = {settings.COVER_PATH.name, "covers", ".covers"}
+            current_dir_name = current_series_dir.name
+
+            for series_dir in download_path.iterdir():
+                if not series_dir.is_dir():
+                    continue
+                # 跳过当前正在刮削的目录
+                if series_dir.name == current_dir_name:
+                    continue
+                # 跳过 Season 子目录（虽然这里不应该出现，但保险起见）
+                if series_dir.name.startswith("Season "):
+                    continue
+                # 跳过特殊目录
+                if series_dir.name in special_dirs:
+                    continue
+                # 跳过中央封面目录
+                if series_dir == settings.COVER_PATH:
+                    continue
+
+                # 统计该目录下的视频文件（包括 Season 子目录）
+                video_count = 0
+                for f in series_dir.rglob("*"):
+                    if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                        video_count += 1
+                        break  # 只要有视频就跳出
+
+                if video_count > 0:
+                    # 有视频，不能删除
+                    continue
+
+                # 该目录没有视频文件，但可能有孤立的附属文件
+                # 检查是否真的需要清理：是否有 NFO/.jpg/.png 等附属文件
+                has_attachments = False
+                for f in series_dir.rglob("*"):
+                    if f.is_file() and f.suffix.lower() in (
+                        ".nfo", ".jpg", ".jpeg", ".png", ".webp"
+                    ):
+                        has_attachments = True
+                        break
+
+                # 如果目录完全空（没有任何文件），直接删除
+                # 如果有孤立附属文件（视频已被移走），也清理
+                try:
+                    # 先尝试 rmdir（只对完全空的目录生效）
+                    # 如果有内容，使用 shutil.rmtree
+                    is_empty = True
+                    for _ in series_dir.rglob("*"):
+                        is_empty = False
+                        break
+
+                    if is_empty:
+                        series_dir.rmdir()
+                        logger.info(f"清理空目录: {series_dir.name}")
+                        cleaned.append(series_dir.name)
+                    elif has_attachments:
+                        # 目录只有孤立附属文件（视频已被移走），删除整个目录
+                        # 安全检查：再次确认没有视频文件
+                        import shutil as _shutil
+                        _shutil.rmtree(series_dir)
+                        logger.info(f"清理残留附属文件目录: {series_dir.name}")
+                        cleaned.append(series_dir.name)
+                except Exception as e:
+                    logger.warning(f"清理目录失败: {series_dir.name} - {e}")
+
+        except Exception as e:
+            logger.warning(f"扫描空残留目录失败: {e}")
+
+        return cleaned
 
     async def _fetch_metadata(self, video_entries: List[Dict]) -> List[Optional[Any]]:
         """从VideoService获取每个视频的元数据"""

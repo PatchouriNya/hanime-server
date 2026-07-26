@@ -1456,14 +1456,41 @@ class DownloadManager:
 
                 season_dir = series_dir / f"Season {season_number}"
                 season_dir.mkdir(parents=True, exist_ok=True)
-                # 统计该 Season 下已有的视频数量，用于自动编号集号
-                existing_videos_in_season = [
-                    f for f in season_dir.iterdir()
-                    if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS
-                ]
-                episode_num = len(existing_videos_in_season) + 1
-                # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
+
+                # === 集号识别策略（v3.3.4）===
+                # 1. 优先从视频标题/副标题中提取真实集号
+                #    例如 "第十一話"→11、"第4話"→4、"Episode 5"→5
+                # 2. 收集 Season 目录中已存在的集号，避免冲突
+                # 3. 如果真实集号未被占用，直接使用
+                # 4. 如果已被占用（罕见：同集号不同视频），递增到下一个可用位置
+                # 5. 如果无法从标题提取，按 Season 中已有视频数+1 顺序分配
                 import re as _re
+                used_episodes = set()
+                for f in season_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS:
+                        m = _re.search(r'S\d+E(\d+)', f.name, _re.IGNORECASE)
+                        if m:
+                            used_episodes.add(int(m.group(1)))
+
+                real_episode = self._extract_real_episode_number(
+                    video_detail.title or "",
+                    video_detail.subtitle or ""
+                )
+                logger.info(f"集号识别: video_id={video_id}, "
+                          f"title={video_detail.title}, subtitle={video_detail.subtitle}, "
+                          f"识别集号={real_episode}, Season已有集号={sorted(used_episodes)}")
+
+                if real_episode > 0:
+                    episode_num = real_episode
+                    # 冲突时递增到下一个可用位置
+                    while episode_num in used_episodes:
+                        episode_num += 1
+                else:
+                    # 无法识别真实集号，按 Season 中已有视频数+1 顺序分配
+                    episode_num = max(used_episodes, default=0) + 1
+                used_episodes.add(episode_num)
+
+                # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
                 base_name_for_filename = _re.sub(r'\s*\(\d{4}\)$', '', series_name).strip()
                 safe_name = self._sanitize_filename(base_name_for_filename)
                 filename = f"{series_name}/Season {season_number}/{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.mp4"
@@ -1591,6 +1618,36 @@ class DownloadManager:
         # 创建 Season 1 目录
         season_1_dir.mkdir(parents=True, exist_ok=True)
 
+        # === v3.3.4: 优先使用真实集号 ===
+        # 1. 收集每个视频的 video_id 和数据库中存储的 title
+        # 2. 对每个视频调用 _extract_real_episode_number 提取真实集号
+        # 3. 真实集号冲突时递增；无法识别时回退到顺序分配
+        video_titles: dict[str, str] = {}  # video_id -> title
+        for vf in root_videos:
+            m = _re.match(r'^(\d+)_', vf.name)
+            if m:
+                vid = m.group(1)
+                video_titles[vf.name] = {"video_id": vid, "title": ""}
+
+        # 一次性查询数据库，获取已记录的 title
+        if video_titles:
+            try:
+                async with aiosqlite.connect(self.db_path) as conn:
+                    conn.row_factory = aiosqlite.Row
+                    ids_to_query = tuple(item["video_id"] for item in video_titles.values())
+                    placeholders = ",".join("?" * len(ids_to_query))
+                    async with conn.execute(
+                        f"SELECT video_id, title FROM downloads WHERE video_id IN ({placeholders})",
+                        ids_to_query
+                    ) as cursor:
+                        rows = await cursor.fetchall()
+                    # 写回 video_titles
+                    title_map = {row['video_id']: row['title'] or "" for row in rows}
+                    for vf_name, info in video_titles.items():
+                        info["title"] = title_map.get(info["video_id"], "")
+            except Exception as e:
+                logger.warning(f"查询数据库 video title 失败，将按顺序分配集号: {e}")
+
         # 为每个视频分配集号
         next_episode = max(used_episodes, default=0) + 1
 
@@ -1601,12 +1658,33 @@ class DownloadManager:
             if m:
                 video_id = m.group(1)
 
-            # 分配集号
-            while next_episode in used_episodes:
-                next_episode += 1
-            episode_num = next_episode
+            # === 集号识别（v3.3.4）===
+            # 优先从数据库中存储的标题中提取真实集号
+            real_episode = 0
+            if video_file.name in video_titles:
+                stored_title = video_titles[video_file.name]["title"]
+                if stored_title:
+                    # 文件名中也含有原始标题信息，一起作为候选
+                    # 提取 video_id_ 之后的部分作为标题候选
+                    fn_stem = video_file.stem
+                    title_from_filename = fn_stem.split("_", 1)[1] if "_" in fn_stem else fn_stem
+                    real_episode = self._extract_real_episode_number(stored_title, title_from_filename)
+
+            if real_episode > 0:
+                episode_num = real_episode
+                # 冲突时递增到下一个可用位置
+                while episode_num in used_episodes:
+                    episode_num += 1
+            else:
+                # 无法识别真实集号，按顺序分配
+                while next_episode in used_episodes:
+                    next_episode += 1
+                episode_num = next_episode
             used_episodes.add(episode_num)
-            next_episode += 1
+            next_episode = episode_num + 1
+
+            logger.info(f"系列整理集号分配: {video_file.name} -> S01E{episode_num:02d} "
+                       f"(真实集号识别={real_episode}, 已用集号={sorted(used_episodes)})")
 
             # 新文件名：系列名 - S01E{NN} - 第 {N} 集.mp4
             new_filename = (
@@ -1736,29 +1814,56 @@ class DownloadManager:
 
         # 提取系列名（去掉编号后缀）
         def _extract_series_base(title: str) -> str:
-            """从标题中提取系列基础名"""
+            """
+            从标题中提取系列基础名
+
+            处理两类编号：
+            A. 末尾后缀：＃1、第2期、Season 2、2、上卷/前編/OVA 等
+            B. 标题中间的集号标记："第十一話"、"第2話"、"＃11" 等
+               （这些标记虽然不在末尾，但若不剥离会导致同一系列不同集
+               被识别为不同系列基础名）
+
+            示例：
+              "○○交配 第一話 毎日お世話してくれる彼女はエルフのお姫様" → "○○交配 毎日お世話してくれる彼女はエルフのお姫様"
+              "○○交配 第十一話 毎日お世話してくれる彼女はエルフのお姫様 前編" → "○○交配 毎日お世話してくれる彼女はエルフのお姫様"
+              "援助交配 10" → "援助交配"
+              "不潔之星・赤" → "不潔之星"
+            """
             if not title:
                 return title
+
+            # 先去除 [中文字幕] 等末尾方括号注释，避免影响后续匹配
+            result = _re.sub(r'\s*\[[^\]]*\]\s*$', '', title).strip()
+
             patterns = [
+                # B 类：标题中间的集号标记（必须在末尾处理之前）
+                # 集号 + 后面跟随的其他描述（如"前編"、"中文字幕"等）
+                # 注意：要匹配"第十一話 毎日お世話" 这种中间标记，且不消耗后面的描述文字
+                # 用一个 lookbehind 替换更安全：替换"第N話/话/期/章/部/卷/篇/編 + 后续空格"
+                r'第\s*[零〇一二三四五六七八九十两\d]+\s*[話话期章部卷篇編]\s*',
+
+                # A 类：末尾后缀（原逻辑保留）
+                # 注意：Season N 必须放在 \d+$ 之前，否则 \d+$ 会先匹配掉末尾的数字
                 r'\s*[＃#]\s*\d+.*$',                   # ＃1 はじめての... -> (去掉＃及之后所有内容)
                 r'[・\s][赤青黒白紅緑黄紫]$',           # 不潔之星・赤 -> 不潔之星
                 r'\s*[第ⅠⅡⅢ]\s*$',                     # 某番剧 第Ⅱ -> 某番剧
-                r'\s*\d+$',                              # 某番剧 2 -> 某番剧
-                r'\s*第\d+[期章部話]$',                   # 某番剧 第2期 -> 某番剧
                 r'\s*Season\s*\d+$',                     # 某番剧 Season 2 -> 某番剧
+                r'\s*第\d+[期章部話]$',                   # 某番剧 第2期 -> 某番剧
                 r'[・\-]\s*\d+$',                        # 某番剧・2 -> 某番剧
+                r'\s*\d+$',                              # 某番剧 2 -> 某番剧（放在最后，避免误吞 Season 2 的数字）
                 # 文字标签后缀（上卷/下卷/前篇/后篇/OVA 等）
                 r'\s*(上卷|上巻|前篇|前編|上篇)$',
                 r'\s*(中卷|中巻|中篇|中編)$',
                 r'\s*(下卷|下巻|後篇|後編|下篇|后篇|后編|下编)$',
                 r'\s*(OVA|特典|番外|特別|特别)$',
             ]
-            result = title
             for pattern in patterns:
                 new_result = _re.sub(pattern, '', result, flags=_re.IGNORECASE)
                 if new_result != result and len(new_result) >= 2:
                     result = new_result
-            return result.strip()
+            # 清理多余空格（中间集号剥离后会留下双空格）
+            result = _re.sub(r'\s{2,}', ' ', result).strip()
+            return result
 
         base_series_name = _extract_series_base(name_source)
         default_series_name = self._sanitize_filename(base_series_name)
@@ -1934,6 +2039,148 @@ class DownloadManager:
         logger.info(f"系列检测: 首次下载 video_id={video_id}，"
                    f"副标题={current_subtitle}，分配到 Season 1（一季多集）")
         return default_series_name, 1, True
+
+    # 中文数字到阿拉伯数字的映射（支持 1-99）
+    _CN_DIGIT_MAP = {
+        '零': 0, '〇': 0,
+        '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
+        '六': 6, '七': 7, '八': 8, '九': 9,
+    }
+
+    @classmethod
+    def _cn_to_arabic(cls, cn: str) -> int:
+        """
+        中文数字转阿拉伯数字（支持 1-99）
+
+        示例:
+          '一' → 1, '二' → 2
+          '十' → 10, '十一' → 11, '十九' → 19
+          '二十' → 20, '二十一' → 21, '九十九' → 99
+        """
+        if not cn:
+            return 0
+        # 纯阿拉伯数字
+        if cn.isdigit():
+            return int(cn)
+        # 单字
+        if len(cn) == 1:
+            if cn == '十':
+                return 10
+            return cls._CN_DIGIT_MAP.get(cn, 0)
+        # 处理 "十X"（10-19）
+        if cn.startswith('十'):
+            rest = cn[1:]
+            return 10 + cls._CN_DIGIT_MAP.get(rest, 0)
+        # 处理 "X十"（20, 30, ...）
+        if cn.endswith('十'):
+            return cls._CN_DIGIT_MAP.get(cn[0], 0) * 10
+        # 处理 "X十Y"（21-99）
+        if '十' in cn:
+            parts = cn.split('十')
+            if len(parts) == 2:
+                tens = cls._CN_DIGIT_MAP.get(parts[0], 0)
+                ones = cls._CN_DIGIT_MAP.get(parts[1], 0)
+                return tens * 10 + ones
+        return 0
+
+    def _extract_real_episode_number(self, title: str, subtitle: str = "") -> int:
+        """
+        从视频标题/副标题中提取真实集号（阿拉伯数字），失败返回 0
+
+        优先级（高→低）：
+        1. "第N話/话/期/章/部" - 含中文数字 "第十一話"→11、"第2話"→2
+        2. "Episode N"、"Ep. N"、"EP N" - 英文标记
+        3. "＃N"、"#N" - 数字标记
+        4. "Season N" - 季号标记（也作为集号参考）
+        5. 末尾罗马数字 "第Ⅱ"、"Ⅱ" - 1-5
+        6. 末尾文字标签（前編=1, 後編=2, 上巻=1, 下巻=2, 中巻=2, OVA=99）
+        7. 末尾阿拉伯数字 - "番剧名 10"→10
+
+        注意：不会从标题中匹配年份（4 位数字 + 年/Year），避免误识别。
+        """
+        import re as _re
+
+        if not title and not subtitle:
+            return 0
+
+        # 合并 title 和 subtitle，subtitle 优先（中文副标题更规范）
+        candidates = []
+        if subtitle:
+            candidates.append(subtitle)
+        if title:
+            candidates.append(title)
+
+        # 文字标签到集号的映射（前編=1, 後編=2 等）
+        _LABEL_TO_EPISODE = {
+            '上卷': 1, '上巻': 1, '前篇': 1, '前編': 1, '上篇': 1,
+            '中卷': 2, '中巻': 2, '中篇': 2, '中編': 2,
+            '下卷': 3, '下巻': 3, '後篇': 3, '後編': 3, '下篇': 3,
+            '后篇': 3, '后編': 3, '下编': 3,
+            'OVA': 99, '特典': 99, '番外': 99, '特別': 99, '特别': 99,
+        }
+
+        for text in candidates:
+            if not text:
+                continue
+            text = text.strip()
+
+            # 1. 匹配 "第N話/话/期/章/部/卷/篇/編" - 支持中文数字和阿拉伯数字
+            # 例: "第十一話"→11, "第2話"→2, "第二期"→2
+            m = _re.search(r'第\s*([零〇一二三四五六七八九十两\d]+)\s*[話话期章部卷篇編]', text)
+            if m:
+                num_str = m.group(1)
+                if num_str.isdigit():
+                    n = int(num_str)
+                else:
+                    n = self._cn_to_arabic(num_str)
+                if n > 0:
+                    return n
+
+            # 2. 匹配 "Episode N"、"Ep. N"、"EP N"（不区分大小写）
+            m = _re.search(r'(?:episode|ep\.?)\s*(\d+)', text, _re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+
+            # 3. 匹配 "＃N" 或 "#N"
+            m = _re.search(r'[＃#]\s*(\d+)', text)
+            if m:
+                return int(m.group(1))
+
+            # 4. 匹配 "Season N"（作为集号参考，避免误识别，只在没找到其他数字时使用）
+            m = _re.search(r'[Ss]eason\s*(\d+)', text)
+            if m:
+                return int(m.group(1))
+
+            # 5. 匹配罗马数字（"第Ⅱ"、"Ⅱ"等，必须以"第"开头或独立出现，避免误匹配"IIII"等）
+            roman_map = {'Ⅰ': 1, 'Ⅱ': 2, 'Ⅲ': 3, 'Ⅳ': 4, 'Ⅴ': 5,
+                         'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5}
+            m = _re.search(r'第\s*([ⅠⅡⅢⅣⅤ]+)\s*[話话期章部]?', text)
+            if m:
+                roman = m.group(1)
+                if roman in roman_map:
+                    return roman_map[roman]
+            # 独立罗马数字（标题末尾）
+            m = _re.search(r'\s([ⅠⅡⅢⅣⅤ])\s*$', text)
+            if m and m.group(1) in roman_map:
+                return roman_map[m.group(1)]
+
+            # 6. 文字标签（前編/後編/上巻/下巻等）
+            for label in sorted(_LABEL_TO_EPISODE.keys(), key=len, reverse=True):
+                if label in text:
+                    return _LABEL_TO_EPISODE[label]
+
+            # 7. 末尾阿拉伯数字 - 但要避免匹配年份（如 "2026" 不是集号）
+            # 匹配 "番剧名 N" 或 "番剧名 N [中文字幕]" 格式
+            # 先去掉 [中文字幕] 这类括号注释
+            text_no_bracket = _re.sub(r'\s*\[[^\]]*\]\s*$', '', text).strip()
+            m = _re.search(r'(\d+)\s*$', text_no_bracket)
+            if m:
+                n = int(m.group(1))
+                # 排除明显是年份的数字（1900-2099）
+                if not (1900 <= n <= 2099):
+                    return n
+
+        return 0
 
     def _sanitize_filename(self, filename):
         """处理文件名，移除非法字符"""
