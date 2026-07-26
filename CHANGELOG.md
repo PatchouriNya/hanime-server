@@ -1,5 +1,21 @@
 # 更新日志
 
+## v3.4.0 (2026-07-26)
+
+### 修复
+
+1. **更新日志页面排版错乱**：
+   - **根因一**：CSS 选择器 `.update-list li` 是后代选择器，会匹配 `.update-list` 下所有层级的 `<li>`，包括嵌套在 `.changelog-sublist` 里的子列表项。这导致嵌套子列表的 `<li>` 也被强行应用 `display: flex` 布局，排版完全错乱
+   - **根因二**：当 `.update-item` 内有 3 个或更多子元素时（如 icon + span + 嵌套 ul + span），flex row 布局让所有子元素横向排列而非垂直堆叠，导致 v3.3.4/v3.3.7/v3.3.8 等包含嵌套子列表的 section 排版严重错乱
+   - **根因三**：span 的 `flex-basis: auto` 按内容计算宽度，长文本会超过容器剩余空间导致换行，icon 和 span 无法保持在同一行
+   - **根因四**：v3.3.4 section 错误使用了 `changelog-list` class 而非 `update-list`，且 `<li>` 缺少 `update-item` class 和 `<el-icon>` 图标
+   - **根因五**：历史版本的 `<el-tag>` 颜色五花八门，混用了 `success`/`danger`/`warning`/`primary`/默认五种颜色
+   - **修复一**：将 CSS 选择器从 `.update-list li` 改为 `.update-list > li.update-item`（直接子选择器 + class 限定），避免匹配嵌套子列表的 li
+   - **修复二**：添加 `flex-wrap: wrap` 让多子元素能换行；非 icon 子元素 `flex: 1 1 100%` 占满整行自动换行，紧跟 icon 的第一个 span 用 `flex: 1 1 0` 强制按比例分配（避免 flex-basis: auto 换行）
+   - **修复三**：将 v3.3.4 section 的 `changelog-list` 改为 `update-list`，补齐 `update-item` class 和 `<el-icon>` 图标
+   - **修复四**：统一所有版本号 `<el-tag>` 的 type 为 `success`（绿色），保留 v2.0.0 的"重大更新"小徽章不变
+   - **新增样式**：为 `.changelog-sublist` 添加完整样式定义：左侧主色边框、淡色背景、圆角、自定义圆点标记
+
 ## v3.3.9 (2026-07-26)
 
 ### 新功能

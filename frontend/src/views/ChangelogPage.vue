@@ -8,6 +8,29 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.4.0</el-tag>
+          <span class="version-date">2026-07-26</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>更新日志页面排版错乱：</strong>修复五类根因：</span>
+              <ul class="changelog-sublist">
+                <li>CSS 选择器 <code>.update-list li</code> 是后代选择器，会匹配嵌套子列表的 <code>&lt;li&gt;</code>，导致嵌套 li 被强行应用 flex 布局。改为 <code>.update-list &gt; li.update-item</code>（直接子选择器 + class 限定）</li>
+                <li>多子元素时 flex row 让所有子元素横向排列。添加 <code>flex-wrap: wrap</code>，非 icon 子元素 <code>flex: 1 1 100%</code> 自动换行</li>
+                <li>span 的 <code>flex-basis: auto</code> 按内容计算宽度导致换行。紧跟 icon 的 span 改用 <code>flex: 1 1 0</code> 强制按比例分配，确保和 icon 同行</li>
+                <li>v3.3.4 section 错误使用 <code>changelog-list</code> class（应为 <code>update-list</code>），已统一为其他版本相同的样式</li>
+                <li>历史版本号 <code>&lt;el-tag&gt;</code> 颜色五花八门（success/danger/warning/primary/默认五种混用），已统一为 <code>type="success"</code> 绿色</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.3.9</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>
@@ -135,8 +158,9 @@
         </div>
         <div class="section-content">
           <h3 class="section-title">修复</h3>
-          <ul class="changelog-list">
-            <li>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
               <span><strong>集号识别准确性大幅提升：</strong>下载和刮削时不再按"已有视频数量+1"顺序分配集号，改为从视频标题/副标题中提取真实集号。支持以下格式：</span>
               <ul class="changelog-sublist">
                 <li>中文数字"第十一話"→11、"第二十話"→20、"第二十一話"→21（支持 1-99）</li>
@@ -150,10 +174,12 @@
               </ul>
               <span>冲突时自动递增到下一个可用位置。</span>
             </li>
-            <li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
               <span><strong>系列识别修复：</strong>增强 <code>_extract_series_base</code>，处理标题中间的"第N話/话/期/章/部"集号标记。之前"○○交配 第一話 ..."和"○○交配 第十一話 ... 前編 [中文字幕]"会被识别为两个不同的系列，现在统一提取为基础名"○○交配 毎日お世話してくれる彼女はエルフのお姫様"。同时修复"Season N"末尾后缀被"末尾数字"规则误吞的问题。</span>
             </li>
-            <li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
               <span><strong>刮削后清理空残留目录：</strong>新增 <code>_cleanup_empty_series_directories</code> 方法，刮削完成后扫描整个下载目录，自动清理：</span>
               <ul class="changelog-sublist">
                 <li>完全空的残留目录（之前系列识别错误创建的目录，视频已被移走）</li>
@@ -654,7 +680,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.1.1</el-tag>
+          <el-tag type="success" size="large">v3.1.1</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>
         <div class="section-content">
@@ -674,7 +700,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.1.0</el-tag>
+          <el-tag type="success" size="large">v3.1.0</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>
         <div class="section-content">
@@ -690,7 +716,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.9</el-tag>
+          <el-tag type="success" size="large">v3.0.9</el-tag>
           <span class="version-date">2026-07-25</span>
         </div>
         <div class="section-content">
@@ -706,7 +732,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.8</el-tag>
+          <el-tag type="success" size="large">v3.0.8</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -738,7 +764,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="warning" size="large">v3.0.6</el-tag>
+          <el-tag type="success" size="large">v3.0.6</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -754,7 +780,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.5</el-tag>
+          <el-tag type="success" size="large">v3.0.5</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -774,7 +800,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.4</el-tag>
+          <el-tag type="success" size="large">v3.0.4</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -801,7 +827,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.3</el-tag>
+          <el-tag type="success" size="large">v3.0.3</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -825,7 +851,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.2</el-tag>
+          <el-tag type="success" size="large">v3.0.2</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -841,7 +867,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v3.0.1</el-tag>
+          <el-tag type="success" size="large">v3.0.1</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -869,7 +895,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="primary" size="large">v3.0.0</el-tag>
+          <el-tag type="success" size="large">v3.0.0</el-tag>
           <span class="version-date">2026-07-24</span>
         </div>
         <div class="section-content">
@@ -901,7 +927,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag size="large" type="warning">v2.5.1</el-tag>
+          <el-tag type="success" size="large">v2.5.1</el-tag>
           <span class="version-date">2026-07-17</span>
         </div>
         <div class="section-content">
@@ -933,7 +959,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag size="large" type="danger">v2.5.0</el-tag>
+          <el-tag type="success" size="large">v2.5.0</el-tag>
           <span class="version-date">2026-07-17</span>
         </div>
         <div class="section-content">
@@ -973,7 +999,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag size="large">v2.4.3</el-tag>
+          <el-tag type="success" size="large">v2.4.3</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1017,7 +1043,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag size="large">v2.4.2</el-tag>
+          <el-tag type="success" size="large">v2.4.2</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1053,7 +1079,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag size="large">v2.4.1</el-tag>
+          <el-tag type="success" size="large">v2.4.1</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1069,7 +1095,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="primary" size="large">v2.4.0</el-tag>
+          <el-tag type="success" size="large">v2.4.0</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1104,7 +1130,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="warning" size="large">v2.3.5</el-tag>
+          <el-tag type="success" size="large">v2.3.5</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1124,7 +1150,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v2.3.4</el-tag>
+          <el-tag type="success" size="large">v2.3.4</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1210,7 +1236,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v2.3.1</el-tag>
+          <el-tag type="success" size="large">v2.3.1</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1234,7 +1260,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="primary" size="large">v2.3.0</el-tag>
+          <el-tag type="success" size="large">v2.3.0</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1341,7 +1367,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v2.1.4</el-tag>
+          <el-tag type="success" size="large">v2.1.4</el-tag>
           <span class="version-date">2026-07-16</span>
         </div>
         <div class="section-content">
@@ -1438,7 +1464,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="warning" size="large">v2.1.2</el-tag>
+          <el-tag type="success" size="large">v2.1.2</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
         <div class="section-content">
@@ -1470,7 +1496,7 @@
 
       <div class="changelog-section animate-fade-in-up" style="animation-delay: 0.1s;">
         <div class="section-header">
-          <el-tag type="warning" size="large">v2.1.1</el-tag>
+          <el-tag type="success" size="large">v2.1.1</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
         <div class="section-content">
@@ -1509,7 +1535,7 @@
 
       <div class="changelog-section animate-fade-in-up" style="animation-delay: 0.1s;">
         <div class="section-header">
-          <el-tag type="warning" size="large">v2.1.0</el-tag>
+          <el-tag type="success" size="large">v2.1.0</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
         <div class="section-content">
@@ -1563,7 +1589,7 @@
 
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
-          <el-tag type="danger" size="large">v2.0.0</el-tag>
+          <el-tag type="success" size="large">v2.0.0</el-tag>
           <span class="version-date">2026-07-15</span>
           <el-tag type="warning" size="small">重大更新</el-tag>
         </div>
@@ -1670,7 +1696,7 @@
 
       <div class="changelog-section animate-fade-in-up delay-200">
         <div class="section-header">
-          <el-tag type="primary" size="large">v1.1.0</el-tag>
+          <el-tag type="success" size="large">v1.1.0</el-tag>
           <span class="version-date">2026-07-15</span>
         </div>
         <div class="section-content">
@@ -1726,7 +1752,7 @@
 
       <div class="changelog-section animate-fade-in-up delay-400">
         <div class="section-header">
-          <el-tag type="warning" size="large">v1.0.0</el-tag>
+          <el-tag type="success" size="large">v1.0.0</el-tag>
           <span class="version-date">2026-07-13</span>
         </div>
         <div class="section-content">
@@ -1919,20 +1945,22 @@ export default defineComponent({
   margin: 0;
 }
 
-.update-list li {
+/* 直接子选择器 + class 限定，避免匹配嵌套 .changelog-sublist 里的 li */
+.update-list > li.update-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;  /* 多子元素时允许换行，避免横向挤压 */
   padding: 12px 0;
   border-bottom: 1px solid var(--border-color);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.update-list li:last-child {
+.update-list > li.update-item:last-child {
   border-bottom: none;
 }
 
-.update-list li:hover {
+.update-list > li.update-item:hover {
   padding-left: 12px;
   background-color: var(--hover-bg-color);
   border-radius: 6px;
@@ -1940,14 +1968,61 @@ export default defineComponent({
 
 .update-icon {
   color: var(--primary-color);
+  flex: 0 0 auto;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
-.update-list li span {
+/* 默认所有非 icon 子元素占满整行（自动换行成块） */
+.update-list > li.update-item > *:not(.update-icon) {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* 紧跟 icon 的第一个 span 与 icon 同行（占剩余宽度） */
+/* flex-basis: 0 强制按比例分配，避免内容过长时 flex-basis: auto 导致换行 */
+.update-list > li.update-item > .update-icon + span {
+  flex: 1 1 0;
+}
+
+/* 仅匹配直接子 span，不影响嵌套子列表内的 span */
+.update-list > li.update-item > span {
   color: var(--text-color);
   font-size: 15px;
   line-height: 1.6;
+}
+
+/* 嵌套子列表样式（v3.3.4/v3.3.5/v3.3.6/v3.3.7/v3.3.8 中使用） */
+.changelog-sublist {
+  list-style: none;
+  padding: 8px 0 8px 16px;
+  margin: 8px 0;
+  border-left: 2px solid var(--primary-color);
+  background-color: var(--hover-bg-color);
+  border-radius: 0 6px 6px 0;
+}
+
+.changelog-sublist li {
+  color: var(--text-secondary-color);
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 4px 12px;
+  position: relative;
+}
+
+.changelog-sublist li::before {
+  content: '·';
+  color: var(--primary-color);
+  font-weight: bold;
+  position: absolute;
+  left: 2px;
+}
+
+/* PC端嵌套子列表字号略增 */
+@media (min-width: 769px) {
+  .changelog-sublist li {
+    font-size: 15px;
+  }
 }
 
 .optimization-table {
@@ -2015,7 +2090,7 @@ export default defineComponent({
     margin-bottom: 24px;
   }
 
-  .update-list li span {
+  .update-list > li.update-item > span {
     font-size: 16px;
   }
 
