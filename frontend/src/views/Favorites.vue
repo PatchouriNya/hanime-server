@@ -10,7 +10,15 @@
     </div>
 
     <div v-if="loading" class="loading-container">
-      <el-spinner :size="48" />
+      <div class="skeleton-fav-grid">
+        <div class="skeleton-fav-card" v-for="i in 8" :key="'skf-'+i">
+          <div class="skeleton-fav-poster skeleton-shimmer"></div>
+          <div class="skeleton-fav-info">
+            <div class="skeleton-line skeleton-shimmer" style="width: 70%; height: 14px;"></div>
+            <div class="skeleton-line skeleton-shimmer" style="width: 40%; height: 12px; margin-top: 4px;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-else-if="favorites.length === 0" class="empty-container">
@@ -144,10 +152,43 @@ onMounted(loadFavorites);
 }
 
 .loading-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 400px;
+}
+
+/* shimmer 动画 */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-line {
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.06);
+}
+
+/* 收藏页骨架屏 */
+.skeleton-fav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  padding: 8px 0;
+}
+.skeleton-fav-card {
+  background-color: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.skeleton-fav-poster {
+  width: 100%;
+  padding-top: 142%;
+  background-color: rgba(255,255,255,0.06);
+}
+.skeleton-fav-info {
+  padding: 8px;
 }
 
 .empty-container {

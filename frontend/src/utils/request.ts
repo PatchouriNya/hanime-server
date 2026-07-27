@@ -76,7 +76,7 @@ instance.interceptors.response.use(
                 showErrorMessage('拒绝访问');
                 break;
             case 404:
-                showErrorMessage('请求的资源不存在');
+                showErrorMessage(`请求的资源不存在: ${error.config?.url || ''}`);
                 break;
             case 503:
                 // 服务暂时不可用 - 不弹错误提示，静默失败让组件自己处理重试

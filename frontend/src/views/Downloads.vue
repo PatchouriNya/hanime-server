@@ -39,13 +39,13 @@
       <!-- 操作按钮行 -->
       <div class="actions-row">
         <div class="left-actions">
-          <el-button size="small" @click="handleScanRestore" :loading="isScanning">
+          <el-button size="small" @click="handleScanRestore" :loading="isScanning" :disabled="isLoadingGroups">
             <el-icon><FolderOpened /></el-icon> 扫描恢复
           </el-button>
-          <el-button size="small" @click="handleBatchScrape" :loading="isBatchScraping">
+          <el-button size="small" @click="handleBatchScrape" :loading="isBatchScraping" :disabled="isLoadingGroups">
             <el-icon><Film /></el-icon> 批量刮削
           </el-button>
-          <el-button size="small" @click="handleFixNfo" :loading="isFixingNfo">
+          <el-button size="small" @click="handleFixNfo" :loading="isFixingNfo" :disabled="isLoadingGroups">
             <el-icon><EditPen /></el-icon> 修复NFO
           </el-button>
           <el-button size="small" @click="confirmClearCompleted" :disabled="!completedDownloads?.length">
@@ -58,6 +58,7 @@
             size="small"
             :type="downloadStore.batchDeleteMode ? 'warning' : 'default'"
             @click="toggleBatchDeleteMode"
+            :disabled="isLoadingGroups"
           >
             <el-icon><Delete /></el-icon>
             {{ downloadStore.batchDeleteMode ? '退出批量' : '批量删除' }}
@@ -66,6 +67,7 @@
             size="small"
             type="warning"
             @click="openMergeSeriesDialog"
+            :disabled="isLoadingGroups"
           >
             <el-icon><Connection /></el-icon> 合并系列
           </el-button>
@@ -152,7 +154,15 @@
     <!-- 番剧分组视图 -->
     <div v-else class="group-content">
       <div v-if="isLoadingGroups" class="loading-placeholder">
-        <el-skeleton :rows="3" animated />
+        <div class="skeleton-group-grid">
+          <div class="skeleton-group-card skeleton-shimmer" v-for="i in 6" :key="'skg-'+i">
+            <div class="skeleton-group-cover"></div>
+            <div class="skeleton-group-info">
+              <div class="skeleton-line skeleton-shimmer" style="width: 70%; height: 16px;"></div>
+              <div class="skeleton-line skeleton-shimmer" style="width: 40%; height: 12px; margin-top: 6px;"></div>
+            </div>
+          </div>
+        </div>
       </div>
       <template v-else>
         <div v-if="filteredGroups.length === 0" class="empty-state">
@@ -1329,7 +1339,42 @@ onUnmounted(() => {
 }
 
 .loading-placeholder {
-  padding: 40px;
+  padding: 20px;
+}
+
+/* shimmer 动画 */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-line {
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.06);
+}
+
+/* 分组骨架屏 */
+.skeleton-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.skeleton-group-card {
+  background-color: rgba(255,255,255,0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.skeleton-group-cover {
+  width: 100%;
+  padding-top: 75%;
+  background-color: rgba(255,255,255,0.04);
+}
+.skeleton-group-info {
+  padding: 12px;
 }
 
 .empty-state {

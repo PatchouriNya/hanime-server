@@ -82,12 +82,19 @@ app.mount("/downloads", StaticFiles(directory=str(settings.DOWNLOAD_PATH)), name
 
 
 # 日志中间件
+# 过滤高频轮询请求，避免日志噪音
+_POLL_PATHS = {"/api/downloads/history", "/api/settings/version"}
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
-    logger.info(f"{request.method} {request.url.path} - {response.status_code} ({process_time:.2f}s)")
+    # 高频轮询请求只在非200时记录，减少日志噪音
+    path = request.url.path
+    if path in _POLL_PATHS and response.status_code == 200:
+        return response
+    logger.info(f"{request.method} {path} - {response.status_code} ({process_time:.2f}s)")
     return response
 
 
@@ -107,7 +114,23 @@ app.include_router(api_router, prefix="/api")
 
 @app.get("/")
 async def root():
-    return {"message": "欢迎使用HanimeViewer API"}
+    """健康检查端点"""
+    return {
+        "message": "欢迎使用HanimeViewer API",
+        "version": settings.APP_VERSION,
+        "status": "ok"
+    }
+
+
+# 处理所有未匹配的 /api/* 路由，返回标准 404 JSON 响应
+# 避免前端收到 HTML 格式的 404 而触发"请求的资源不存在"错误提示
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def api_not_found(path: str):
+    logger.warning(f"未匹配的 API 路由: /api/{path}")
+    return JSONResponse(
+        status_code=404,
+        content={"detail": f"API 端点 /api/{path} 不存在"}
+    )
 
 
 if __name__ == "__main__":

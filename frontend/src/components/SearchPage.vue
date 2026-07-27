@@ -204,7 +204,15 @@
 
     <!-- 搜索结果 -->
     <div v-if="isLoading && !hasResults" class="loading-container">
-      <el-skeleton :rows="5" animated/>
+      <div class="skeleton-search-grid">
+        <div class="skeleton-search-card" v-for="i in 6" :key="'sks-'+i">
+          <div class="skeleton-search-thumb skeleton-shimmer"></div>
+          <div class="skeleton-search-info">
+            <div class="skeleton-line skeleton-shimmer" style="width: 70%; height: 14px;"></div>
+            <div class="skeleton-line skeleton-shimmer" style="width: 40%; height: 12px; margin-top: 4px;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-if="showNoResults" class="search-hint">
@@ -718,6 +726,49 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* shimmer 动画 */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-line {
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.06);
+}
+
+/* 搜索骨架屏 */
+.skeleton-search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 8px 0;
+}
+.skeleton-search-card {
+  display: flex;
+  gap: 10px;
+  background-color: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: hidden;
+}
+.skeleton-search-thumb {
+  flex: 0 0 120px;
+  height: 68px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.06);
+}
+.skeleton-search-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .search-header {
   background: var(--bg-secondary-color);
   padding: 24px 0 18px 0;

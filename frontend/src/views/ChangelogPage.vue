@@ -8,6 +8,69 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.4.4</el-tag>
+          <span class="version-date">2026-07-27</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>切换页面/刷新时提示"请求的资源不存在"：</strong>添加全局 API 404 处理器，未匹配的路由会记录警告日志并返回标准 JSON 响应，便于定位。前端 404 错误提示增加请求 URL 信息。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载页轮询日志噪音：</strong>日志中间件过滤掉高频轮询请求（成功时静默，失败时仍记录），大幅减少日志量。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.3</el-tag>
+          <span class="version-date">2026-07-27</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>颜色后缀剥离不全导致系列分裂：</strong>修复同系列视频因标题含中文颜色字符（黑/绿/蓝等）未被剥离而被识别为不同系列的问题。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>OVA/特典/番外不再映射为集号99：</strong>之前 OVA 标签固定映射为 E99，导致影视中心按范围分页（1-50/50-100）后需切换标签才能看封面。现在改为按下载顺序紧凑分配（E01/E02/E03/E04），所有集在一页可见。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.2</el-tag>
+          <span class="version-date">2026-07-27</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新增</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>全站骨架屏 + shimmer 脉冲动画：</strong>首页、视频详情页、下载管理页、搜索页、收藏页全部替换为自定义 shimmer 动画骨架屏，加载时有明显的脉冲光效流动。</span>
+            </li>
+          </ul>
+          <h3 class="section-title" style="margin-top: 16px;">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>操作按钮在数据未加载时禁用：</strong>视频详情页所有操作按钮添加 <code>:disabled</code> 保护，下载管理页操作按钮在分组数据加载中禁用，防止"未找到下载链接"等报错。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.4.1</el-tag>
           <span class="version-date">2026-07-27</span>
         </div>
@@ -84,7 +147,7 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span><strong>AppHeader 版本徽章显示 undefined：</strong>模板引用 <code>{{ displayVersion }}</code> 但 setup 未定义该变量，导致页面顶部徽章显示"undefined"。修复为正确使用 <code>useVersion</code>。</span>
+              <span><strong>AppHeader 版本徽章显示 undefined：</strong>模板引用 <code v-pre>{{ displayVersion }}</code> 但 setup 未定义该变量，导致页面顶部徽章显示"undefined"。修复为正确使用 <code>useVersion</code>。</span>
             </li>
           </ul>
         </div>

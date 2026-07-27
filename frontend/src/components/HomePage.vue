@@ -3,17 +3,27 @@
     <!-- Banner区域 -->
     <banner-slider :banners="homeData.banners" :is-refreshing="isRefreshing" @refresh="handleRefresh"/>
 
-    <!-- 骨架屏 - 加载中 -->
+    <!-- 骨架屏 - 加载中（带 shimmer 动画） -->
     <template v-if="isLoading">
+      <!-- Banner 骨架 -->
+      <div class="skeleton-banner skeleton-shimmer">
+        <div class="skeleton-banner-img"></div>
+        <div class="skeleton-banner-text">
+          <div class="skeleton-line" style="width: 60%; height: 24px;"></div>
+          <div class="skeleton-line" style="width: 40%; height: 16px; margin-top: 10px;"></div>
+        </div>
+      </div>
+      <!-- 视频区块骨架 -->
       <div class="skeleton-section" v-for="i in 3" :key="'sk-'+i">
         <div class="skeleton-header">
-          <el-skeleton-item variant="text" style="width: 120px; height: 22px;" />
-          <el-skeleton-item variant="text" style="width: 70px; height: 28px;" />
+          <div class="skeleton-line skeleton-shimmer" style="width: 120px; height: 22px;"></div>
+          <div class="skeleton-line skeleton-shimmer" style="width: 70px; height: 28px;"></div>
         </div>
         <div class="skeleton-cards">
           <div class="skeleton-card" v-for="j in 6" :key="'skc-'+j">
-            <el-skeleton-item variant="image" style="width: 100%; height: 0; padding-top: 142%;" />
-            <el-skeleton-item variant="text" style="margin-top: 8px; width: 80%;" />
+            <div class="skeleton-poster skeleton-shimmer"></div>
+            <div class="skeleton-line skeleton-shimmer" style="margin-top: 8px; width: 80%; height: 14px;"></div>
+            <div class="skeleton-line skeleton-shimmer" style="margin-top: 4px; width: 50%; height: 12px;"></div>
           </div>
         </div>
       </div>
@@ -173,6 +183,59 @@ export default defineComponent({
   overflow-x: hidden;
 }
 
+/* shimmer 动画（脉冲光效） */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-line {
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Banner 骨架 */
+.skeleton-banner {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background-color: var(--bg-secondary-color);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  height: 180px;
+  align-items: center;
+}
+
+.skeleton-banner-img {
+  flex: 0 0 320px;
+  height: 140px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.skeleton-banner-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 /* 骨架屏样式 */
 .skeleton-section {
   margin-bottom: 24px;
@@ -201,11 +264,29 @@ export default defineComponent({
   flex: 0 0 160px;
 }
 
+.skeleton-poster {
+  width: 100%;
+  padding-top: 142%;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
 /* PC端大气布局 */
 @media (min-width: 769px) {
   .page-container {
     max-width: 1400px;
     padding: 24px 32px;
+  }
+
+  .skeleton-banner {
+    padding: 24px;
+    height: 220px;
+    margin-bottom: 28px;
+  }
+
+  .skeleton-banner-img {
+    flex: 0 0 400px;
+    height: 172px;
   }
 
   .skeleton-section {
@@ -227,6 +308,17 @@ export default defineComponent({
 @media (max-width: 768px) {
   .page-container {
     padding: 10px;
+  }
+  .skeleton-banner {
+    flex-direction: column;
+    height: auto;
+    padding: 16px;
+  }
+  .skeleton-banner-img {
+    flex: none;
+    width: 100%;
+    height: 0;
+    padding-top: 50%;
   }
   .skeleton-card {
     flex: 0 0 140px;

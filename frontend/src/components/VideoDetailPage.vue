@@ -1,5 +1,33 @@
 <template>
   <div class="page-container">
+    <!-- 骨架屏 - 加载中 -->
+    <template v-if="loading">
+      <div class="detail-skeleton-player skeleton-shimmer"></div>
+      <div class="detail-skeleton-info">
+        <div class="detail-skeleton-row">
+          <div class="skeleton-line skeleton-shimmer" style="width: 40px; height: 40px; border-radius: 50%;"></div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <div class="skeleton-line skeleton-shimmer" style="width: 120px; height: 16px;"></div>
+            <div class="skeleton-line skeleton-shimmer" style="width: 80px; height: 12px;"></div>
+          </div>
+        </div>
+        <div class="skeleton-line skeleton-shimmer" style="width: 70%; height: 26px; margin-top: 16px;"></div>
+        <div class="skeleton-line skeleton-shimmer" style="width: 50%; height: 16px; margin-top: 8px;"></div>
+        <div class="detail-skeleton-actions">
+          <div class="skeleton-line skeleton-shimmer" style="width: 80px; height: 32px; border-radius: 4px;" v-for="i in 4" :key="'ska-'+i"></div>
+        </div>
+        <div class="skeleton-line skeleton-shimmer" style="width: 100%; height: 80px; margin-top: 20px;"></div>
+      </div>
+      <div class="detail-skeleton-section" v-for="i in 2" :key="'sks-'+i">
+        <div class="skeleton-line skeleton-shimmer" style="width: 100px; height: 20px; margin-bottom: 12px;"></div>
+        <div style="display: flex; gap: 12px; overflow: hidden;">
+          <div class="skeleton-line skeleton-shimmer" style="flex: 0 0 180px; height: 100px; border-radius: 6px;" v-for="j in 4" :key="'skr-'+j"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- 已加载内容 -->
+    <template v-if="!loading">
     <!-- 视频播放区域 -->
     <div class="video-player-container">
       <VideoPlayer
@@ -54,34 +82,34 @@
           </div>
           <div class="video-actions">
             <!-- 视频下载按钮组件 -->
-            <el-button type="primary" :loading="isDownloading" @click="handleDownload">
+            <el-button type="primary" :loading="isDownloading" :disabled="!videoDetail.video_id" @click="handleDownload">
               <el-icon><Download /></el-icon> 下载
             </el-button>
 
             <!-- 如果有系列，则添加一个系列下载按钮 -->
-            <el-button v-if="hasSeriesVideos" type="success" @click="openSeriesDialog">
+            <el-button v-if="hasSeriesVideos" type="success" :disabled="!videoDetail.video_id" @click="openSeriesDialog">
               <el-icon><VideoCamera /></el-icon> 系列下载
             </el-button>
 
             <!-- 收藏按钮 -->
-            <el-button :type="isFavorited ? 'danger' : 'default'" @click="toggleFavorite">
+            <el-button :type="isFavorited ? 'danger' : 'default'" :disabled="!videoDetail.video_id" @click="toggleFavorite">
               <el-icon><component :is="isFavorited ? 'StarFilled' : 'Star'" /></el-icon>
               {{ isFavorited ? '已收藏' : '收藏' }}
             </el-button>
 
             <!-- 稍后观看按钮 -->
-            <el-button :type="isWatchLaterActive ? 'warning' : 'default'" @click="toggleWatchLater">
+            <el-button :type="isWatchLaterActive ? 'warning' : 'default'" :disabled="!videoDetail.video_id" @click="toggleWatchLater">
               <el-icon><Clock /></el-icon>
               {{ isWatchLaterActive ? '已添加' : '稍后看' }}
             </el-button>
 
             <!-- 添加到播放列表按钮 -->
-            <el-button type="default" @click="openPlaylistDialog">
+            <el-button type="default" :disabled="!videoDetail.video_id" @click="openPlaylistDialog">
               <el-icon><FolderAdd /></el-icon> 播放列表
             </el-button>
 
             <!-- 下载封面按钮（下载首页预览图到covers目录） -->
-            <el-button type="default" :loading="isDownloadingCover" @click="handleDownloadCover">
+            <el-button type="default" :loading="isDownloadingCover" :disabled="!videoDetail.video_id" @click="handleDownloadCover">
               <el-icon><Picture /></el-icon> 下载封面
             </el-button>
           </div>
@@ -330,6 +358,7 @@
 
     <!-- 返回顶部按钮 -->
     <el-backtop :right="20" :bottom="20"></el-backtop>
+    </template>
   </div>
 </template>
 
@@ -1184,6 +1213,49 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* shimmer 动画 */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-line {
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.06);
+}
+
+/* 详情页骨架屏 */
+.detail-skeleton-player {
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 */
+  border-radius: 8px;
+  margin-bottom: 20px;
+  background-color: rgba(255,255,255,0.06);
+}
+.detail-skeleton-info {
+  padding: 16px 0;
+}
+.detail-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.detail-skeleton-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.detail-skeleton-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
 .video-player-container {
   margin-bottom: 20px;
   border-radius: 8px;
