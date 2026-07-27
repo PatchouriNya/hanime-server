@@ -27,6 +27,10 @@ class DownloadManager:
         self.pause_events: Dict[str, asyncio.Event] = {}
         self.cancel_events: Dict[str, bool] = {}
         self.video_service = VideoService()
+        # v3.4.1: 集号分配异步锁，避免并发下载同系列视频时分配相同集号导致文件覆盖
+        # 按系列名分别加锁，不同系列可并行分配集号，同系列串行分配
+        self._episode_alloc_locks: Dict[str, asyncio.Lock] = {}
+        self._locks_guard = asyncio.Lock()  # 保护 _episode_alloc_locks 字典本身
         
         # 配置参数
         # chunk_size: 每次从HTTP连接读取的数据块大小，影响内存使用和请求频率
@@ -75,7 +79,14 @@ class DownloadManager:
         # 视频文件扩展名集合
         self.VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.ts'}
 
-    
+
+    async def _get_series_lock(self, series_name: str) -> asyncio.Lock:
+        """获取指定系列名的集号分配锁（按系列粒度加锁，不同系列可并行）"""
+        async with self._locks_guard:
+            if series_name not in self._episode_alloc_locks:
+                self._episode_alloc_locks[series_name] = asyncio.Lock()
+            return self._episode_alloc_locks[series_name]
+
     async def init_db(self):
         """初始化数据库"""
         async with aiosqlite.connect(self.db_path) as conn:
@@ -1457,74 +1468,128 @@ class DownloadManager:
                 season_dir = series_dir / f"Season {season_number}"
                 season_dir.mkdir(parents=True, exist_ok=True)
 
-                # === 集号识别策略（v3.3.4）===
+                # === 集号识别策略（v3.3.4 + v3.4.1 并发安全修复）===
                 # 1. 优先从视频标题/副标题中提取真实集号
                 #    例如 "第十一話"→11、"第4話"→4、"Episode 5"→5
-                # 2. 收集 Season 目录中已存在的集号，避免冲突
+                # 2. 收集 Season 目录中已存在的集号 + 数据库中同系列正在下载的记录的集号
                 # 3. 如果真实集号未被占用，直接使用
-                # 4. 如果已被占用（罕见：同集号不同视频），递增到下一个可用位置
+                # 4. 如果已被占用（同集号不同视频，如多个 OVA 都提取为 99），递增到下一个可用位置
                 # 5. 如果无法从标题提取，按 Season 中已有视频数+1 顺序分配
+                #
+                # v3.4.1 修复：加异步锁 + 查询数据库，避免并发下载同系列视频时
+                #            都扫描到空目录、分配相同集号导致文件互相覆盖
+                #            集号分配 + filename 生成 + 数据库写入在同一个锁内原子完成
                 import re as _re
-                used_episodes = set()
-                for f in season_dir.iterdir():
-                    if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS:
-                        m = _re.search(r'S\d+E(\d+)', f.name, _re.IGNORECASE)
-                        if m:
-                            used_episodes.add(int(m.group(1)))
+                # v3.4.1: 按系列名加锁，同系列串行分配集号，不同系列可并行
+                series_lock = await self._get_series_lock(series_name)
+                async with series_lock:
+                    # 锁内重新扫描磁盘文件 + 查询数据库，确保拿到最新占用情况
+                    used_episodes = set()
+                    # (a) 扫描 Season 目录中已存在的视频文件集号
+                    for f in season_dir.iterdir():
+                        if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS:
+                            m = _re.search(r'S\d+E(\d+)', f.name, _re.IGNORECASE)
+                            if m:
+                                used_episodes.add(int(m.group(1)))
 
-                real_episode = self._extract_real_episode_number(
-                    video_detail.title or "",
-                    video_detail.subtitle or ""
-                )
-                logger.info(f"集号识别: video_id={video_id}, "
-                          f"title={video_detail.title}, subtitle={video_detail.subtitle}, "
-                          f"识别集号={real_episode}, Season已有集号={sorted(used_episodes)}")
+                    # (b) 查询数据库中同系列下载记录的 filename，提取集号
+                    #     避免并发下载时其他视频已分配集号但文件还没写入磁盘
+                    try:
+                        async with aiosqlite.connect(self.db_path) as conn:
+                            cursor = await conn.execute(
+                                "SELECT filename FROM downloads WHERE username = ? AND filename LIKE ?",
+                                (username, f"{series_name}/Season {season_number}/%")
+                            )
+                            rows = await cursor.fetchall()
+                            for (fn,) in rows:
+                                if not fn:
+                                    continue
+                                # filename 格式：番剧名/Season N/番剧名 - S01Exx - 第 N 集.mp4
+                                # 只取最后一段文件名中的集号
+                                fn_basename = fn.rsplit('/', 1)[-1]
+                                m = _re.search(r'S\d+E(\d+)', fn_basename, _re.IGNORECASE)
+                                if m:
+                                    used_episodes.add(int(m.group(1)))
+                    except Exception as e:
+                        logger.warning(f"查询数据库集号失败（仅用磁盘扫描结果）: {e}")
 
-                if real_episode > 0:
-                    episode_num = real_episode
-                    # 冲突时递增到下一个可用位置
-                    while episode_num in used_episodes:
-                        episode_num += 1
-                else:
-                    # 无法识别真实集号，按 Season 中已有视频数+1 顺序分配
-                    episode_num = max(used_episodes, default=0) + 1
-                used_episodes.add(episode_num)
+                    real_episode = self._extract_real_episode_number(
+                        video_detail.title or "",
+                        video_detail.subtitle or ""
+                    )
+                    logger.info(f"集号识别: video_id={video_id}, "
+                              f"title={video_detail.title}, subtitle={video_detail.subtitle}, "
+                              f"识别集号={real_episode}, Season已占用集号={sorted(used_episodes)}")
 
-                # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
-                base_name_for_filename = _re.sub(r'\s*\(\d{4}\)$', '', series_name).strip()
-                safe_name = self._sanitize_filename(base_name_for_filename)
-                filename = f"{series_name}/Season {season_number}/{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.mp4"
+                    if real_episode > 0:
+                        episode_num = real_episode
+                        # 冲突时递增到下一个可用位置
+                        while episode_num in used_episodes:
+                            episode_num += 1
+                    else:
+                        # 无法识别真实集号，按 Season 中已有视频数+1 顺序分配
+                        episode_num = max(used_episodes, default=0) + 1
+                    used_episodes.add(episode_num)
+
+                    # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
+                    base_name_for_filename = _re.sub(r'\s*\(\d{4}\)$', '', series_name).strip()
+                    safe_name = self._sanitize_filename(base_name_for_filename)
+                    filename = f"{series_name}/Season {season_number}/{safe_name} - S{season_number:02d}E{episode_num:02d} - 第 {episode_num} 集.mp4"
+
+                    # v3.4.1: 在锁内立即写入数据库 pending 记录
+                    # 这样其他并发下载查询数据库时能看到本视频已分配的集号，
+                    # 避免分配相同集号导致文件覆盖
+                    try:
+                        async with aiosqlite.connect(self.db_path) as conn:
+                            await conn.execute(
+                                "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                (
+                                    username,
+                                    video_id,
+                                    video_detail.title,
+                                    filename,
+                                    video_detail.cover_url,
+                                    best_url,
+                                    DownloadStatus.PENDING,
+                                    0,
+                                    0,
+                                    0
+                                )
+                            )
+                            await conn.commit()
+                    except Exception as e:
+                        logger.error(f"写入下载记录失败: {e}")
+                        raise
             else:
                 filename = f"{series_name}/{video_id}_{filename}.mp4"
+                # 非系列合并分支也需要写入数据库
+                async with aiosqlite.connect(self.db_path) as conn:
+                    await conn.execute(
+                        "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            username,
+                            video_id,
+                            video_detail.title,
+                            filename,
+                            video_detail.cover_url,
+                            best_url,
+                            DownloadStatus.PENDING,
+                            0,
+                            0,
+                            0
+                        )
+                    )
+                    await conn.commit()
 
             # 创建下载记录
             file_path = settings.DOWNLOAD_PATH / filename
-            
+
             # 预下载封面到番剧目录（不阻塞主流程）
             # video_detail.cover_url 已由 get_video_detail 优先处理为 /image/cover/ 格式
             async def _download_cover_async():
                 await self.download_cover(video_id, video_detail.cover_url, series_dir, filename=video_id)
 
             asyncio.create_task(_download_cover_async())
-            
-            # 写入数据库（
-            async with aiosqlite.connect(self.db_path) as conn:
-                await conn.execute(
-                    "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        username,
-                        video_id, 
-                        video_detail.title, 
-                        filename, 
-                        video_detail.cover_url, 
-                        best_url, 
-                        DownloadStatus.PENDING,
-                        0,
-                        0,
-                        0
-                    )
-                )
-                await conn.commit()
             
             # 创建下载进度对象
             self.active_downloads[video_id] = DownloadProgress(

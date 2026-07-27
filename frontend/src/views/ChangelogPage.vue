@@ -8,6 +8,29 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.4.1</el-tag>
+          <span class="version-date">2026-07-27</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>同系列视频并发下载集号冲突导致文件互相覆盖（严重 bug）：</strong>用户反馈下载 157878、404989、404990、157877 这 4 个 OVA 视频（同属"OVA ケガレボシ"系列）时，只能下出来 2 集，再下载其他 2 集会覆盖之前名字像的集。</span>
+              <ul class="changelog-sublist">
+                <li><strong>根因一</strong>：4 个视频标题都含 "OVA" 标签，集号提取都返回 99（OVA→99 是约定映射）</li>
+                <li><strong>根因二</strong>：集号分配逻辑没有加锁，并发下载时都扫描到 <code>used_episodes</code> 为空，都分配 E99 互相覆盖</li>
+                <li><strong>根因三</strong>：集号分配只扫描磁盘文件，没有查询数据库中正在下载但未完成的记录</li>
+                <li><strong>修复</strong>：添加 <code>_episode_alloc_lock</code> 异步锁，集号分配 + filename 生成 + 数据库写入在同一个锁内原子完成；锁内额外查询数据库 <code>downloads</code> 表中同系列的下载记录</li>
+                <li><strong>测试验证</strong>：Docker 容器内模拟 4 个 OVA 视频并发下载，分别分配到 E99/E100/E101/E102，集号唯一，文件名唯一，无覆盖</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.4.0</el-tag>
           <span class="version-date">2026-07-26</span>
         </div>
