@@ -8,6 +8,78 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.4.8</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>智能轮询策略：</strong>下载页不再无脑每 5 秒轮询。改为仅在活跃下载时轮询（兜底 WebSocket），所有下载完成后自动停止轮询，新下载开始时自动恢复。空闲时零请求。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>WebSocket 智能连接：</strong>离开下载页时自动断开 WebSocket，回到时重连。切换标签页也智能断开/重连，减少不必要的长连接占用。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.7</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>服务莫名重启问题：</strong>移除 uvicorn 每 1000 个请求自动重启的限制。下载页轮询请求快速累积到 1000 导致服务频繁重启，已修复。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.6</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>同系列番剧按上映时间排序：</strong>无法从标题提取真实集号时，下载分配集号改为按上映日期排序，越早发布的集号越小。即使先下第二部再下第一部，集号也会按时间顺序正确排列。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>Nginx 性能优化：</strong>添加 Gzip 压缩（文本资源压缩率 60-80%），静态资源长缓存 1 年，SPA 入口不缓存确保最新版本，API 代理启用 Keep-Alive 连接复用减少 TCP 握手开销。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.5</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>首页加载速度优化：</strong>版本号信息合并到首页数据接口，减少一次 HTTP 请求。使用 localStorage 缓存版本号，页面加载时立即显示，不再出现 v0.0.0 闪烁。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.4.4</el-tag>
           <span class="version-date">2026-07-27</span>
         </div>
@@ -16,11 +88,15 @@
           <ul class="update-list">
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span><strong>切换页面/刷新时提示"请求的资源不存在"：</strong>添加全局 API 404 处理器，未匹配的路由会记录警告日志并返回标准 JSON 响应，便于定位。前端 404 错误提示增加请求 URL 信息。</span>
+              <span><strong>切换页面/刷新时提示"请求的资源不存在"：</strong>前端 404 错误提示增加请求 URL 信息便于定位。移除了会拦截 WebSocket 的全局 API catch-all 路由。</span>
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span><strong>下载页轮询日志噪音：</strong>日志中间件过滤掉高频轮询请求（成功时静默，失败时仍记录），大幅减少日志量。</span>
+              <span><strong>WebSocket 断开时 ERROR 日志：</strong>浏览器刷新/切换页面时 WebSocket 断开是正常行为，改为 DEBUG 级别，不再刷屏。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载页轮询日志噪音：</strong>日志中间件过滤高频轮询请求（成功时静默），大幅减少日志量。</span>
             </li>
           </ul>
         </div>

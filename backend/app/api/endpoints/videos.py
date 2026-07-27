@@ -16,7 +16,12 @@ video_service = VideoService()
 @lru_cache(maxsize=1, ttl=1800)  # 缓存过期时间30分钟
 async def get_home_page():
     """获取首页数据，包括头图和推荐视频"""
-    return await video_service.get_home_data()
+    data = await video_service.get_home_data()
+    # 附带版本信息，前端无需额外请求 /settings/version
+    data.version = settings.APP_VERSION
+    data.app_name = settings.APP_NAME
+    data.app_description = settings.APP_DESCRIPTION
+    return data
 
 
 @router.get("/calendar", response_model=CalendarData)

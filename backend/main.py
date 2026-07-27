@@ -122,16 +122,6 @@ async def root():
     }
 
 
-# 处理所有未匹配的 /api/* 路由，返回标准 404 JSON 响应
-# 避免前端收到 HTML 格式的 404 而触发"请求的资源不存在"错误提示
-@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def api_not_found(path: str):
-    logger.warning(f"未匹配的 API 路由: /api/{path}")
-    return JSONResponse(
-        status_code=404,
-        content={"detail": f"API 端点 /api/{path} 不存在"}
-    )
-
 
 if __name__ == "__main__":
     # 配置日志拦截

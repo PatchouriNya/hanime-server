@@ -17,14 +17,20 @@ class DownloadWebSocketManager {
   
   private constructor() {
     // 私有构造函数确保单例
-    
-    // 页面可见性变化时连接或断开
+
+    // 页面可见性变化时智能连接或断开
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        this.connect();
+        // 页面重新可见，如果有监听器则重连
+        if (this.listeners.size > 0) {
+          this.connect();
+        }
+      } else {
+        // 页面不可见，断开 WebSocket 节省资源
+        this.close();
       }
     });
-    
+
     // 窗口关闭前优雅地关闭连接
     window.addEventListener('beforeunload', () => {
       this.close();
@@ -380,13 +386,23 @@ export const useDownloadStore = defineStore('download', {
     },
 
     /**
-     * 启动周期性轮询（WebSocket的兜底保障，每5秒检查一次）
+     * 启动智能轮询：
+     * - 有活跃下载时：每 5 秒轮询一次（兜底 WebSocket）
+     * - 无活跃下载时：停止轮询，由 WebSocket 推送驱动
      */
     startPolling() {
       if (_pollTimer) return;
-      _pollTimer = setInterval(() => {
+      const poll = () => {
+        // 没有活跃下载 → 停止轮询，等 WebSocket 推送触发
+        if (!this.hasActiveDownloads && !this.hasPausedDownloads) {
+          this.stopPolling();
+          return;
+        }
         this.refreshDownloads();
-      }, 5000);
+      };
+      _pollTimer = setInterval(poll, 5000);
+      // 立即执行一次
+      poll();
     },
 
     /**
@@ -407,11 +423,21 @@ export const useDownloadStore = defineStore('download', {
       if (this.wsConnected) {
         return;
       }
-      
+
       const wsManager = DownloadWebSocketManager.getInstance();
       wsManager.addListener(this.updateDownloadProgress.bind(this));
       wsManager.connect();
       this.wsConnected = true;
+    },
+
+    /**
+     * 断开WebSocket连接（离开下载页时调用）
+     */
+    disconnectWebSocket() {
+      const wsManager = DownloadWebSocketManager.getInstance();
+      wsManager.removeListener(this.updateDownloadProgress.bind(this));
+      wsManager.close();
+      this.wsConnected = false;
     },
     
     /**
@@ -419,7 +445,7 @@ export const useDownloadStore = defineStore('download', {
      */
     updateDownloadProgress(progress: DownloadProgress) {
       const existingDownload = this.downloads[progress.video_id];
-      
+
       // 应用速度平滑处理
       if (progress.status === 'downloading') {
         // 平滑处理下载速度
@@ -428,12 +454,16 @@ export const useDownloadStore = defineStore('download', {
           progress.speed,
           progress.downloaded
         );
-        
+
         // 使用平滑后的速度值
         progress.speed = smoothedSpeed;
       } else if (['completed', 'cancelled', 'error'].includes(progress.status)) {
         // 当下载结束时，清除历史数据
         _speedSmoother.clearHistory(progress.video_id);
+        // 所有下载完成后停止轮询
+        if (!this.hasActiveDownloads) {
+          this.stopPolling();
+        }
       }
       
       // 如果状态变化需要特殊处理
@@ -462,6 +492,8 @@ export const useDownloadStore = defineStore('download', {
         if (result.status === 'success') {
           // 主动刷新下载列表，确保新下载项立即显示
           this.refreshDownloads();
+          // 新下载开始，确保轮询已启动
+          this.startPolling();
           return true;
         } else if (result.status === 'warning' && result.existing_download) {
           // 视频已经下载过，询问用户

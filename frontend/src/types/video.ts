@@ -82,6 +82,9 @@ export interface HomeData {
   bubble_tea_videos: VideoSection[];
   daily_rank_videos: VideoSection[];
   monthly_rank_videos: VideoSection[];
+  version?: string;
+  app_name?: string;
+  app_description?: string;
   error?: string;
 }
 

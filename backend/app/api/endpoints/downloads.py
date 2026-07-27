@@ -72,22 +72,27 @@ async def startup():
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket连接处理，用于实时更新下载进度"""
-    await websocket.accept()
+    try:
+        await websocket.accept()
+    except Exception as e:
+        logger.debug(f"WebSocket握手失败: {e}")
+        return
+
     download_manager.websocket_connections.add(websocket)
     try:
         # 连接建立后发送现有下载状态
         for video_id, download in download_manager.active_downloads.items():
             await download_manager.broadcast_progress(video_id)
-            
+
         # 保持连接，直到客户端断开
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        logger.info("WebSocket连接断开")
+        logger.debug("WebSocket连接断开")
     except Exception as e:
-        logger.error(f"WebSocket错误: {e}")
+        logger.debug(f"WebSocket异常（通常是客户端断开）: {e}")
     finally:
-        download_manager.websocket_connections.remove(websocket)
+        download_manager.websocket_connections.discard(websocket)
 
 
 @router.get("/history")

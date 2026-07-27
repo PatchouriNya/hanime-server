@@ -68,6 +68,7 @@ import {HomeData} from '../types/video';
 import BannerSlider from '../components/BannerSlider.vue';
 import VideoSection from '../components/VideoSection.vue';
 import {mitt} from '../utils/mitt';
+import {useVersion} from '../composables/useVersion';
 
 export default defineComponent({
   name: 'HomePage',
@@ -77,6 +78,7 @@ export default defineComponent({
   },
   setup() {
     const router = useRouter();
+    const { updateFromExternal } = useVersion();
     const isRefreshing = ref(false);
     const isLoading = ref(true);
     const homeData = ref<HomeData>({
@@ -105,6 +107,12 @@ export default defineComponent({
       isLoading.value = true;
       try {
         homeData.value = await VideoApi.getHomeData();
+        // 首页数据自带版本信息，同步到 useVersion，避免额外请求
+        updateFromExternal({
+          version: homeData.value.version,
+          app_name: homeData.value.app_name,
+          app_description: homeData.value.app_description
+        });
       } finally {
         isLoading.value = false;
       }

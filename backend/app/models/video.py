@@ -77,6 +77,9 @@ class HomeData(BaseModel):
     bubble_tea_videos: List[Dict[str, Any]] = []
     daily_rank_videos: List[Dict[str, Any]] = []
     monthly_rank_videos: List[Dict[str, Any]] = []
+    version: Optional[str] = None
+    app_name: Optional[str] = None
+    app_description: Optional[str] = None
     error: Optional[str] = None
 
 

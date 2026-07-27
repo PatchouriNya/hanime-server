@@ -1090,6 +1090,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   downloadStore.stopPolling();
+  downloadStore.disconnectWebSocket();
   window.removeEventListener('resize', handleResize);
 });
 </script>

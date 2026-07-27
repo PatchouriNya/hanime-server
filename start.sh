@@ -68,7 +68,7 @@ start_backend() {
     echo -e "  ${BOLD}Python Version:${NC} $(python3 --version)"
     echo ""
 
-    python3 -c "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, workers=1, limit_max_requests=1000, timeout_keep_alive=15)" || handle_error "Python backend start" $?
+    python3 -c "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, workers=1, timeout_keep_alive=15)" || handle_error "Python backend start" $?
 }
 
 main() {

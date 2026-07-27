@@ -115,6 +115,7 @@ class DownloadManager:
                 ("username", "TEXT NOT NULL DEFAULT 'admin'"),
                 ("title", "TEXT"),
                 ("cover_url", "TEXT"),
+                ("upload_date", "TEXT"),
             ]
             for col_name, col_type in migrations:
                 try:
@@ -1485,6 +1486,9 @@ class DownloadManager:
                 async with series_lock:
                     # 锁内重新扫描磁盘文件 + 查询数据库，确保拿到最新占用情况
                     used_episodes = set()
+                    # 记录已有视频的 (video_id, upload_date, episode) 信息，用于按上映时间重排
+                    existing_videos = []  # [(video_id, upload_date_str, episode_num)]
+
                     # (a) 扫描 Season 目录中已存在的视频文件集号
                     for f in season_dir.iterdir():
                         if f.is_file() and f.suffix.lower() in self.VIDEO_EXTENSIONS:
@@ -1492,24 +1496,25 @@ class DownloadManager:
                             if m:
                                 used_episodes.add(int(m.group(1)))
 
-                    # (b) 查询数据库中同系列下载记录的 filename，提取集号
+                    # (b) 查询数据库中同系列下载记录的 filename + upload_date，提取集号
                     #     避免并发下载时其他视频已分配集号但文件还没写入磁盘
                     try:
                         async with aiosqlite.connect(self.db_path) as conn:
                             cursor = await conn.execute(
-                                "SELECT filename FROM downloads WHERE username = ? AND filename LIKE ?",
+                                "SELECT filename, video_id, upload_date FROM downloads WHERE username = ? AND filename LIKE ?",
                                 (username, f"{series_name}/Season {season_number}/%")
                             )
                             rows = await cursor.fetchall()
-                            for (fn,) in rows:
+                            for (fn, vid, udate) in rows:
                                 if not fn:
                                     continue
-                                # filename 格式：番剧名/Season N/番剧名 - S01Exx - 第 N 集.mp4
-                                # 只取最后一段文件名中的集号
                                 fn_basename = fn.rsplit('/', 1)[-1]
                                 m = _re.search(r'S\d+E(\d+)', fn_basename, _re.IGNORECASE)
                                 if m:
-                                    used_episodes.add(int(m.group(1)))
+                                    ep = int(m.group(1))
+                                    used_episodes.add(ep)
+                                    if vid:
+                                        existing_videos.append((vid, udate or "", ep))
                     except Exception as e:
                         logger.warning(f"查询数据库集号失败（仅用磁盘扫描结果）: {e}")
 
@@ -1517,18 +1522,49 @@ class DownloadManager:
                         video_detail.title or "",
                         video_detail.subtitle or ""
                     )
+
+                    # 当前视频的 upload_date
+                    current_upload_date = ""
+                    if video_detail.upload_date:
+                        from datetime import datetime as _dt
+                        if isinstance(video_detail.upload_date, _dt):
+                            current_upload_date = video_detail.upload_date.strftime("%Y-%m-%d")
+                        elif hasattr(video_detail.upload_date, 'isoformat'):
+                            current_upload_date = video_detail.upload_date.isoformat()[:10]
+                        else:
+                            current_upload_date = str(video_detail.upload_date)[:10]
+
                     logger.info(f"集号识别: video_id={video_id}, "
                               f"title={video_detail.title}, subtitle={video_detail.subtitle}, "
-                              f"识别集号={real_episode}, Season已占用集号={sorted(used_episodes)}")
+                              f"识别集号={real_episode}, upload_date={current_upload_date}, "
+                              f"Season已占用集号={sorted(used_episodes)}")
 
                     if real_episode > 0:
+                        # 从标题中能识别出真实集号，直接使用
                         episode_num = real_episode
                         # 冲突时递增到下一个可用位置
                         while episode_num in used_episodes:
                             episode_num += 1
                     else:
-                        # 无法识别真实集号，按 Season 中已有视频数+1 顺序分配
-                        episode_num = max(used_episodes, default=0) + 1
+                        # 无法识别真实集号，按 upload_date 排序分配集号
+                        # 越早发布的视频集号越小，保证影视中心按时间顺序显示
+                        all_videos = existing_videos + [(video_id, current_upload_date, -1)]
+                        # 按 upload_date 排序（空日期排最后）
+                        all_videos.sort(key=lambda x: x[1] if x[1] else "9999-99-99")
+                        # 找到当前视频在排序后的位置
+                        sorted_position = 0
+                        for i, (vid, _, _) in enumerate(all_videos):
+                            if vid == video_id:
+                                sorted_position = i + 1  # 1-based
+                                break
+                        episode_num = sorted_position
+                        # 确保不与已有集号冲突
+                        while episode_num in used_episodes:
+                            episode_num += 1
+                        # 如果分配的集号会导致后续视频需要调整，记录日志
+                        logger.info(f"按上映时间分配集号: video_id={video_id}, "
+                                  f"upload_date={current_upload_date}, "
+                                  f"排序位置={sorted_position}, 分配集号=E{episode_num:02d}")
                     used_episodes.add(episode_num)
 
                     # 文件名使用去掉年份后缀的基础名，保持与刮削服务一致
@@ -1542,7 +1578,7 @@ class DownloadManager:
                     try:
                         async with aiosqlite.connect(self.db_path) as conn:
                             await conn.execute(
-                                "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                "INSERT OR REPLACE INTO downloads (username, video_id, title, filename, cover_url, url, status, total_size, downloaded, retry_count, upload_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                 (
                                     username,
                                     video_id,
@@ -1553,7 +1589,8 @@ class DownloadManager:
                                     DownloadStatus.PENDING,
                                     0,
                                     0,
-                                    0
+                                    0,
+                                    current_upload_date
                                 )
                             )
                             await conn.commit()
