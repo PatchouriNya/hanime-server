@@ -27,6 +27,8 @@ class ScrapeConfig(BaseModel):
     # v3.3.9 新增：翻译设置
     is_translate_plot_enabled: bool = True
     translate_target_lang: str = "zh-CN"  # zh-CN / ja / en / off
+    # v3.5.0 新增：合集海报使用最早上传的剧集海报
+    is_poster_use_earliest_episode: bool = True
 
 
 class ScrapeRequest(BaseModel):

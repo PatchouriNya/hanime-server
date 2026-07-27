@@ -32,7 +32,8 @@ async def get_scrape_config():
         is_convert_cover_to_jpg=settings.SCRAPE_CONVERT_COVER_JPG,
         is_generate_fanart=False,
         is_translate_plot_enabled=settings.TRANSLATE_PLOT_ENABLED,
-        translate_target_lang=settings.TRANSLATE_TARGET_LANG
+        translate_target_lang=settings.TRANSLATE_TARGET_LANG,
+        is_poster_use_earliest_episode=settings.POSTER_USE_EARLIEST_EPISODE
     )
 
 
@@ -48,6 +49,7 @@ async def update_scrape_config(config: ScrapeConfig, user: dict = Depends(get_cu
         # v3.3.9: 翻译设置
         settings.TRANSLATE_PLOT_ENABLED = config.is_translate_plot_enabled
         settings.TRANSLATE_TARGET_LANG = config.translate_target_lang
+        settings.POSTER_USE_EARLIEST_EPISODE = config.is_poster_use_earliest_episode
 
         # 持久化到文件
         _save_scrape_settings_to_file(config)
@@ -58,7 +60,8 @@ async def update_scrape_config(config: ScrapeConfig, user: dict = Depends(get_cu
                      f"reorganize={config.is_reorganize_directory}, "
                      f"convert_jpg={config.is_convert_cover_to_jpg}, "
                      f"translate_enabled={config.is_translate_plot_enabled}, "
-                     f"translate_lang={config.translate_target_lang}")
+                     f"translate_lang={config.translate_target_lang}, "
+                     f"poster_earliest={config.is_poster_use_earliest_episode}")
         return {"status": "success", "message": "刮削配置已保存"}
     except Exception as e:
         logger.error(f"更新刮削配置失败: {e}")
@@ -140,6 +143,7 @@ def _save_scrape_settings_to_file(config: ScrapeConfig):
             "is_convert_cover_to_jpg": config.is_convert_cover_to_jpg,
             "is_translate_plot_enabled": config.is_translate_plot_enabled,
             "translate_target_lang": config.translate_target_lang,
+            "is_poster_use_earliest_episode": config.is_poster_use_earliest_episode,
         }, ensure_ascii=False), encoding="utf-8")
         logger.info("刮削设置已持久化")
     except Exception as e:

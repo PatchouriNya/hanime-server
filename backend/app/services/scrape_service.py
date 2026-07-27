@@ -2181,13 +2181,38 @@ class ScrapeService:
         nfo_files = []
         image_files = []
 
-        # 获取第一个有效 video_id 和 cover_url
+        # 获取合集海报的 cover_url
+        # v3.5.0: 默认使用最早上传的剧集海报，可设置改为首次下载的海报
         first_video_id = video_entries[0]["video_id"] if video_entries else ""
         first_cover_url = ""
-        for meta in metadata_list:
-            if meta and hasattr(meta, "cover_url") and meta.cover_url:
-                first_cover_url = meta.cover_url
-                break
+
+        if settings.POSTER_USE_EARLIEST_EPISODE:
+            # 按上传日期排序，取最早上传的剧集的 cover_url
+            earliest_meta = None
+            earliest_date = None
+            for meta in metadata_list:
+                if meta and hasattr(meta, "cover_url") and meta.cover_url:
+                    ud = getattr(meta, "upload_date", None)
+                    if ud:
+                        date_str = ud.isoformat() if isinstance(ud, (datetime, date)) else str(ud)
+                        if earliest_date is None or date_str < earliest_date:
+                            earliest_date = date_str
+                            earliest_meta = meta
+            if earliest_meta:
+                first_cover_url = earliest_meta.cover_url
+                logger.info(f"合集海报使用最早上传的剧集 cover: {earliest_date}")
+            else:
+                # 没有上传日期，回退到第一个有效的
+                for meta in metadata_list:
+                    if meta and hasattr(meta, "cover_url") and meta.cover_url:
+                        first_cover_url = meta.cover_url
+                        break
+        else:
+            # 使用首次遇到的有效 cover_url（第一次下载的那集）
+            for meta in metadata_list:
+                if meta and hasattr(meta, "cover_url") and meta.cover_url:
+                    first_cover_url = meta.cover_url
+                    break
 
         # 1. 生成 tvshow.nfo
         # NFO 中的标题不应包含年份后缀（年份已在目录名中）
@@ -2239,6 +2264,14 @@ class ScrapeService:
         if not season_numbers:
             season_numbers = {1}
 
+        # 构建 video_id -> metadata 映射（避免索引错位）
+        vid_to_meta: Dict[str, Any] = {}
+        for idx, entry in enumerate(video_entries):
+            if idx < len(metadata_list) and metadata_list[idx]:
+                vid = entry.get("video_id", "")
+                if vid:
+                    vid_to_meta[vid] = metadata_list[idx]
+
         # 9. 为每个季生成 Season 目录、season.nfo、季海报
         # 文件名中的系列名不应包含年份后缀（年份已在目录名中）
         series_name_no_year = re.sub(r'\s*\(\d{4}\)\s*$', '', series_name).strip()
@@ -2252,12 +2285,13 @@ class ScrapeService:
             # 生成 season.nfo
             # 收集该季的元数据用于 season.nfo
             season_metadata = []
-            for i, entry in enumerate(video_entries):
+            for entry in video_entries:
                 video_id = entry["video_id"]
                 mapping = episode_mapping.get(video_id)
                 if mapping and mapping["season"] == season_number:
-                    if i < len(metadata_list):
-                        season_metadata.append(metadata_list[i])
+                    m = vid_to_meta.get(video_id)
+                    if m:
+                        season_metadata.append(m)
             if not season_metadata:
                 season_metadata = metadata_list
 
@@ -2423,7 +2457,7 @@ class ScrapeService:
             episode_str = f"E{episode_num:02d}"
             season_ep_pattern = f"{season_str}{episode_str}"
 
-            meta = metadata_list[i] if i < len(metadata_list) else None
+            meta = vid_to_meta.get(video_id)
 
             # 确定该集所在的 Season 目录
             season_dir = series_dir / f"{SEASON_DIR_PREFIX}{season_number}"
@@ -2764,8 +2798,26 @@ class ScrapeService:
             else:
                 regular_entries.append(entry)
 
-        # 为未解析的条目按顺序分配集号
+        # 为未解析的条目按上映时间排序后分配集号
+        # v3.4.9: 按上传日期排序，越早发布的集号越小
+        # 这样即使先下载第二集再下载第一集，刮削后第一集仍然分配 E01
         max_episode = max(used_episodes, default=0)
+        if regular_entries:
+            # 按 upload_date 排序（从 metadata 中获取）
+            def _get_upload_date(entry: Dict) -> str:
+                """获取视频上传日期，用于排序"""
+                vid = entry.get("video_id", "")
+                meta = meta_map.get(vid)
+                if meta and hasattr(meta, "upload_date") and meta.upload_date:
+                    ud = meta.upload_date
+                    if isinstance(ud, (datetime, date)):
+                        return ud.isoformat()
+                    return str(ud)
+                return ""
+
+            # 按日期排序，无日期的排在最后（保持原始顺序）
+            regular_entries.sort(key=lambda e: _get_upload_date(e) or "zzz")
+
         for entry in regular_entries:
             max_episode += 1
             episode_mapping[entry["video_id"]] = {

@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "3.4.8")
+    APP_VERSION: str = os.getenv("APP_VERSION", "3.5.0")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -83,6 +83,11 @@ class Settings(BaseModel):
     # off=不翻译（保留原文），zh-CN=简体中文，ja=日文，en=英文
     TRANSLATE_PLOT_ENABLED: bool = os.getenv("TRANSLATE_PLOT_ENABLED", "True").lower() in ("true", "1", "t")
     TRANSLATE_TARGET_LANG: str = os.getenv("TRANSLATE_TARGET_LANG", "zh-CN")
+
+    # 合集海报使用最早上传的剧集海报（即"第一集"的海报）
+    # True: 使用最早上传的剧集的 cover_url 作为合集海报（默认）
+    # False: 使用首次遇到的有效 cover_url（即第一次下载的那集）
+    POSTER_USE_EARLIEST_EPISODE: bool = os.getenv("POSTER_USE_EARLIEST_EPISODE", "True").lower() in ("true", "1", "t")
 
     # MySQL 设置（云数据库）
     MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -142,6 +147,9 @@ if _scrape_file.exists():
             settings.TRANSLATE_PLOT_ENABLED = bool(_sdata["is_translate_plot_enabled"])
         if _sdata.get("translate_target_lang"):
             settings.TRANSLATE_TARGET_LANG = str(_sdata["translate_target_lang"])
+        # v3.5.0 新增：合集海报使用最早上传的剧集海报
+        if _sdata.get("is_poster_use_earliest_episode") is not None:
+            settings.POSTER_USE_EARLIEST_EPISODE = bool(_sdata["is_poster_use_earliest_episode"])
         logger.info(f"已从持久化文件恢复刮削设置: SCRAPE_MODE={settings.SCRAPE_MODE}")
     except Exception as e:
         logger.warning(f"恢复刮削设置失败: {e}")

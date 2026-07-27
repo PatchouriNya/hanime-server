@@ -93,6 +93,10 @@
                 <el-option label="不翻译（保留原文）" value="off" />
               </el-select>
             </el-form-item>
+            <el-form-item label="合集海报使用第一集海报">
+              <el-switch v-model="scrapeForm.posterUseEarliest" />
+              <span class="form-hint">开启后合集海报始终使用最早上传的剧集封面；关闭后使用首次下载的那集封面</span>
+            </el-form-item>
           </el-form>
           <div class="scrape-hint">
             <el-icon><Warning /></el-icon>
@@ -347,7 +351,9 @@ const scrapeForm = reactive({
   convertCover: true,
   // v3.3.9 新增：翻译设置
   translatePlot: true,
-  translateLang: 'zh-CN' as 'zh-CN' | 'ja' | 'en' | 'off'
+  translateLang: 'zh-CN' as 'zh-CN' | 'ja' | 'en' | 'off',
+  // v3.5.0 新增：合集海报使用最早上传的剧集海报
+  posterUseEarliest: true
 });
 
 const loadScrapeConfig = async () => {
@@ -360,6 +366,7 @@ const loadScrapeConfig = async () => {
     scrapeForm.convertCover = config.is_convert_cover_to_jpg;
     scrapeForm.translatePlot = config.is_translate_plot_enabled;
     scrapeForm.translateLang = config.translate_target_lang;
+    scrapeForm.posterUseEarliest = config.is_poster_use_earliest_episode;
   } catch (error) {
     console.error('加载刮削配置失败:', error);
   }
@@ -375,7 +382,8 @@ const saveScrapeSettings = async () => {
       is_convert_cover_to_jpg: scrapeForm.convertCover,
       is_generate_fanart: false,
       is_translate_plot_enabled: scrapeForm.translatePlot,
-      translate_target_lang: scrapeForm.translateLang
+      translate_target_lang: scrapeForm.translateLang,
+      is_poster_use_earliest_episode: scrapeForm.posterUseEarliest
     });
     ElMessage.success('刮削设置已保存');
   } catch (error) {

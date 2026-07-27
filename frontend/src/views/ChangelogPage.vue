@@ -8,6 +8,53 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.0</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>合集海报使用第一集海报：</strong>新增设置开关（默认开启）。开启后合集海报始终使用最早上传的剧集封面，关闭后使用首次下载的那集封面。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削集号按上映时间排序：</strong>先下载第二集再下载第一集时，刮削后第一集的标题和简介会错误。修复后改为按上传日期排序。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>NFO 元数据索引错位：</strong>改为通过 video_id 精确查找元数据，避免错位。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.4.9</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削集号按上映时间排序：</strong>先下载第二集再下载第一集时，刮削后第一集的标题和简介会错误。修复后改为按上传日期排序，越早发布的集号越小。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>NFO 元数据索引错位：</strong>生成单集 NFO 时使用索引取元数据，集号重排后可能导致简介丢失或标题错乱。改为通过 video_id 精确查找，避免错位。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.4.8</el-tag>
           <span class="version-date">2026-07-28</span>
         </div>
