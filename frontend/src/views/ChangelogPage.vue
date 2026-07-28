@@ -8,6 +8,30 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.2</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>列表视图按合集分组：</strong>下载中心列表视图改为可折叠合集分组，每个合集一行，点击展开查看每集详情。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>设为合集海报：</strong>在合集每集右侧新增"设为合集海报"按钮，点击后将该集封面更新为合集 poster.jpg。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>重新刮削按钮：</strong>列表视图合集行、番剧视图卡片、番剧详情弹窗顶部均新增"重新刮削"按钮。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.1</el-tag>
           <span class="version-date">2026-07-28</span>
         </div>
@@ -20,7 +44,7 @@
             </li>
             <li class="update-item">
               <el-icon class="update-icon"><CircleCheck /></el-icon>
-              <span><strong>刮削评分修复：</strong>刮削出来的评分之前全都是7.6，因为视频详情页解析时没有提取点赞率字段，导致评分始终回退到默认值。现在从详情页中多策略提取点赞率（如 83% → 8.3 分），NFO 评分反映真实数据。</span>
+              <span><strong>刮削评分修复：</strong>刮削出来的评分之前全都是7.6，因为视频详情页解析时没有提取点赞率字段，导致评分始终回退到默认值。现在从详情页中多策略提取每集点赞率（如 83% → 8.3 分），合集评分取所有集评分的平均值，NFO 评分反映真实数据。</span>
             </li>
           </ul>
         </div>

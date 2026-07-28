@@ -468,18 +468,21 @@ class ScrapeService:
         originaltitle_elem = ET.SubElement(root, "originaltitle")
         originaltitle_elem.text = title_text
 
-        # 评分（默认7.6，可从 like_rate 推算）- 对齐参考格式，rating 在 year 之前
+        # 评分（默认7.6，取所有集评分的平均值）- 对齐参考格式，rating 在 year 之前
         rating_value = DEFAULT_RATING
+        valid_ratings = []
         for meta in metadata_list:
             if meta and hasattr(meta, "like_rate") and meta.like_rate:
                 try:
                     rate_str = str(meta.like_rate).replace("%", "").replace("％", "")
                     rate_num = int(rate_str) / 10.0
                     if 0 < rate_num <= 10:
-                        rating_value = f"{rate_num:.1f}"
-                        break
+                        valid_ratings.append(rate_num)
                 except (ValueError, TypeError):
                     pass
+        if valid_ratings:
+            avg_rating = sum(valid_ratings) / len(valid_ratings)
+            rating_value = f"{avg_rating:.1f}"
         rating_elem = ET.SubElement(root, "rating")
         rating_elem.text = rating_value
 
@@ -3084,6 +3087,96 @@ class ScrapeService:
                 logger.warning(f"获取视频元数据失败 video_id={video_id}: {e}")
                 metadata_list.append(None)
         return metadata_list
+
+    async def set_collection_poster(self, series_name: str, video_id: str) -> dict:
+        """
+        将指定剧集的封面设为合集海报
+
+        查找该 video_id 对应的封面图片，将其复制/转换为合集目录的 poster.jpg，
+        并同步更新 season01-poster.jpg（如存在）。
+
+        v3.5.2 新增
+        """
+        series_dir = settings.DOWNLOAD_PATH / series_name
+        if not series_dir.exists() or not series_dir.is_dir():
+            return {"status": "error", "message": f"番剧目录不存在: {series_name}"}
+
+        # 查找封面来源：优先从 COVER_PATH 查找，再从番剧目录中查找
+        source_cover = None
+
+        # 1. COVER_PATH 中查找 {video_id}.jpg
+        central_cover = settings.COVER_PATH / f"{video_id}.jpg"
+        if central_cover.exists():
+            source_cover = central_cover
+            logger.info(f"从 COVER_PATH 找到封面: {central_cover}")
+
+        # 2. 番剧根目录中查找 {video_id}.jpg（刮削前可能在根目录）
+        if not source_cover:
+            root_cover = series_dir / f"{video_id}.jpg"
+            if root_cover.exists():
+                source_cover = root_cover
+                logger.info(f"从番剧根目录找到封面: {root_cover}")
+
+        # 3. Season 子目录中查找与该 video_id 相关的 .jpg 缩略图
+        if not source_cover:
+            for sub in series_dir.iterdir():
+                if sub.is_dir() and sub.name.startswith(SEASON_DIR_PREFIX):
+                    # 查找刮削后的缩略图（与视频同名 .jpg）
+                    for f in sub.iterdir():
+                        if f.is_file() and f.suffix.lower() == ".jpg":
+                            # 检查 NFO 中的 uniqueid 是否匹配 video_id
+                            nfo_file = f.with_suffix(".nfo")
+                            if nfo_file.exists():
+                                try:
+                                    nfo_content = nfo_file.read_text(encoding="utf-8")
+                                    if f'<uniqueid type="hanime">{video_id}</uniqueid>' in nfo_content or \
+                                       f'default="true">{video_id}</uniqueid>' in nfo_content:
+                                        source_cover = f
+                                        logger.info(f"从 Season 子目录找到封面: {f}")
+                                        break
+                                except Exception:
+                                    pass
+                    if source_cover:
+                        break
+
+        # 4. Season 子目录中查找 {video_id}.jpg
+        if not source_cover:
+            for sub in series_dir.iterdir():
+                if sub.is_dir() and sub.name.startswith(SEASON_DIR_PREFIX):
+                    vid_cover = sub / f"{video_id}.jpg"
+                    if vid_cover.exists():
+                        source_cover = vid_cover
+                        logger.info(f"从 Season 子目录找到 video_id 封面: {vid_cover}")
+                        break
+
+        if not source_cover:
+            return {"status": "error", "message": f"未找到 video_id={video_id} 的封面文件"}
+
+        # 复制/转换为 poster.jpg
+        poster_path = series_dir / POSTER_FILENAME
+        try:
+            if source_cover.suffix.lower() != ".jpg" and settings.SCRAPE_CONVERT_COVER_JPG:
+                success = self._convert_image_to_jpg(source_cover, poster_path)
+                if not success:
+                    return {"status": "error", "message": "封面转换 JPG 失败"}
+            else:
+                shutil.copy2(source_cover, poster_path)
+
+            # 放大到标准尺寸
+            self._upscale_to_standard(poster_path, POSTER_STANDARD_WIDTH, POSTER_STANDARD_HEIGHT)
+
+            # 同步更新 season01-poster.jpg（如存在）
+            season_poster_path = series_dir / SEASON_POSTER_FILENAME_PATTERN.format(1)
+            if season_poster_path.exists():
+                shutil.copy2(poster_path, season_poster_path)
+                logger.info(f"已同步更新 season01-poster.jpg")
+
+            logger.info(f"合集海报已更新: {poster_path} (来源: {source_cover})")
+            return {"status": "success", "message": f"合集海报已更新为 video_id={video_id} 的封面"}
+
+        except Exception as e:
+            logger.error(f"更新合集海报失败: {e}")
+            return {"status": "error", "message": f"更新合集海报失败: {str(e)}"}
 
     def _find_existing_cover(self, series_dir: Path) -> Optional[Path]:
         """在番剧目录中查找已有的封面文件"""

@@ -100,4 +100,13 @@ export class ScrapeApi {
     const response = await request.post('/scrape/fix-nfo', {}, { timeout: 300000 });
     return response.data;
   }
+
+  // v3.5.2 新增：将指定剧集的封面设为合集海报
+  static async setPoster(seriesName: string, videoId: string): Promise<{ status: string; message: string }> {
+    const response = await request.post('/scrape/set-poster', {
+      series_name: seriesName,
+      video_id: videoId
+    });
+    return response.data;
+  }
 }

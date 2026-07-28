@@ -9,6 +9,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+from pydantic import BaseModel
 
 from app.models.scrape import (
     ScrapeConfig, ScrapeMode, ScrapeRequest,
@@ -127,6 +128,22 @@ async def fix_nfo_empty_tags(user: dict = Depends(get_current_user)):
     此接口扫描所有 NFO 文件并移除空标签。
     """
     return await scrape_service.fix_nfo_empty_tags()
+
+
+class SetPosterRequest(BaseModel):
+    """设为合集海报请求 v3.5.2"""
+    series_name: str
+    video_id: str
+
+
+@router.post("/set-poster")
+async def set_collection_poster(request: SetPosterRequest, user: dict = Depends(get_current_user)):
+    """
+    将指定剧集的封面设为合集海报
+
+    v3.5.2 新增：从该 video_id 的封面图片复制为合集的 poster.jpg
+    """
+    return await scrape_service.set_collection_poster(request.series_name, request.video_id)
 
 
 def _save_scrape_settings_to_file(config: ScrapeConfig):

@@ -3,6 +3,76 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 二十九、列表合集分组+设为合集海报+重新刮削按钮 — v3.5.1 → v3.5.2 (2026-07-28)
+
+### 修改原因
+1. 下载中心列表视图没有合集概念，需要按合集分组展示，点进去看每集详情
+2. 合集详情中每集需要"设为合集海报"按钮，方便用户指定合集封面
+3. 合集旁边需要"重新刮削"按钮，防止更新后无法自动重新刮削
+
+### 修改内容
+
+#### 1. 列表视图改为可折叠合集分组
+
+**文件：frontend/src/views/Downloads.vue**
+- 列表视图"全部下载" tab 改为按合集分组展示
+- 每个合集一行：封面缩略图 + 合集名 + 集数 + 状态 + "重新刮削"按钮
+- 点击合集行展开/收起，展开后显示每集详情
+- 不属于任何合集的下载项归入"未分组"
+- 新增 `expandedGroups` Set 记录展开状态
+- 新增 `filterDownloadsByTab` 方法过滤合集内下载项
+- 新增 `ungroupedDownloads` 计算未分组下载项
+
+#### 2. "设为合集海报"按钮
+
+**文件：frontend/src/api/scrape.ts**
+- 新增 `ScrapeApi.setPoster(seriesName, videoId)` API 调用
+
+**文件：frontend/src/views/Downloads.vue**
+- 合集展开后每集右侧新增"设为合集海报"按钮（只对已完成集显示）
+- 番剧详情弹窗每集右侧也新增此按钮
+- 新增 `handleSetPoster` 方法
+- 新增 `isSettingPoster` 状态记录正在设置海报的 video_id
+
+**文件：backend/app/api/endpoints/scrape.py**
+- 新增 `POST /scrape/set-poster` 端点
+- 新增 `SetPosterRequest` 请求模型
+
+**文件：backend/app/services/scrape_service.py**
+- 新增 `set_collection_poster(series_name, video_id)` 方法
+- 4层查找策略：COVER_PATH → 番剧根目录 → Season子目录(按NFO匹配) → Season子目录(video_id.jpg)
+- 复制/转换为 poster.jpg，放大到标准尺寸
+- 同步更新 season01-poster.jpg
+
+#### 3. "重新刮削"按钮
+
+**文件：frontend/src/views/Downloads.vue**
+- 番剧视图合集卡片：现有"刮削"按钮改名"重新刮削"
+- 列表视图合集行：右侧新增"重新刮削"按钮
+- 番剧详情弹窗顶部：新增"重新刮削"按钮
+- `handleScrapeSeries` 增加 loading 状态（`isScrapingSingle`, `scrapingSeriesName`）
+
+#### 4. 版本号更新
+
+**文件：backend/app/config.py**
+- APP_VERSION 3.5.1 → 3.5.2
+
+#### 5. 新增图标导入
+
+**文件：frontend/src/views/Downloads.vue**
+- 新增 `Picture`, `ArrowRight` 图标导入
+
+#### 6. 新增样式
+
+**文件：frontend/src/views/Downloads.vue**
+- 可折叠合集分组样式（group-row, episode-row, expand-icon 等）
+- 手机端和平板端响应式适配
+
+### 影响
+- 列表视图不再平铺展示所有下载项，改为按合集分组
+- 用户可以通过"设为合集海报"按钮指定合集封面
+- "重新刮削"按钮方便手动触发刮削
+
 ## 二十八、设置项精简+刮削评分修复 — v3.5.0 → v3.5.1 (2026-07-28)
 
 ### 修改原因
@@ -18,6 +88,10 @@
 - 注释同步更新：`合集海报使用最早上传的剧集海报` → `合集首集海报（使用最早上传的剧集海报）`
 
 #### 2. 刮削评分修复
+
+**文件：backend/app/services/scrape_service.py**
+- `generate_tvshow_nfo()` 评分逻辑从"取第一集评分"改为"取所有集评分的平均值"
+- 遍历 `metadata_list` 收集所有有效的 `like_rate` 换算值，求平均后写入 `<rating>`
 
 **文件：backend/app/services/video_service.py**
 - `get_video_detail()` 方法中新增 `like_rate` 提取逻辑（4策略依次尝试）：

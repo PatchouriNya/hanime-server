@@ -137,7 +137,91 @@
     <div v-if="viewMode === 'list'" class="download-content">
       <el-tabs v-model="activeTab" class="download-tabs">
         <el-tab-pane label="全部下载" name="all">
-          <download-list :filter="'all'" @play-video="handlePlayVideo" />
+          <!-- 合集分组列表 -->
+          <div v-if="isLoadingGroups" class="loading-placeholder">
+            <el-skeleton :rows="5" animated />
+          </div>
+          <template v-else>
+            <div v-if="filteredGroups.length === 0 && ungroupedDownloads.length === 0" class="empty-state">
+              <el-empty description="暂无下载记录" />
+            </div>
+            <div v-else class="collapsible-group-list">
+              <!-- 合集分组 -->
+              <div v-for="group in filteredGroups" :key="group.series_name" class="collapsible-group">
+                <div class="group-row" @click="toggleGroupExpand(group.series_name)">
+                  <div class="group-row-cover">
+                    <img v-if="group.cover_url" :src="getCoverUrl(group.cover_url)" :alt="group.series_name" referrerpolicy="no-referrer" loading="lazy" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }" />
+                    <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
+                    <div v-else-if="shouldBlur && blurMode === 'hide'" class="hide-overlay"><el-icon :size="18"><Hide /></el-icon></div>
+                    <div v-if="!group.cover_url" class="cover-placeholder small"><el-icon :size="18"><VideoPlay /></el-icon></div>
+                  </div>
+                  <el-icon class="expand-icon" :class="{ 'is-expanded': expandedGroups.has(group.series_name) }"><ArrowRight /></el-icon>
+                  <div class="group-row-info">
+                    <h3 class="group-row-title">{{ group.series_name }}</h3>
+                    <div class="group-row-meta">
+                      <span>{{ group.downloads.length }}集</span>
+                      <span>·</span>
+                      <span>{{ formatFileSize(group.total_size) }}</span>
+                      <span v-if="group.downloading_count > 0" class="group-status downloading">{{ group.downloading_count }} 下载中</span>
+                      <span v-else-if="group.failed_count > 0" class="group-status failed">{{ group.failed_count }} 失败</span>
+                      <span v-else class="group-status completed">全部完成</span>
+                    </div>
+                  </div>
+                  <div class="group-row-actions">
+                    <el-button v-if="group.completed_count > 0" size="small" text type="primary" @click.stop="handleScrapeSeries(group.series_name)" :loading="isScrapingSingle && scrapingSeriesName === group.series_name">
+                      <el-icon><Film /></el-icon> 重新刮削
+                    </el-button>
+                  </div>
+                </div>
+                <!-- 展开的集列表 -->
+                <div v-if="expandedGroups.has(group.series_name)" class="group-episodes">
+                  <div v-for="dl in filterDownloadsByTab(group.downloads)" :key="dl.video_id" class="episode-row" @click="handleEpisodeClick(dl)">
+                    <div class="episode-row-cover">
+                      <img v-if="dl.cover_url" :src="getCoverUrl(dl.cover_url)" referrerpolicy="no-referrer" loading="lazy" />
+                      <div v-else class="cover-placeholder small"><el-icon :size="14"><VideoPlay /></el-icon></div>
+                    </div>
+                    <div class="episode-row-info">
+                      <span class="episode-row-title">{{ extractFilename(dl.filename) || dl.title }}</span>
+                      <span class="episode-row-size">{{ formatFileSize(dl.total_size) }}</span>
+                    </div>
+                    <div class="episode-row-actions">
+                      <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
+                      <el-button v-if="dl.status === 'completed'" size="small" text type="primary" @click.stop="handleSetPoster(group.series_name, dl.video_id)" :loading="isSettingPoster === dl.video_id">
+                        <el-icon><Picture /></el-icon> 设为合集海报
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- 未分组 -->
+              <div v-if="ungroupedDownloads.length > 0" class="collapsible-group ungrouped-section">
+                <div class="group-row" @click="toggleGroupExpand('__ungrouped__')">
+                  <el-icon class="expand-icon" :class="{ 'is-expanded': expandedGroups.has('__ungrouped__') }"><ArrowRight /></el-icon>
+                  <div class="group-row-info">
+                    <h3 class="group-row-title ungrouped-title">未分组</h3>
+                    <div class="group-row-meta">
+                      <span>{{ ungroupedDownloadsFiltered.length }}个视频</span>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="expandedGroups.has('__ungrouped__')" class="group-episodes">
+                  <div v-for="dl in ungroupedDownloadsFiltered" :key="dl.video_id" class="episode-row" @click="handleEpisodeClick(dl)">
+                    <div class="episode-row-cover">
+                      <img v-if="dl.cover_url" :src="getCoverUrl(dl.cover_url)" referrerpolicy="no-referrer" loading="lazy" />
+                      <div v-else class="cover-placeholder small"><el-icon :size="14"><VideoPlay /></el-icon></div>
+                    </div>
+                    <div class="episode-row-info">
+                      <span class="episode-row-title">{{ extractFilename(dl.filename) || dl.title }}</span>
+                      <span class="episode-row-size">{{ formatFileSize(dl.total_size) }}</span>
+                    </div>
+                    <div class="episode-row-actions">
+                      <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
         </el-tab-pane>
         <el-tab-pane label="下载中" name="active">
           <download-list :filter="'active'" @play-video="handlePlayVideo" />
@@ -216,7 +300,7 @@
               />
               <div class="group-actions" v-if="group.completed_count > 0">
                 <el-button size="small" text type="primary" @click.stop="handleScrapeSeries(group.series_name)">
-                  <el-icon><Film /></el-icon> 刮削
+                  <el-icon><Film /></el-icon> 重新刮削
                 </el-button>
               </div>
             </div>
@@ -239,6 +323,9 @@
           <el-tag v-if="currentGroup.downloading_count > 0" type="primary">{{ currentGroup.downloading_count }} 下载中</el-tag>
           <el-tag v-if="currentGroup.failed_count > 0" type="danger">{{ currentGroup.failed_count }} 失败</el-tag>
           <el-tag type="info">共 {{ formatFileSize(currentGroup.total_size) }}</el-tag>
+          <el-button size="small" type="primary" @click="handleScrapeSeries(currentGroup.series_name)" :loading="isScrapingSingle">
+            <el-icon><Film /></el-icon> 重新刮削
+          </el-button>
         </div>
         <div class="detail-episodes">
           <div v-for="dl in currentGroup.downloads" :key="dl.video_id" class="episode-item" @click="handleEpisodeClick(dl)">
@@ -257,7 +344,12 @@
               <span class="episode-title">{{ extractFilename(dl.filename) || dl.title }}</span>
               <span class="episode-size">{{ formatFileSize(dl.total_size) }}</span>
             </div>
-            <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
+            <div class="episode-actions">
+              <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
+              <el-button v-if="dl.status === 'completed'" size="small" text type="primary" @click.stop="handleSetPoster(currentGroup.series_name, dl.video_id)" :loading="isSettingPoster === dl.video_id">
+                <el-icon><Picture /></el-icon> 设为合集海报
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -519,7 +611,7 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled, Loading, CircleCheck, CircleClose, Picture, ArrowRight } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
 import { ScrapeApi } from '../api/scrape';
@@ -536,6 +628,7 @@ const {
 const { shouldBlur, mode: blurMode } = useContentSettings();
 
 // 视图状态
+// 视图切换时加载分组数据
 const viewMode = ref<'list' | 'group'>('list');
 const activeTab = ref('all');
 const searchQuery = ref('');
@@ -551,6 +644,27 @@ const groups = ref<any[]>([]);
 const isLoadingGroups = ref(false);
 const groupDetailVisible = ref(false);
 const currentGroup = ref<any>(null);
+
+// v3.5.2: 列表视图可折叠合集
+const expandedGroups = ref<Set<string>>(new Set());
+const isScrapingSingle = ref(false);
+const scrapingSeriesName = ref('');
+const isSettingPoster = ref<string | null>(null);
+
+// 未分组下载项（series_name 为空的）
+const ungroupedDownloads = computed(() => {
+  const allGroupedVideoIds = new Set<string>();
+  for (const group of groups.value) {
+    for (const dl of group.downloads) {
+      allGroupedVideoIds.add(dl.video_id);
+    }
+  }
+  return (downloadStore.allDownloads || []).filter(dl => !allGroupedVideoIds.has(dl.video_id));
+});
+
+const ungroupedDownloadsFiltered = computed(() => {
+  return filterDownloadsByTab(ungroupedDownloads.value);
+});
 
 // 视频播放状态
 const videoPlayerVisible = ref(false);
@@ -647,6 +761,48 @@ const filteredGroups = computed(() => {
 const openGroupDetail = (group: any) => {
   currentGroup.value = group;
   groupDetailVisible.value = true;
+};
+
+// v3.5.2: 展开/收起合集
+const toggleGroupExpand = (seriesName: string) => {
+  const newSet = new Set(expandedGroups.value);
+  if (newSet.has(seriesName)) {
+    newSet.delete(seriesName);
+  } else {
+    newSet.add(seriesName);
+  }
+  expandedGroups.value = newSet;
+};
+
+// v3.5.2: 按 tab 过滤合集内的下载项
+const filterDownloadsByTab = (downloads: any[]) => {
+  if (activeTab.value === 'all') return downloads;
+  const statusMap: Record<string, string[]> = {
+    active: ['downloading', 'paused', 'pending'],
+    completed: ['completed'],
+    failed: ['error', 'cancelled']
+  };
+  const allowedStatuses = statusMap[activeTab.value] || [];
+  return downloads.filter(dl => allowedStatuses.includes(dl.status));
+};
+
+// v3.5.2: 设为合集海报
+const handleSetPoster = async (seriesName: string, videoId: string) => {
+  isSettingPoster.value = videoId;
+  try {
+    const result = await ScrapeApi.setPoster(seriesName, videoId);
+    if (result.status === 'success') {
+      ElMessage.success(result.message);
+      // 刷新分组数据以更新封面
+      if (viewMode.value === 'group') await loadGroups();
+    } else {
+      ElMessage.error(result.message);
+    }
+  } catch (e) {
+    ElMessage.error('设置合集海报失败');
+  } finally {
+    isSettingPoster.value = null;
+  }
 };
 
 // 获取封面URL
@@ -848,6 +1004,8 @@ const handleFixNfo = async () => {
 
 // 单个番剧刮削
 const handleScrapeSeries = async (seriesName: string) => {
+  isScrapingSingle.value = true;
+  scrapingSeriesName.value = seriesName;
   try {
     const result = await ScrapeApi.scrapeSeries({
       series_name: seriesName,
@@ -857,11 +1015,15 @@ const handleScrapeSeries = async (seriesName: string) => {
     });
     if (result.is_success) {
       ElMessage.success(`刮削完成: ${seriesName}`);
+      if (viewMode.value === 'group') await loadGroups();
     } else {
       ElMessage.error(`刮削失败: ${result.error_message || '未知错误'}`);
     }
   } catch (e) {
     ElMessage.error('刮削失败');
+  } finally {
+    isScrapingSingle.value = false;
+    scrapingSeriesName.value = '';
   }
 };
 
@@ -1084,6 +1246,8 @@ const executeMergeSeries = async () => {
 // 初始化
 onMounted(async () => {
   await downloadStore.initializeDownloads();
+  // v3.5.2: 列表视图也需要分组数据
+  await loadGroups();
   downloadStore.startPolling();
   window.addEventListener('resize', handleResize);
 });
@@ -1604,6 +1768,164 @@ onUnmounted(() => {
   color: var(--text-secondary-color);
 }
 
+/* ========== v3.5.2: 列表可折叠合集 ========== */
+.episode-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.collapsible-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.collapsible-group {
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.group-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.group-row-cover {
+  width: 40px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.group-row-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-row-cover .blur-overlay,
+.group-row-cover .hide-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.expand-icon {
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  color: var(--text-secondary-color, #909399);
+}
+
+.expand-icon.is-expanded {
+  transform: rotate(90deg);
+}
+
+.group-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-row-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+.ungrouped-title {
+  font-weight: 400;
+  color: var(--text-secondary-color, #909399);
+}
+
+.group-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary-color, #909399);
+  margin-top: 2px;
+}
+
+.group-row-actions {
+  flex-shrink: 0;
+}
+
+.group-episodes {
+  padding: 0 16px 8px 68px;
+}
+
+.episode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.episode-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.episode-row-cover {
+  width: 30px;
+  height: 42px;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.episode-row-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.episode-row-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.episode-row-title {
+  font-size: 14px;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.episode-row-size {
+  font-size: 12px;
+  color: var(--text-secondary-color, #909399);
+  flex-shrink: 0;
+}
+
+.episode-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .video-player-wrapper {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -1833,6 +2155,9 @@ onUnmounted(() => {
   .download-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .stat-card { min-width: 0; flex: none; }
   .group-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  /* v3.5.2: 平板端可折叠合集适配 */
+  .group-row { padding: 10px 12px; }
+  .group-episodes { padding: 0 12px 8px 56px; }
   /* 批量操作栏手机端垂直布局 */
   .batch-action-bar {
     flex-direction: column;
@@ -1867,6 +2192,17 @@ onUnmounted(() => {
   .right-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
   .group-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .group-title { font-size: 13px; }
+  /* v3.5.2: 手机端可折叠合集适配 */
+  .group-row { padding: 8px 10px; gap: 8px; }
+  .group-row-cover { width: 32px; height: 44px; }
+  .group-row-title { font-size: 14px; }
+  .group-row-meta { font-size: 11px; }
+  .group-episodes { padding: 0 10px 6px 50px; }
+  .episode-row { padding: 6px 8px; gap: 6px; }
+  .episode-row-cover { width: 24px; height: 34px; }
+  .episode-row-title { font-size: 13px; }
+  .episode-row-actions { gap: 4px; }
+  .episode-actions { gap: 4px; }
   .merge-series-name-row {
     flex-direction: column;
     align-items: stretch;
