@@ -93,7 +93,7 @@
                 <el-option label="不翻译（保留原文）" value="off" />
               </el-select>
             </el-form-item>
-            <el-form-item label="合集海报使用第一集海报">
+            <el-form-item label="合集首集海报">
               <el-switch v-model="scrapeForm.posterUseEarliest" />
               <span class="form-hint">开启后合集海报始终使用最早上传的剧集封面；关闭后使用首次下载的那集封面</span>
             </el-form-item>
@@ -352,7 +352,7 @@ const scrapeForm = reactive({
   // v3.3.9 新增：翻译设置
   translatePlot: true,
   translateLang: 'zh-CN' as 'zh-CN' | 'ja' | 'en' | 'off',
-  // v3.5.0 新增：合集海报使用最早上传的剧集海报
+  // v3.5.0 新增：合集首集海报（使用最早上传的剧集海报）
   posterUseEarliest: true
 });
 

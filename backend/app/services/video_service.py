@@ -681,6 +681,44 @@ class VideoService:
                         if not ('次' in child_text and re.search(r'\d{4}-\d{2}-\d{2}', child_text) and len(child_text) < 50):
                             description = child_text
 
+            # v3.5.1: 提取点赞率 like_rate
+            # 详情页的点赞率可能出现在多个位置，按优先级尝试提取
+            like_rate = ""
+            # 策略1: 查找 stats-container / stat-item（与列表页一致的结构）
+            stats_container = soup.find('div', class_=lambda x: x and 'stats-container' in x)
+            if stats_container:
+                stat_items = stats_container.find_all('div', class_=lambda x: x and 'stat-item' in x)
+                if stat_items:
+                    like_text = stat_items[0].get_text(strip=True)
+                    rate_match = re.search(r'(\d+%)', like_text)
+                    if rate_match:
+                        like_rate = rate_match.group(1)
+            # 策略2: 查找包含 thumb_up 的元素
+            if not like_rate:
+                thumb_up_elem = soup.find('div', class_=lambda x: x and 'thumb_up' in str(x) if x else False)
+                if thumb_up_elem:
+                    like_text = thumb_up_elem.get_text(strip=True)
+                    rate_match = re.search(r'(\d+)%', like_text)
+                    if rate_match:
+                        like_rate = rate_match.group(1) + "%"
+            # 策略3: 查找点赞按钮区域的百分比文本（video-info 或 video-action 区域）
+            if not like_rate:
+                like_btn_area = soup.find('div', class_=lambda x: x and ('video-action' in str(x) or 'like-button' in str(x) or 'action-bar' in str(x)) if x else False)
+                if like_btn_area:
+                    like_text = like_btn_area.get_text(strip=True)
+                    rate_match = re.search(r'(\d+)%', like_text)
+                    if rate_match:
+                        like_rate = rate_match.group(1) + "%"
+            # 策略4: 在页面全部文本中，查找点赞相关的百分比（更宽松的兜底）
+            if not like_rate:
+                # 查找包含 "thumb_up" 或 "good" class 的父元素中的百分比
+                for elem in soup.find_all(class_=lambda x: x and ('thumb' in str(x) or 'like' in str(x) or 'good' in str(x))):
+                    like_text = elem.get_text(strip=True)
+                    rate_match = re.search(r'(\d+)%', like_text)
+                    if rate_match:
+                        like_rate = rate_match.group(1) + "%"
+                        break
+
             tags = self._extract_tags(soup)
 
             series_videos = self._extract_series_videos(soup)
@@ -704,6 +742,7 @@ class VideoService:
                 default_video_url=default_video_url,
                 stream_urls=stream_urls_list,
                 view_count=self._parse_views(views_str),
+                like_rate=like_rate,
                 upload_date=upload_date_value,
                 studio=video_studio,
                 video_type=video_type,

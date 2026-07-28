@@ -8,6 +8,26 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.1</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>设置项精简：</strong>「合集海报使用第一集海报」精简为「合集首集海报」，语义不变，表达更简洁。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削评分修复：</strong>刮削出来的评分之前全都是7.6，因为视频详情页解析时没有提取点赞率字段，导致评分始终回退到默认值。现在从详情页中多策略提取点赞率（如 83% → 8.3 分），NFO 评分反映真实数据。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.0</el-tag>
           <span class="version-date">2026-07-28</span>
         </div>
