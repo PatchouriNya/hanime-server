@@ -79,6 +79,12 @@
             <span class="meta-separator">|</span>
             <el-icon><Calendar /></el-icon>
             <span>{{ formatDate(videoDetail.upload_date) }}</span>
+            <template v-if="videoDetail.like_rate">
+              <span class="meta-separator">|</span>
+              <el-icon style="color: var(--color-primary);"><Star /></el-icon>
+              <span class="rating-score">{{ calculateRating }}</span>
+              <span class="like-count-detail">{{ videoDetail.like_rate }} 好评<template v-if="videoDetail.like_count"> ({{ formatViewCount(videoDetail.like_count) }})</template></span>
+            </template>
           </div>
           <div class="video-actions">
             <!-- 视频下载按钮组件 -->
@@ -706,6 +712,39 @@ export default defineComponent({
       return count.toString();
     };
 
+    // 综合评分计算（与后端 VideoService.calculate_rating 算法一致）
+    const calculateRating = computed(() => {
+      if (!videoDetail.value.like_rate) return '';
+      const rateStr = videoDetail.value.like_rate.replace('%', '').replace('％', '');
+      const ratePct = parseFloat(rateStr);
+      if (isNaN(ratePct) || ratePct <= 0) return '';
+
+      const likeCount = videoDetail.value.like_count || 0;
+      const viewCount = videoDetail.value.view_count || 0;
+      const commentCount = videoDetail.value.comment_count || 0;
+
+      // 1. 基础分：好评率非线性映射（幂函数压缩高分区间）
+      const rate = Math.max(0.01, ratePct / 100.0);
+      const baseScore = Math.pow(rate, 0.55) * 8.5;
+
+      // 2. 好评数量加分（对数缩放，封顶+0.8）
+      const volumeBonus = Math.min(0.8, Math.log10(likeCount + 1) / 10.0);
+
+      // 3. 贝叶斯平滑
+      const confidence = Math.min(1.0, Math.log10(likeCount + 1) / 4.0);
+      const priorMean = 6.5;
+      const smoothed = priorMean * (1 - confidence) + (baseScore + volumeBonus) * confidence;
+
+      // 4. 评论活跃度加分（对数缩放，封顶+0.5）
+      const commentBonus = Math.min(0.5, Math.log10(commentCount + 1) / 10.0 * 1.5);
+
+      // 5. 播放量加分（对数缩放，封顶+0.4）
+      const viewBonus = Math.min(0.4, Math.log10(viewCount + 1) / 20.0);
+
+      const final = smoothed + commentBonus + viewBonus;
+      return Math.min(9.9, Math.max(1.0, final)).toFixed(1);
+    });
+
     // 格式化文件大小
     const formatFileSize = (bytes: number): string => {
       if (!bytes || bytes === 0) return '未知大小';
@@ -1161,6 +1200,7 @@ export default defineComponent({
       handleDownload,
       formatDate,
       formatViewCount,
+      calculateRating,
       formatFileSize,
       fetchVideoDetail,
       goToVideo,
@@ -1343,6 +1383,18 @@ export default defineComponent({
 .meta-separator {
   margin: 0 8px;
   color: var(--text-secondary-color);
+}
+
+.like-count-detail {
+  color: var(--text-secondary-color);
+  font-size: 0.85em;
+  margin-left: 2px;
+}
+
+.rating-score {
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 1.05em;
 }
 
 .video-actions {

@@ -468,21 +468,25 @@ class ScrapeService:
         originaltitle_elem = ET.SubElement(root, "originaltitle")
         originaltitle_elem.text = title_text
 
-        # 评分（默认7.6，取所有集评分的平均值）- 对齐参考格式，rating 在 year 之前
-        rating_value = DEFAULT_RATING
+        # 评分（综合算法：好评率+好评数+播放量+评论数，合集取平均值）
         valid_ratings = []
         for meta in metadata_list:
             if meta and hasattr(meta, "like_rate") and meta.like_rate:
                 try:
                     rate_str = str(meta.like_rate).replace("%", "").replace("％", "")
-                    rate_num = int(rate_str) / 10.0
-                    if 0 < rate_num <= 10:
-                        valid_ratings.append(rate_num)
+                    rate_pct = float(rate_str)
+                    like_count = getattr(meta, "like_count", 0) or 0
+                    view_count = getattr(meta, "view_count", 0) or 0
+                    comment_count = getattr(meta, "comment_count", 0) or 0
+                    ep_rating = VideoService.calculate_rating(rate_pct, like_count, view_count, comment_count)
+                    valid_ratings.append(ep_rating)
                 except (ValueError, TypeError):
                     pass
         if valid_ratings:
             avg_rating = sum(valid_ratings) / len(valid_ratings)
             rating_value = f"{avg_rating:.1f}"
+        else:
+            rating_value = DEFAULT_RATING
         rating_elem = ET.SubElement(root, "rating")
         rating_elem.text = rating_value
 
@@ -736,14 +740,17 @@ class ScrapeService:
         title_elem = ET.SubElement(root, "title")
         title_elem.text = title_text
 
-        # 评分（默认7，可从 like_rate 推算）
-        rating_value = "7"
+        # 评分（综合算法）
+        rating_value = DEFAULT_RATING
         if video_detail and hasattr(video_detail, "like_rate") and video_detail.like_rate:
             try:
                 rate_str = str(video_detail.like_rate).replace("%", "").replace("％", "")
-                rate_num = int(rate_str) / 10.0
-                if 0 < rate_num <= 10:
-                    rating_value = f"{rate_num:.1f}"
+                rate_pct = float(rate_str)
+                like_count = getattr(video_detail, "like_count", 0) or 0
+                view_count = getattr(video_detail, "view_count", 0) or 0
+                comment_count = getattr(video_detail, "comment_count", 0) or 0
+                ep_rating = VideoService.calculate_rating(rate_pct, like_count, view_count, comment_count)
+                rating_value = f"{ep_rating:.1f}"
             except (ValueError, TypeError):
                 pass
         rating_elem = ET.SubElement(root, "rating")
@@ -856,14 +863,17 @@ class ScrapeService:
         originaltitle_elem = ET.SubElement(root, "originaltitle")
         originaltitle_elem.text = title_text
 
-        # 评分（对齐参考格式：rating 在 year 之前）
+        # 评分（综合算法）
         rating_value = DEFAULT_RATING
         if video_detail and hasattr(video_detail, "like_rate") and video_detail.like_rate:
             try:
                 rate_str = str(video_detail.like_rate).replace("%", "").replace("％", "")
-                rate_num = int(rate_str) / 10.0
-                if 0 < rate_num <= 10:
-                    rating_value = f"{rate_num:.1f}"
+                rate_pct = float(rate_str)
+                like_count = getattr(video_detail, "like_count", 0) or 0
+                view_count = getattr(video_detail, "view_count", 0) or 0
+                comment_count = getattr(video_detail, "comment_count", 0) or 0
+                ep_rating = VideoService.calculate_rating(rate_pct, like_count, view_count, comment_count)
+                rating_value = f"{ep_rating:.1f}"
             except (ValueError, TypeError):
                 pass
         rating_elem = ET.SubElement(root, "rating")
@@ -3170,6 +3180,15 @@ class ScrapeService:
             if season_poster_path.exists():
                 shutil.copy2(poster_path, season_poster_path)
                 logger.info(f"已同步更新 season01-poster.jpg")
+
+            # 同步更新所有 Season 目录里的 poster.jpg
+            # 绿联 NAS 实际显示的是 Season 目录内的 poster.jpg
+            for sub in series_dir.iterdir():
+                if sub.is_dir() and sub.name.startswith(SEASON_DIR_PREFIX):
+                    season_poster = sub / POSTER_FILENAME
+                    if season_poster.exists():
+                        shutil.copy2(poster_path, season_poster)
+                        logger.info(f"已同步更新 {sub.name}/poster.jpg")
 
             logger.info(f"合集海报已更新: {poster_path} (来源: {source_cover})")
             return {"status": "success", "message": f"合集海报已更新为 video_id={video_id} 的封面"}

@@ -56,27 +56,35 @@ instance.interceptors.response.use(
         }
 
         const status = error.response.status;
+        // 判断当前是否在登录页或正在跳转登录页
+        const isOnLoginPage = window.location.pathname === '/login';
 
         switch (status) {
             case 400:
                 showErrorMessage('请求错误');
                 break;
             case 401:
-                showErrorMessage('登录已过期，请重新登录');
                 localStorage.removeItem('token');
                 localStorage.removeItem('tokenType');
                 localStorage.removeItem('username');
                 localStorage.removeItem('loginTime');
-                if (!isRedirecting) {
+                if (!isRedirecting && !isOnLoginPage) {
                     isRedirecting = true;
+                    showErrorMessage('登录已过期，请重新登录');
                     window.location.href = '/login';
                 }
                 break;
             case 403:
-                showErrorMessage('拒绝访问');
+                // 未登录时在登录页不弹"拒绝访问"，避免用户体验不佳
+                if (!isOnLoginPage) {
+                    showErrorMessage('拒绝访问');
+                }
                 break;
             case 404:
-                showErrorMessage(`请求的资源不存在: ${error.config?.url || ''}`);
+                // 未登录时在登录页不弹 404 错误
+                if (!isOnLoginPage) {
+                    showErrorMessage(`请求的资源不存在: ${error.config?.url || ''}`);
+                }
                 break;
             case 503:
                 // 服务暂时不可用 - 不弹错误提示，静默失败让组件自己处理重试

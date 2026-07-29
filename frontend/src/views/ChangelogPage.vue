@@ -8,6 +8,81 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.6</el-tag>
+          <span class="version-date">2026-07-29</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>综合评分算法：</strong>评分不再简单用好评率除以10（100%=10分太离谱）。新算法综合好评率、好评数量、播放量、评论数四个维度，通过贝叶斯平滑+幂函数压缩+对数缩放计算更有区分度的10分制评分。合集评分取所有集评分的平均值。例如：100%好评+10万赞+1000评论+5000万播放 → 9.8分，100%好评+1.2万赞+143评论+700万播放 → 9.6分，而只有10个好评的100%视频 → 7.2分。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>视频详情页评分显示优化：</strong>好评率旁新增综合评分数字，格式如"8.4 100% 好评 (1.2万)"，评分高亮显示更醒目。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.5.5</el-tag>
+          <span class="version-date">2026-07-29</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>评分刮削提取错误：</strong>之前从视频详情页提取点赞率时，查找的是相关视频的 stats-container 结构，导致提取到的是相关视频的评分而非当前视频。修复后优先从 <code>video-like-btn</code> 按钮提取当前视频自己的点赞率，同时提取点赞人数。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>视频详情页显示好评率：</strong>在观看次数和上传日期旁新增好评率及点赞人数显示，如"100% 好评 (1.2万)"。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.5.4</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>登录页弹出"拒绝访问"错误：</strong>未登录用户进入登录页时，页面组件发起的 API 请求返回 403/404 会弹出错误提示。修复后在登录页静默忽略这些错误，不再打扰用户。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.5.3</el-tag>
+          <span class="version-date">2026-07-28</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>设为合集海报未同步 Season 目录：</strong>点击"设为合集海报"后只更新了根目录的 poster.jpg，但绿联 NAS 实际显示的是 Season 目录内的 poster.jpg，导致海报未实际生效。修复后同时更新所有 Season 目录内的 poster.jpg。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.2</el-tag>
           <span class="version-date">2026-07-28</span>
         </div>

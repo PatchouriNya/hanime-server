@@ -10,6 +10,7 @@ from app.utils.chinese_converter import to_simplified, convert_dict, convert_lis
 import re
 import json
 import asyncio
+import math
 from datetime import datetime
 
 
@@ -588,6 +589,55 @@ class VideoService:
             except ValueError:
                 return 0
 
+    @staticmethod
+    def calculate_rating(like_rate_pct: float, like_count: int, view_count: int, comment_count: int = 0) -> float:
+        """
+        综合评分算法（10分制）
+
+        问题：源站好评率普遍 95-100%，直接转换（100%/10=10分）无区分度。
+
+        算法逻辑：
+        1. 好评率非线性映射为基础分（幂函数压缩高分区间，100% ≠ 10分）
+        2. 好评数量提供置信度 + 加分（数据越多越可信，高分视频额外加分）
+        3. 评论活跃度加分（更多讨论 = 更高参与度）
+        4. 播放量加分（热门作品额外加分，播放量越大说明越受欢迎）
+
+        评分区间示例：
+        - 100%好评 + 10万赞 + 1000评论 + 5000万播放 → ~9.8
+        - 100%好评 + 1万赞 + 143评论 + 700万播放   → ~9.6
+        - 99%好评 + 500赞 + 10评论 + 10万播放       → ~8.4
+        - 95%好评 + 50赞 + 10K播放                   → ~7.5
+        - 100%好评 + 10赞 + 500播放                  → ~7.2（数据少，向均值回归）
+        """
+        # 1. 基础分：好评率的非线性映射
+        # 幂函数 rate^0.55 压缩高分区间
+        # 100% → 8.5, 99% → 8.45, 95% → 8.27, 90% → 8.05, 80% → 7.56, 70% → 7.02
+        rate = max(0.01, like_rate_pct / 100.0)
+        base_score = (rate ** 0.55) * 8.5
+
+        # 2. 好评数量加分（对数缩放，封顶 +0.8）
+        # 10赞 → +0.10, 100赞 → +0.20, 1000赞 → +0.30, 1万赞 → +0.41, 10万赞 → +0.50→0.80
+        volume_bonus = min(0.8, math.log10(like_count + 1) / 10.0)
+
+        # 3. 置信度（贝叶斯平滑）
+        # 数据量越大，越信任基础分；数据量越小，越向先验均值回归
+        # 10赞 → 0.26, 100赞 → 0.46, 1000赞 → 0.69, 10000赞 → 0.92
+        confidence = min(1.0, math.log10(like_count + 1) / 4.0)
+        prior_mean = 6.5  # 先验均值
+        smoothed = prior_mean * (1 - confidence) + (base_score + volume_bonus) * confidence
+
+        # 4. 评论活跃度加分（对数缩放，封顶 +0.5）
+        # 10评论 → +0.15, 100评论 → +0.30, 1000评论 → +0.45
+        comment_bonus = min(0.5, math.log10(comment_count + 1) / 10.0 * 1.5)
+
+        # 5. 播放量加分（对数缩放，封顶 +0.4）
+        # 播放量越大说明越受欢迎，直接正向加分
+        # 500播放 → +0.14, 1万播放 → +0.20, 10万播放 → +0.25, 700万播放 → +0.34, 5000万播放 → +0.39
+        view_bonus = min(0.4, math.log10(view_count + 1) / 20.0)
+
+        final = smoothed + comment_bonus + view_bonus
+        return round(min(9.9, max(1.0, final)), 1)
+
     async def get_video_detail(self, video_id: str) -> VideoDetail:
         """获取视频详情"""
         try:
@@ -681,43 +731,55 @@ class VideoService:
                         if not ('次' in child_text and re.search(r'\d{4}-\d{2}-\d{2}', child_text) and len(child_text) < 50):
                             description = child_text
 
-            # v3.5.1: 提取点赞率 like_rate
-            # 详情页的点赞率可能出现在多个位置，按优先级尝试提取
+            # 提取点赞率 like_rate 和 like_count
+            # 详情页当前视频的点赞率在 <button class="video-like-btn"> 中
+            # 而 stats-container 中的是相关视频的点赞率，不是当前视频的
             like_rate = ""
-            # 策略1: 查找 stats-container / stat-item（与列表页一致的结构）
-            stats_container = soup.find('div', class_=lambda x: x and 'stats-container' in x)
-            if stats_container:
-                stat_items = stats_container.find_all('div', class_=lambda x: x and 'stat-item' in x)
-                if stat_items:
-                    like_text = stat_items[0].get_text(strip=True)
-                    rate_match = re.search(r'(\d+%)', like_text)
-                    if rate_match:
-                        like_rate = rate_match.group(1)
-            # 策略2: 查找包含 thumb_up 的元素
+            like_count = 0
+            # 策略1（优先）: 查找 video-like-btn 按钮，这是当前视频自己的点赞数据
+            like_btn = soup.find('button', class_=lambda x: x and 'video-like-btn' in x)
+            if like_btn:
+                like_text = like_btn.get_text(strip=True)
+                rate_match = re.search(r'(\d+)%', like_text)
+                if rate_match:
+                    like_rate = rate_match.group(1) + "%"
+                count_match = re.search(r'\((\d+)\)', like_text)
+                if count_match:
+                    like_count = int(count_match.group(1))
+            # 策略2: 查找 single-icon 中包含 material-icons-outlined thumb_up 的元素
             if not like_rate:
-                thumb_up_elem = soup.find('div', class_=lambda x: x and 'thumb_up' in str(x) if x else False)
-                if thumb_up_elem:
-                    like_text = thumb_up_elem.get_text(strip=True)
-                    rate_match = re.search(r'(\d+)%', like_text)
-                    if rate_match:
-                        like_rate = rate_match.group(1) + "%"
-            # 策略3: 查找点赞按钮区域的百分比文本（video-info 或 video-action 区域）
+                single_icon = soup.find('div', class_=lambda x: x and 'single-icon' in x)
+                if single_icon:
+                    icon = single_icon.find('i', class_=lambda x: x and 'material-icons-outlined' in x)
+                    if icon and 'thumb_up' in icon.get_text():
+                        parent_text = icon.parent.get_text(strip=True)
+                        rate_match = re.search(r'(\d+)%', parent_text)
+                        if rate_match:
+                            like_rate = rate_match.group(1) + "%"
+                        count_match = re.search(r'\((\d+)\)', parent_text)
+                        if count_match:
+                            like_count = int(count_match.group(1))
+            # 策略3: 兜底 - 查找 stats-container（注意：这可能是相关视频的数据）
             if not like_rate:
-                like_btn_area = soup.find('div', class_=lambda x: x and ('video-action' in str(x) or 'like-button' in str(x) or 'action-bar' in str(x)) if x else False)
-                if like_btn_area:
-                    like_text = like_btn_area.get_text(strip=True)
-                    rate_match = re.search(r'(\d+)%', like_text)
-                    if rate_match:
-                        like_rate = rate_match.group(1) + "%"
-            # 策略4: 在页面全部文本中，查找点赞相关的百分比（更宽松的兜底）
-            if not like_rate:
-                # 查找包含 "thumb_up" 或 "good" class 的父元素中的百分比
-                for elem in soup.find_all(class_=lambda x: x and ('thumb' in str(x) or 'like' in str(x) or 'good' in str(x))):
-                    like_text = elem.get_text(strip=True)
-                    rate_match = re.search(r'(\d+)%', like_text)
-                    if rate_match:
-                        like_rate = rate_match.group(1) + "%"
-                        break
+                stats_container = soup.find('div', class_=lambda x: x and 'stats-container' in x)
+                if stats_container:
+                    stat_items = stats_container.find_all('div', class_=lambda x: x and 'stat-item' in x)
+                    if stat_items:
+                        like_text = stat_items[0].get_text(strip=True)
+                        rate_match = re.search(r'(\d+%)', like_text)
+                        if rate_match:
+                            like_rate = rate_match.group(1)
+
+            # 提取评论数 comment_count
+            comment_count = 0
+            comment_btn = soup.find('button', class_=lambda x: x and 'comment-tablinks' in x)
+            if comment_btn:
+                count_span = comment_btn.find('span', id='tab-comments-count')
+                if count_span:
+                    try:
+                        comment_count = int(count_span.get_text(strip=True))
+                    except ValueError:
+                        pass
 
             tags = self._extract_tags(soup)
 
@@ -743,6 +805,8 @@ class VideoService:
                 stream_urls=stream_urls_list,
                 view_count=self._parse_views(views_str),
                 like_rate=like_rate,
+                like_count=like_count,
+                comment_count=comment_count,
                 upload_date=upload_date_value,
                 studio=video_studio,
                 video_type=video_type,
