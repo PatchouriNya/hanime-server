@@ -8,6 +8,29 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.7</el-tag>
+          <span class="version-date">2026-07-29</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载管理分页：</strong>下载管理页全部视图（列表视图、番剧视图、详情弹窗、下载中/已完成/已失败tab）均支持分页，默认每页5条，可选5/10/20/50条。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>切换菜单偶尔无响应：</strong>401拦截器的 <code>isRedirecting</code> 标志永不重置，导致首次401后后续会话过期无法正确跳转登录页；导航按钮 <code>router.push</code> 无错误处理，重复点击同一路径会抛异常。均已修复。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.6</el-tag>
           <span class="version-date">2026-07-29</span>
         </div>

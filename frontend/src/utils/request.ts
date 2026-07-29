@@ -73,6 +73,8 @@ instance.interceptors.response.use(
                     showErrorMessage('登录已过期，请重新登录');
                     window.location.href = '/login';
                 }
+                // 延迟重置 isRedirecting，避免多个并发 401 重复跳转
+                setTimeout(() => { isRedirecting = false; }, 3000);
                 break;
             case 403:
                 // 未登录时在登录页不弹"拒绝访问"，避免用户体验不佳

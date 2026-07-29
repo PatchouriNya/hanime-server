@@ -73,6 +73,10 @@
           </el-button>
         </div>
         <div class="right-actions">
+          <span class="page-size-label">每页</span>
+          <el-select v-model="pageSize" size="small" style="width: 70px;">
+            <el-option v-for="s in pageSizeOptions" :key="s" :label="s" :value="s" />
+          </el-select>
           <el-button-group>
             <el-button :disabled="!activeDownloads.length" @click="pauseAllDownloads" type="primary" size="small">
               <el-icon><VideoPause /></el-icon> 全部暂停
@@ -142,40 +146,41 @@
             <el-skeleton :rows="5" animated />
           </div>
           <template v-else>
-            <div v-if="filteredGroups.length === 0 && ungroupedDownloads.length === 0" class="empty-state">
+            <div v-if="listAllTotal === 0" class="empty-state">
               <el-empty description="暂无下载记录" />
             </div>
             <div v-else class="collapsible-group-list">
               <!-- 合集分组 -->
-              <div v-for="group in filteredGroups" :key="group.series_name" class="collapsible-group">
-                <div class="group-row" @click="toggleGroupExpand(group.series_name)">
+              <div v-for="item in listAllPaginatedItems" :key="item.type === 'group' ? item.data.series_name : '__ungrouped__'" class="collapsible-group">
+                <template v-if="item.type === 'group'">
+                <div class="group-row" @click="toggleGroupExpand(item.data.series_name)">
                   <div class="group-row-cover">
-                    <img v-if="group.cover_url" :src="getCoverUrl(group.cover_url)" :alt="group.series_name" referrerpolicy="no-referrer" loading="lazy" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }" />
+                    <img v-if="item.data.cover_url" :src="getCoverUrl(item.data.cover_url)" :alt="item.data.series_name" referrerpolicy="no-referrer" loading="lazy" :class="{ 'blurred': shouldBlur && blurMode === 'blur' }" />
                     <div v-if="shouldBlur && blurMode === 'blur'" class="blur-overlay"></div>
                     <div v-else-if="shouldBlur && blurMode === 'hide'" class="hide-overlay"><el-icon :size="18"><Hide /></el-icon></div>
-                    <div v-if="!group.cover_url" class="cover-placeholder small"><el-icon :size="18"><VideoPlay /></el-icon></div>
+                    <div v-if="!item.data.cover_url" class="cover-placeholder small"><el-icon :size="18"><VideoPlay /></el-icon></div>
                   </div>
-                  <el-icon class="expand-icon" :class="{ 'is-expanded': expandedGroups.has(group.series_name) }"><ArrowRight /></el-icon>
+                  <el-icon class="expand-icon" :class="{ 'is-expanded': expandedGroups.has(item.data.series_name) }"><ArrowRight /></el-icon>
                   <div class="group-row-info">
-                    <h3 class="group-row-title">{{ group.series_name }}</h3>
+                    <h3 class="group-row-title">{{ item.data.series_name }}</h3>
                     <div class="group-row-meta">
-                      <span>{{ group.downloads.length }}集</span>
+                      <span>{{ item.data.downloads.length }}集</span>
                       <span>·</span>
-                      <span>{{ formatFileSize(group.total_size) }}</span>
-                      <span v-if="group.downloading_count > 0" class="group-status downloading">{{ group.downloading_count }} 下载中</span>
-                      <span v-else-if="group.failed_count > 0" class="group-status failed">{{ group.failed_count }} 失败</span>
+                      <span>{{ formatFileSize(item.data.total_size) }}</span>
+                      <span v-if="item.data.downloading_count > 0" class="group-status downloading">{{ item.data.downloading_count }} 下载中</span>
+                      <span v-else-if="item.data.failed_count > 0" class="group-status failed">{{ item.data.failed_count }} 失败</span>
                       <span v-else class="group-status completed">全部完成</span>
                     </div>
                   </div>
                   <div class="group-row-actions">
-                    <el-button v-if="group.completed_count > 0" size="small" text type="primary" @click.stop="handleScrapeSeries(group.series_name)" :loading="isScrapingSingle && scrapingSeriesName === group.series_name">
+                    <el-button v-if="item.data.completed_count > 0" size="small" text type="primary" @click.stop="handleScrapeSeries(item.data.series_name)" :loading="isScrapingSingle && scrapingSeriesName === item.data.series_name">
                       <el-icon><Film /></el-icon> 重新刮削
                     </el-button>
                   </div>
                 </div>
                 <!-- 展开的集列表 -->
-                <div v-if="expandedGroups.has(group.series_name)" class="group-episodes">
-                  <div v-for="dl in filterDownloadsByTab(group.downloads)" :key="dl.video_id" class="episode-row" @click="handleEpisodeClick(dl)">
+                <div v-if="expandedGroups.has(item.data.series_name)" class="group-episodes">
+                  <div v-for="dl in filterDownloadsByTab(item.data.downloads)" :key="dl.video_id" class="episode-row" @click="handleEpisodeClick(dl)">
                     <div class="episode-row-cover">
                       <img v-if="dl.cover_url" :src="getCoverUrl(dl.cover_url)" referrerpolicy="no-referrer" loading="lazy" />
                       <div v-else class="cover-placeholder small"><el-icon :size="14"><VideoPlay /></el-icon></div>
@@ -186,15 +191,15 @@
                     </div>
                     <div class="episode-row-actions">
                       <el-tag :type="getStatusType(dl.status)" size="small">{{ getStatusText(dl.status) }}</el-tag>
-                      <el-button v-if="dl.status === 'completed'" size="small" text type="primary" @click.stop="handleSetPoster(group.series_name, dl.video_id)" :loading="isSettingPoster === dl.video_id">
+                      <el-button v-if="dl.status === 'completed'" size="small" text type="primary" @click.stop="handleSetPoster(item.data.series_name, dl.video_id)" :loading="isSettingPoster === dl.video_id">
                         <el-icon><Picture /></el-icon> 设为合集海报
                       </el-button>
                     </div>
                   </div>
                 </div>
-              </div>
-              <!-- 未分组 -->
-              <div v-if="ungroupedDownloads.length > 0" class="collapsible-group ungrouped-section">
+                </template>
+                <!-- 未分组 -->
+                <template v-else>
                 <div class="group-row" @click="toggleGroupExpand('__ungrouped__')">
                   <el-icon class="expand-icon" :class="{ 'is-expanded': expandedGroups.has('__ungrouped__') }"><ArrowRight /></el-icon>
                   <div class="group-row-info">
@@ -219,18 +224,30 @@
                     </div>
                   </div>
                 </div>
+                </template>
+              </div>
+              <!-- 分页 -->
+              <div class="pagination-container" v-if="listAllTotal > pageSize">
+                <el-pagination
+                  v-model:current-page="listAllCurrentPage"
+                  :page-size="pageSize"
+                  :total="listAllTotal"
+                  layout="prev, pager, next"
+                  small
+                  background
+                />
               </div>
             </div>
           </template>
         </el-tab-pane>
         <el-tab-pane label="下载中" name="active">
-          <download-list :filter="'active'" @play-video="handlePlayVideo" />
+          <download-list :filter="'active'" :page-size="pageSize" @play-video="handlePlayVideo" />
         </el-tab-pane>
         <el-tab-pane label="已完成" name="completed">
-          <download-list :filter="'completed'" @play-video="handlePlayVideo" />
+          <download-list :filter="'completed'" :page-size="pageSize" @play-video="handlePlayVideo" />
         </el-tab-pane>
         <el-tab-pane label="已失败" name="failed">
-          <download-list :filter="'failed'" @play-video="handlePlayVideo" />
+          <download-list :filter="'failed'" :page-size="pageSize" @play-video="handlePlayVideo" />
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -252,10 +269,11 @@
         <div v-if="filteredGroups.length === 0" class="empty-state">
           <el-empty description="暂无下载记录" />
         </div>
-        <div v-else class="group-grid">
-          <div 
-            v-for="group in filteredGroups" 
-            :key="group.series_name" 
+        <template v-else>
+        <div class="group-grid">
+          <div
+            v-for="group in groupPaginatedItems"
+            :key="group.series_name"
             class="group-card"
             @click="openGroupDetail(group)"
           >
@@ -306,6 +324,17 @@
             </div>
           </div>
         </div>
+        <div class="pagination-container" v-if="groupTotal > pageSize">
+          <el-pagination
+            v-model:current-page="groupCurrentPage"
+            :page-size="pageSize"
+            :total="groupTotal"
+            layout="prev, pager, next"
+            small
+            background
+          />
+        </div>
+        </template>
       </template>
     </div>
     
@@ -328,11 +357,11 @@
           </el-button>
         </div>
         <div class="detail-episodes">
-          <div v-for="dl in currentGroup.downloads" :key="dl.video_id" class="episode-item" @click="handleEpisodeClick(dl)">
+          <div v-for="dl in detailPaginatedDownloads" :key="dl.video_id" class="episode-item" @click="handleEpisodeClick(dl)">
             <div class="episode-cover">
-              <img 
-                v-if="dl.cover_url" 
-                :src="getCoverUrl(dl.cover_url)" 
+              <img
+                v-if="dl.cover_url"
+                :src="getCoverUrl(dl.cover_url)"
                 referrerpolicy="no-referrer"
                 loading="lazy"
               />
@@ -351,6 +380,16 @@
               </el-button>
             </div>
           </div>
+        </div>
+        <div class="pagination-container" v-if="detailTotal > pageSize">
+          <el-pagination
+            v-model:current-page="detailCurrentPage"
+            :page-size="pageSize"
+            :total="detailTotal"
+            layout="prev, pager, next"
+            small
+            background
+          />
         </div>
       </div>
     </el-dialog>
@@ -606,7 +645,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
@@ -633,6 +672,13 @@ const viewMode = ref<'list' | 'group'>('list');
 const activeTab = ref('all');
 const searchQuery = ref('');
 const isMobile = ref(window.innerWidth <= 480);
+
+// 分页状态
+const pageSize = ref(5);
+const pageSizeOptions = [5, 10, 20, 50];
+const listAllCurrentPage = ref(1);    // 列表视图-全部tab
+const groupCurrentPage = ref(1);      // 番剧视图
+const detailCurrentPage = ref(1);     // 番剧详情弹窗
 
 // 窗口大小变化处理
 const handleResize = () => {
@@ -757,9 +803,59 @@ const filteredGroups = computed(() => {
   return groups.value.filter(g => g.series_name.toLowerCase().includes(q));
 });
 
+// 列表视图-全部tab：合并合集+未分组为统一列表用于分页
+const listAllItems = computed(() => {
+  const items: Array<{ type: 'group' | 'ungrouped'; data: any }> = [];
+  for (const group of filteredGroups.value) {
+    items.push({ type: 'group', data: group });
+  }
+  if (ungroupedDownloads.value.length > 0) {
+    items.push({ type: 'ungrouped', data: ungroupedDownloads.value });
+  }
+  return items;
+});
+
+const listAllPaginatedItems = computed(() => {
+  const start = (listAllCurrentPage.value - 1) * pageSize.value;
+  return listAllItems.value.slice(start, start + pageSize.value);
+});
+
+const listAllTotal = computed(() => listAllItems.value.length);
+
+// 番剧视图分页
+const groupPaginatedItems = computed(() => {
+  const start = (groupCurrentPage.value - 1) * pageSize.value;
+  return filteredGroups.value.slice(start, start + pageSize.value);
+});
+
+const groupTotal = computed(() => filteredGroups.value.length);
+
+// 番剧详情弹窗分页
+const detailPaginatedDownloads = computed(() => {
+  if (!currentGroup.value) return [];
+  const start = (detailCurrentPage.value - 1) * pageSize.value;
+  return currentGroup.value.downloads.slice(start, start + pageSize.value);
+});
+
+const detailTotal = computed(() => currentGroup.value?.downloads?.length || 0);
+
+// 切换页大小时重置页码
+watch(pageSize, () => {
+  listAllCurrentPage.value = 1;
+  groupCurrentPage.value = 1;
+  detailCurrentPage.value = 1;
+});
+
+// 搜索或切换tab时重置页码
+watch(searchQuery, () => {
+  listAllCurrentPage.value = 1;
+  groupCurrentPage.value = 1;
+});
+
 // 打开番剧详情
 const openGroupDetail = (group: any) => {
   currentGroup.value = group;
+  detailCurrentPage.value = 1;
   groupDetailVisible.value = true;
 };
 
@@ -1454,6 +1550,18 @@ onUnmounted(() => {
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.page-size-label {
+  font-size: 13px;
+  color: var(--text-secondary-color);
+  white-space: nowrap;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 8px;
 }
 
 .stats-container {

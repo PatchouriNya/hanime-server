@@ -88,20 +88,20 @@ export default defineComponent({
         // 已在首页，触发刷新推荐
         mitt.emit('refresh-home');
       } else {
-        router.push('/');
+        router.push('/').catch(() => {});
       }
     };
 
     const goToCalendar = () => {
-      router.push('/calendar');
+      router.push('/calendar').catch(() => {});
     };
 
     const goToSearch = () => {
-      router.push('/search');
+      router.push('/search').catch(() => {});
     };
 
     const goToChangelog = () => {
-      router.push('/changelog');
+      router.push('/changelog').catch(() => {});
     };
 
     return {

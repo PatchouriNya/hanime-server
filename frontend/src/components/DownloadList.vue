@@ -40,12 +40,22 @@
     </div>
     
     <div v-else class="download-items">
-      <download-item 
-        v-for="download in sortedAndFilteredDownloads" 
+      <download-item
+        v-for="download in paginatedDownloads"
         :key="download.video_id"
         :download="download"
         @play-video="onPlayVideo"
       />
+      <div class="pagination-container" v-if="totalItems > localPageSize">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="localPageSize"
+          :total="totalItems"
+          layout="prev, pager, next"
+          small
+          background
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -65,6 +75,10 @@ const props = defineProps({
     type: String,
     default: 'all',
     validator: (value: string) => ['all', 'active', 'completed', 'failed'].includes(value)
+  },
+  pageSize: {
+    type: Number,
+    default: 5
   }
 });
 
@@ -78,6 +92,8 @@ const searchQuery = ref('');
 const sortBy = ref('completed_at'); // 默认按完成时间排序
 const sortOrder = ref('desc'); // 默认降序
 const secondarySortBy = ref('created_at'); // 二级排序字段
+const currentPage = ref(1);
+const localPageSize = computed(() => props.pageSize);
 
 // 使用下载状态管理
 const downloadStore = useDownloadStore();
@@ -149,6 +165,18 @@ const sortedAndFilteredDownloads = computed(() => {
   });
   
   return result;
+});
+
+// 分页
+const totalItems = computed(() => sortedAndFilteredDownloads.value.length);
+const paginatedDownloads = computed(() => {
+  const start = (currentPage.value - 1) * localPageSize.value;
+  return sortedAndFilteredDownloads.value.slice(start, start + localPageSize.value);
+});
+
+// 搜索或排序变化时重置页码
+watch([searchQuery, sortBy, sortOrder], () => {
+  currentPage.value = 1;
 });
 
 // 获取排序值
@@ -265,6 +293,12 @@ onMounted(() => {
 .empty-icon {
   color: var(--text-secondary-color);
   opacity: 0.6;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 8px;
 }
 
 .loading-container {
