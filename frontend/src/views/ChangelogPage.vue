@@ -8,6 +8,33 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.8</el-tag>
+          <span class="version-date">2026-07-31</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>显示发行商设置：</strong>新增全局设置开关，可控制视频卡片是否显示发行商信息。关闭后所有页面的视频卡片均不显示发行商，开启则统一显示（设置 > 内容屏蔽 > 显示发行商）。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>搜索/查看更多页面统一卡片布局：</strong>搜索结果和"查看更多"页面合并为统一视频列表，使用横版封面网格卡片布局，替代旧的双列表分隔展示。卡片支持悬停动画、播放图标、发行商信息，视觉与主页一致。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>搜索结果响应式适配：</strong>PC端每行最多4列大卡片（280px），平板端自适应（200px），手机端紧凑布局（150px），各端间距和字号独立优化。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.7</el-tag>
           <span class="version-date">2026-07-29</span>
         </div>

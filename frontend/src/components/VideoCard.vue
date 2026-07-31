@@ -44,7 +44,7 @@
     </div>
     <div class="video-info">
       <div class="video-title" :class="{'single-line': singleLineTitle}">{{ video.title }}</div>
-      <div v-if="isVideoPreview(video) && video.studio" class="video-studio">
+      <div v-if="isVideoPreview(video) && video.studio && shouldShowStudio" class="video-studio">
         {{ video.studio.name }}
       </div>
     </div>
@@ -96,7 +96,7 @@ export default defineComponent({
   },
   emits: ['click'],
   setup(props) {
-    const { shouldBlur, mode } = useContentSettings();
+    const { shouldBlur, mode, shouldShowStudio } = useContentSettings();
     const isFavorited = ref(false);
 
     const isVideoPreview = (video: VideoBase | VideoPreview): video is VideoPreview => {
@@ -148,6 +148,7 @@ export default defineComponent({
       formatViewCount,
       shouldBlur,
       blurMode: mode,
+      shouldShowStudio,
       isFavorited,
       toggleFavorite
     };

@@ -222,28 +222,16 @@
     <div v-if="hasResults" class="search-results-container">
       <h2 class="results-title" v-if="searchQuery || hasActiveFilters">
         搜索结果
+        <span class="results-count" v-if="allVideos.length">共 {{ allVideos.length }} 个</span>
       </h2>
 
-      <!-- 基础视频结果 - 长图样式 -->
-      <div v-if="searchResults.basic_videos && searchResults.basic_videos.length" class="video-grid-basic">
+      <!-- 统一视频网格 -->
+      <div class="video-search-grid">
         <video-card
-            v-for="video in searchResults.basic_videos"
+            v-for="video in allVideos"
             :key="video.video_id"
             :video="video"
-            :custom-class="'video-card basic-video-card'"
-            thumbnail-class="portrait"
-            :show-play-icon="true"
-            @click="goToVideo(video.video_id)"
-        />
-      </div>
-
-      <!-- 详细视频结果 - 宽图样式 -->
-      <div v-if="searchResults.detailed_videos && searchResults.detailed_videos.length" class="video-grid-detailed">
-        <video-card
-            v-for="video in searchResults.detailed_videos"
-            :key="video.video_id"
-            :video="video"
-            :custom-class="'video-card wide-video-card'"
+            :custom-class="'search-video-card'"
             thumbnail-class="landscape"
             :single-line-title="true"
             :show-play-icon="true"
@@ -347,6 +335,13 @@ export default defineComponent({
     });
 
     // 计算属性
+    // v3.5.3: 合并 basic/detailed 为统一列表
+    const allVideos = computed(() => {
+      const basic = searchResults.value?.basic_videos || [];
+      const detailed = searchResults.value?.detailed_videos || [];
+      return [...detailed, ...basic];
+    });
+
     const hasResults = computed(() => {
       return searchResults.value &&
           (searchResults.value.basic_videos.length > 0 ||
@@ -707,6 +702,7 @@ export default defineComponent({
       videoQuality,
       showAdvancedSearch,
       hasResults,
+      allVideos,
       showNoResults,
       hasActiveFilters,
       handleSearch,
@@ -1113,6 +1109,17 @@ export default defineComponent({
   color: var(--text-color);
   border-left: 4px solid var(--primary-color);
   padding-left: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.results-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary-color);
+  border-left: none;
+  padding-left: 0;
 }
 
 .result-section-title {
@@ -1123,20 +1130,37 @@ export default defineComponent({
   padding-left: 10px;
 }
 
-/* 长图视频网格布局 (基础视频) */
-.video-grid-basic {
+/* v3.5.8: 统一视频网格布局 */
+.video-search-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
   margin-bottom: 30px;
 }
 
-/* 宽图视频网格布局 (详细视频) */
-.video-grid-detailed {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
-  margin-bottom: 30px;
+.search-video-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-video-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* 搜索结果提示 */
+.search-hint {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary-color);
+  font-size: 16px;
+}
+
+/* 无限加载 */
+.infinite-loading {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary-color);
+  font-size: 14px;
 }
 
 /* 响应式设计 */
@@ -1158,14 +1182,9 @@ export default defineComponent({
     height: 38px;
     font-size: 14px;
   }
-  .video-grid-basic {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  
-  .video-grid-detailed {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+  .video-search-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
   }
   
   .results-title {
@@ -1201,14 +1220,9 @@ export default defineComponent({
     font-size: 12px;
     padding: 0 8px;
   }
-  .video-grid-basic {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-  
-  .video-grid-detailed {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
+  .video-search-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
   }
   
   .results-title {
@@ -1297,14 +1311,9 @@ export default defineComponent({
     font-size: 24px;
   }
 
-  .video-grid-basic {
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 18px;
-  }
-
-  .video-grid-detailed {
+  .video-search-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 18px;
+    gap: 20px;
   }
 
   .section-title {

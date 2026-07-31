@@ -161,6 +161,10 @@
         </div>
         <el-card class="settings-card" shadow="never">
           <el-form :model="contentForm" label-width="120px">
+            <el-form-item label="显示发行商">
+              <el-switch v-model="contentForm.showStudio" />
+              <span class="form-hint">关闭后视频卡片将不显示发行商信息</span>
+            </el-form-item>
             <el-form-item label="屏蔽敏感图片">
               <el-switch
                 v-model="contentForm.enableBlur"
@@ -325,11 +329,12 @@ const proxyForm = reactive({
   proxyUrl: ''
 });
 
-const { enableBlur: contentEnableBlur, blurMode: contentBlurMode, setEnableBlur, setBlurMode } = useContentSettings();
+const { enableBlur: contentEnableBlur, blurMode: contentBlurMode, shouldShowStudio: contentShowStudio, setEnableBlur, setBlurMode, setShowStudio } = useContentSettings();
 
 const contentForm = reactive({
   enableBlur: true,
-  blurMode: 'blur' as 'blur' | 'hide'
+  blurMode: 'blur' as 'blur' | 'hide',
+  showStudio: true
 });
 
 const showClearDialog = ref(false);
@@ -462,6 +467,7 @@ const loadSettings = async () => {
   
   contentForm.enableBlur = contentEnableBlur.value;
   contentForm.blurMode = contentBlurMode.value;
+  contentForm.showStudio = contentShowStudio.value;
 };
 
 const handleProxyChange = () => {
@@ -477,6 +483,7 @@ const handleBlurChange = () => {
 const saveContentSettings = () => {
   setEnableBlur(contentForm.enableBlur);
   setBlurMode(contentForm.blurMode);
+  setShowStudio(contentForm.showStudio);
   ElMessage.success('设置已保存');
 };
 

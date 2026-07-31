@@ -3,6 +3,8 @@ import request from '../utils/request';
 
 const enableBlur = ref<boolean | null>(null);
 const blurMode = ref<'blur' | 'hide' | null>(null);
+// v3.5.3: 是否显示发行商
+const showStudio = ref<boolean | null>(null);
 let isFetching = false;
 
 const fetchSettings = async () => {
@@ -22,14 +24,22 @@ const fetchSettings = async () => {
       } else {
         blurMode.value = 'blur';
       }
+      // v3.5.3: 读取 showStudio 设置
+      if (settings.showStudio !== undefined) {
+        showStudio.value = settings.showStudio;
+      } else {
+        showStudio.value = true;
+      }
     } else {
       enableBlur.value = true;
       blurMode.value = 'blur';
+      showStudio.value = true;
     }
   } catch (error) {
     console.error('获取用户设置失败:', error);
     enableBlur.value = true;
     blurMode.value = 'blur';
+    showStudio.value = true;
   } finally {
     isFetching = false;
   }
@@ -41,7 +51,8 @@ const saveSettings = async () => {
   try {
     await request.post('/accounts/me/settings', {
       enableBlur: enableBlur.value,
-      blurMode: blurMode.value
+      blurMode: blurMode.value,
+      showStudio: showStudio.value
     });
   } catch (error) {
     console.error('保存用户设置失败:', error);
@@ -64,6 +75,12 @@ watch(blurMode, (newVal, oldVal) => {
   debouncedSave();
 });
 
+// v3.5.3: showStudio 变化时自动保存
+watch(showStudio, (newVal, oldVal) => {
+  if (oldVal === null) return;
+  debouncedSave();
+});
+
 // 监听登录/登出事件，重新获取设置
 if (typeof window !== 'undefined') {
   window.addEventListener('user-login', () => {
@@ -73,6 +90,7 @@ if (typeof window !== 'undefined') {
     // 登出时重置为默认值
     enableBlur.value = true;
     blurMode.value = 'blur';
+    showStudio.value = true;
   });
   // 监听 storage 事件（跨标签页切换登录时同步）
   window.addEventListener('storage', (e) => {
@@ -84,6 +102,7 @@ if (typeof window !== 'undefined') {
         // 登出
         enableBlur.value = true;
         blurMode.value = 'blur';
+        showStudio.value = true;
       }
     }
   });
@@ -98,6 +117,7 @@ export function useContentSettings() {
 
   const shouldBlur = computed(() => enableBlur.value === true);
   const mode = computed(() => (blurMode.value || 'blur') as 'blur' | 'hide');
+  const shouldShowStudio = computed(() => showStudio.value === true);
 
   const setEnableBlur = (val: boolean) => {
     enableBlur.value = val;
@@ -107,6 +127,10 @@ export function useContentSettings() {
     blurMode.value = val;
   };
 
+  const setShowStudio = (val: boolean) => {
+    showStudio.value = val;
+  };
+
   const refreshSettings = () => {
     fetchSettings();
   };
@@ -114,10 +138,12 @@ export function useContentSettings() {
   return {
     shouldBlur,
     mode,
+    shouldShowStudio,
     enableBlur: computed(() => enableBlur.value === true),
     blurMode: computed(() => (blurMode.value || 'blur') as 'blur' | 'hide'),
     setEnableBlur,
     setBlurMode,
+    setShowStudio,
     refreshSettings
   };
 }

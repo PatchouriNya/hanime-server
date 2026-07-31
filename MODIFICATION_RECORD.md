@@ -3,6 +3,63 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 三十、显示发行商设置+搜索/查看更多页面优化 — v3.5.7 → v3.5.8 (2026-07-31)
+
+### 修改原因
+1. 只有主页前面几个分类的视频卡片下面有发行商信息，"查看更多"和搜索页面的视频列表没有发行商
+2. 需要新增全局设置，控制是否显示发行商，全站统一生效
+3. "查看更多"和搜索结果页面视觉不够高级，需要优化设计
+
+### 修改内容
+
+#### 1. 新增"显示发行商"全局设置
+
+**文件：frontend/src/composables/useContentSettings.ts**
+- 新增 `showStudio` 响应式状态变量（`ref<boolean | null>(null)`）
+- `fetchSettings` 中读取 `settings.showStudio`，默认值为 `true`
+- `saveSettings` 中将 `showStudio` 写入后端
+- 新增 `watch(showStudio, ...)` 监听变化自动保存
+- 新增导出：`shouldShowStudio`（computed，只有 `true` 时显示）、`setShowStudio` 方法
+- 登出时重置 `showStudio` 为 `true`
+
+**文件：frontend/src/components/VideoCard.vue**
+- `setup` 中引入 `shouldShowStudio`
+- 模板中发行商显示条件从 `video.studio` 改为 `video.studio && shouldShowStudio`
+- 所有使用 VideoCard 的页面均自动受此设置控制
+
+**文件：frontend/src/views/Settings.vue**
+- 在"内容屏蔽"区块新增"显示发行商"开关（`el-switch`）
+- `contentForm` 新增 `showStudio: true` 字段
+- 初始化时从 `useContentSettings().shouldShowStudio` 同步值
+- 保存时调用 `setShowStudio(contentForm.showStudio)`
+
+#### 2. 搜索/查看更多页面统一卡片布局
+
+**文件：frontend/src/components/SearchPage.vue**
+- 新增 `allVideos` 计算属性，合并 `detailed_videos` 和 `basic_videos` 为统一列表
+- 模板中删除旧的 `video-grid-basic`/`video-grid-detailed` 双列表，改为统一的 `.video-search-grid` 网格
+- 所有卡片统一使用 `video-card` 组件，传入 `thumbnail-class="landscape"`、`single-line-title`、`show-play-icon` 等属性
+- 搜索结果标题新增 `results-count` 显示结果总数
+- 新增 CSS：`.video-search-grid` 网格布局、`.search-video-card` 悬停效果、`.search-hint`、`.infinite-loading`
+- 响应式适配：
+  - PC端（≥769px）：`minmax(280px, 1fr)`，gap 20px
+  - 平板端（≤768px）：`minmax(200px, 1fr)`，gap 12px
+  - 手机端（≤480px）：`minmax(150px, 1fr)`，gap 8px
+- 清理旧的 `video-grid-basic`/`video-grid-detailed` CSS
+
+#### 3. 版本号更新
+
+**文件：backend/app/config.py**
+- APP_VERSION 3.5.7 → 3.5.8
+
+#### 4. 更新日志同步
+
+**文件：CHANGELOG.md**
+- 新增 v3.5.8 条目
+
+**文件：frontend/src/views/ChangelogPage.vue**
+- 新增 v3.5.8 更新日志展示区块
+
 ## 二十九、列表合集分组+设为合集海报+重新刮削按钮 — v3.5.1 → v3.5.2 (2026-07-28)
 
 ### 修改原因
