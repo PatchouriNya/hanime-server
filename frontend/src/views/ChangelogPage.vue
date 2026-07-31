@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.6.1</el-tag>
+          <span class="version-date">2026-07-31</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>WebSocket 错误静默化：</strong>通过 HTTPS 域名访问时，外层反向代理若未配置 WebSocket Upgrade 转发，<code>wss://</code> 连接会失败并在控制台反复报错。现将 WebSocket 的 <code>onerror</code>/<code>onclose</code>/<code>onopen</code> 日志全部静默，最大重连次数从 10 降至 3，重连间隔从 1s 提升至 2s，避免控制台被错误刷屏。根因是外层反向代理（NAS/Cloudflare 等）需配置 <code>proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";</code> 才能转发 WebSocket。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.6.0</el-tag>
           <span class="version-date">2026-07-31</span>
         </div>

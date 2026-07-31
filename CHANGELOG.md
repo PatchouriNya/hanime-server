@@ -1,5 +1,11 @@
 # 更新日志
 
+## v3.6.1 (2026-07-31)
+
+### 优化
+
+1. **WebSocket 错误静默化**：通过 HTTPS 域名访问时，外层反向代理若未配置 WebSocket Upgrade 转发，`wss://` 连接会失败并在控制台反复报错。现将 WebSocket 的 `onerror`/`onclose`/`onopen` 日志全部静默，最大重连次数从 10 降至 3，重连间隔从 1s 提升至 2s，避免控制台被错误刷屏。根因是外层反向代理（NAS/Cloudflare 等）需配置 `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";` 才能转发 WebSocket。
+
 ## v3.6.0 (2026-07-31)
 
 ### 修复

@@ -10,8 +10,8 @@ class DownloadWebSocketManager {
   private static instance: DownloadWebSocketManager;
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
-  private reconnectTimeout = 1000;
+  private maxReconnectAttempts = 3;
+  private reconnectTimeout = 2000;
   private listeners: Set<(data: any) => void> = new Set();
   private isConnecting = false;
   
@@ -60,31 +60,29 @@ class DownloadWebSocketManager {
       this.ws = new WebSocket(wsUrl);
       
       this.ws.onopen = () => {
-        console.log('WebSocket连接已建立');
         this.reconnectAttempts = 0;
         this.isConnecting = false;
       };
-      
+
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           this.notifyListeners(data);
         } catch (error) {
-          console.error('WebSocket消息解析失败:', error);
+          // 消息解析失败，静默处理
         }
       };
-      
-      this.ws.onerror = (error) => {
-        console.error('WebSocket错误:', error);
+
+      this.ws.onerror = () => {
+        // wss:// 连接失败通常是外层反向代理未配置 WebSocket Upgrade，静默处理
         this.isConnecting = false;
       };
-      
+
       this.ws.onclose = () => {
-        console.log('WebSocket连接已关闭');
         this.ws = null;
         this.isConnecting = false;
-        
-        // 尝试重连
+
+        // 尝试重连（降低次数，避免控制台反复报错）
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           setTimeout(() => {
             this.reconnectAttempts++;
@@ -93,9 +91,9 @@ class DownloadWebSocketManager {
         }
       };
     } catch (error) {
-      console.error('创建WebSocket连接失败:', error);
+      // 创建连接失败，静默处理
       this.isConnecting = false;
-      
+
       // 连接失败后稍后重试
       setTimeout(() => {
         this.reconnectAttempts++;
