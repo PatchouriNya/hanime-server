@@ -251,7 +251,7 @@ class VideoService:
                     views_item = stat_items[1]
                     views_text = views_item.get_text(strip=True)
 
-            studio = {}
+            studio = None
             subtitle_div = video_ele.find('div', class_=lambda x: x and 'subtitle' in x)
             studio_ele = subtitle_div.find('a') if subtitle_div else None
             
@@ -321,7 +321,7 @@ class VideoService:
             if views_ele:
                 views_text = views_ele.get_text(strip=True)
 
-            studio = {}
+            studio = None
             studio_ele = video_ele.find('a', class_=lambda x: x and 'card-mobile-user' in x)
             if studio_ele:
                 studio_name = studio_ele.get_text(strip=True)
@@ -457,7 +457,7 @@ class VideoService:
             cover_url = img_elem.get('src', '') if img_elem else ''
 
             # v3.5.9: 提取 studio（发行商）信息
-            studio = {}
+            studio = None
             # 方式1: link_tag 内查找 card-mobile-user 链接
             studio_ele = link_tag.find('a', class_=lambda x: x and 'card-mobile-user' in x)
             # 方式2: 父级容器中查找 subtitle div 内的 <a> 标签

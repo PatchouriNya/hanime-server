@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.6.0</el-tag>
+          <span class="version-date">2026-07-31</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>最新里番/查看更多页面空白：</strong>根因为 <code>_extract_search_result_video</code> 等3处视频提取方法中 <code>studio</code> 初始化为 <code>{}</code>（空字典），而 <code>VideoStudio.name</code> 是必填字段，导致 Pydantic 校验抛出 <code>ValidationError</code>。异常被 <code>try/except</code> 捕获后静默返回 <code>None</code>，所有未提取到发行商的视频都被丢弃，搜索结果为空。修复后将 <code>studio</code> 初始化为 <code>None</code>，未找到发行商时不再阻断视频提取。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.9</el-tag>
           <span class="version-date">2026-07-31</span>
         </div>

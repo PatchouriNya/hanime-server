@@ -1,5 +1,11 @@
 # 更新日志
 
+## v3.6.0 (2026-07-31)
+
+### 修复
+
+1. **最新里番/查看更多页面空白**：根因为 `_extract_search_result_video` 等3处视频提取方法中 `studio` 初始化为 `{}`（空字典），而 `VideoStudio.name` 是必填字段，导致 Pydantic 校验抛出 `ValidationError`。异常被 `try/except` 捕获后静默返回 `None`，所有未提取到发行商的视频都被丢弃，搜索结果为空。修复后将 `studio` 初始化为 `None`，未找到发行商时不再阻断视频提取。
+
 ## v3.5.9 (2026-07-31)
 
 ### 修复
