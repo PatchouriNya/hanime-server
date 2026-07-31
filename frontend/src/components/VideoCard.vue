@@ -44,7 +44,7 @@
     </div>
     <div class="video-info">
       <div class="video-title" :class="{'single-line': singleLineTitle}">{{ video.title }}</div>
-      <div v-if="isVideoPreview(video) && video.studio && shouldShowStudio" class="video-studio">
+      <div v-if="isVideoPreview(video) && video.studio && video.studio.name && shouldShowStudio" class="video-studio">
         {{ video.studio.name }}
       </div>
     </div>

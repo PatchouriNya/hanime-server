@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.5.9</el-tag>
+          <span class="version-date">2026-07-31</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>搜索/查看更多页不显示发行商：</strong>根因为 <code>_extract_search_result_video</code> 只提取了 video_id、cover_url、title 三个字段，未提取 studio。修复后同时提取发行商、时长、点赞率、播放量，搜索/查看更多页卡片信息与首页一致。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.5.8</el-tag>
           <span class="version-date">2026-07-31</span>
         </div>

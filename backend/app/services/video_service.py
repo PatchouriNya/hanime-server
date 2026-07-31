@@ -456,10 +456,78 @@ class VideoService:
             img_elem = link_tag.find('img')
             cover_url = img_elem.get('src', '') if img_elem else ''
 
+            # v3.5.9: 提取 studio（发行商）信息
+            studio = {}
+            # 方式1: link_tag 内查找 card-mobile-user 链接
+            studio_ele = link_tag.find('a', class_=lambda x: x and 'card-mobile-user' in x)
+            # 方式2: 父级容器中查找 subtitle div 内的 <a> 标签
+            if not studio_ele:
+                parent = link_tag.parent
+                if parent:
+                    subtitle_div = parent.find('div', class_=lambda x: x and 'subtitle' in x)
+                    if subtitle_div:
+                        studio_ele = subtitle_div.find('a')
+                    # 方式3: 父级中查找 card-mobile-user 链接
+                    if not studio_ele:
+                        studio_ele = parent.find('a', class_=lambda x: x and 'card-mobile-user' in x)
+
+            if studio_ele:
+                studio_name = studio_ele.get_text(strip=True)
+                if studio_name and "•" in studio_name:
+                    studio_name = studio_name.split("•")[0].strip()
+                studio_url = studio_ele.get('href', '')
+                studio_query = studio_url.split("?")[1] if studio_url and "?" in studio_url else ""
+                studio = VideoStudio(
+                    name=studio_name,
+                    query=studio_query
+                )
+
+            # v3.5.9: 提取时长、点赞率、播放量（让搜索/查看更多页卡片信息完整）
+            duration_text = ""
+            duration_ele = link_tag.find('div', class_=lambda x: x and 'duration' in x and ':' in str(x))
+            if duration_ele:
+                duration_text = duration_ele.get_text(strip=True)
+            if not duration_text:
+                parent = link_tag.parent
+                if parent:
+                    duration_ele = parent.find('div', class_=lambda x: x and 'card-mobile-duration' in x and ':' in str(x))
+                    if duration_ele:
+                        duration_text = duration_ele.get_text(strip=True)
+
+            like_rate = ""
+            like_count = 0
+            like_ele = link_tag.find('div', class_=lambda x: x and 'card-mobile-duration' in x)
+            if not like_ele:
+                parent = link_tag.parent
+                if parent:
+                    like_ele = parent.find('div', class_=lambda x: x and 'card-mobile-duration' in x)
+            if like_ele and 'thumb_up' in str(like_ele):
+                like_text = like_ele.get_text(strip=True)
+                rate_match = re.search(r'(\d+)%', like_text)
+                if rate_match:
+                    like_rate = rate_match.group(1) + "%"
+                count_match = re.search(r'\((\d+)\)', like_text)
+                if count_match:
+                    like_count = int(count_match.group(1))
+
+            views_text = ""
+            views_ele = link_tag.find('div', class_=lambda x: x and 'card-mobile-duration' in x and '次' in str(x))
+            if not views_ele:
+                parent = link_tag.parent
+                if parent:
+                    views_ele = parent.find('div', class_=lambda x: x and 'card-mobile-duration' in x and '次' in str(x))
+            if views_ele:
+                views_text = views_ele.get_text(strip=True)
+
             return VideoPreview(
                 video_id=video_id,
                 cover_url=cover_url,
                 title=video_title,
+                duration=duration_text,
+                view_count=self._parse_views(views_text),
+                like_rate=like_rate,
+                like_count=like_count,
+                studio=studio
             )
 
         except Exception as e:
