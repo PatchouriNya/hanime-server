@@ -296,10 +296,13 @@ class DownloadManager:
                         if response.status_code == 206:
                             accept_ranges = True
                             content_range = response.headers.get("content-range", "")
-                            if content_range and "/*" in content_range:
-                                # 解析总大小
+                            if content_range:
+                                # 解析 Content-Range 中的总大小（bytes 0-8191/445644800）
+                                # 注意：总大小未知时为 "bytes 0-8191/*"，此时不能解析
                                 try:
-                                    total_size = int(content_range.split("/")[1])
+                                    total_str = content_range.rsplit("/", 1)[-1].strip()
+                                    if total_str and total_str != "*":
+                                        total_size = int(total_str)
                                 except ValueError:
                                     pass
                             
@@ -502,6 +505,13 @@ class DownloadManager:
             # 检查是否所有段都已完成
             all_completed = all(segment.status == "completed" for segment in segments)
             if all_completed:
+                # 安全兜底：确保文件大小严格等于 total_size（超出部分丢弃）
+                try:
+                    with open(output_path, "r+b") as f:
+                        f.truncate(total_size)
+                except Exception as e:
+                    logger.warning(f"截断文件失败: {e}")
+
                 total_downloaded = total_size
                 self.active_downloads[video_id].status = DownloadStatus.COMPLETED
                 self.active_downloads[video_id].downloaded = total_downloaded
@@ -532,14 +542,28 @@ class DownloadManager:
                         logger.warning(f"自动刮削触发失败: {e}")
                 
             else:
-                # 如果有段下载失败，整体下载失败
-                self.active_downloads[video_id].status = DownloadStatus.ERROR
-                self.active_downloads[video_id].error_message = "部分段下载失败"
-                await self.update_db(
-                    video_id,
-                    status=DownloadStatus.ERROR,
-                    error_message="部分段下载失败"
+                # 服务器不支持 Range 请求时（所有段均返回 200 而非 206），
+                # 回退到单线程完整下载，避免文件被撑大或内容错位
+                failed_segments = [seg for seg in segments if seg.status != "completed"]
+                range_unsupported = bool(failed_segments) and all(
+                    seg.status == "error"
+                    and seg.error_message
+                    and "服务器不支持分段下载" in seg.error_message
+                    for seg in failed_segments
                 )
+                if range_unsupported:
+                    logger.warning(f"服务器不支持分段下载，回退到单线程下载: {video_id}")
+                    await self.simple_download(video_id, url, output_path, total_size, resume=False)
+                    return
+                else:
+                    # 如果有段下载失败，整体下载失败
+                    self.active_downloads[video_id].status = DownloadStatus.ERROR
+                    self.active_downloads[video_id].error_message = "部分段下载失败"
+                    await self.update_db(
+                        video_id,
+                        status=DownloadStatus.ERROR,
+                        error_message="部分段下载失败"
+                    )
             
             await self.broadcast_progress(video_id)
                 
@@ -613,11 +637,18 @@ class DownloadManager:
                     client = await self.get_http_client(url)
                     
                     async with client.stream("GET", url, headers=headers) as response:
-                        if response.status_code not in [200, 206]:
+                        if response.status_code == 200:
+                            # 服务器忽略了 Range 请求并返回完整文件：
+                            # 若继续按段写入会写错位置并把文件撑大，必须终止该段
+                            raise Exception("服务器不支持分段下载(Range请求被忽略,返回200)")
+                        if response.status_code != 206:
                             raise Exception(f"服务器返回错误状态码: {response.status_code}")
                         
                         segment.status = "downloading"
                         buffer = bytearray()
+                        # 本次尝试需要接收的字节数（断点续传时可能小于整段）
+                        attempt_bytes_total = segment.end - actual_start + 1
+                        bytes_received = 0
                         
                         # 使用aiofiles进行异步文件操作，提高性能
                         async with aiofiles.open(output_path, "r+b") as f:
@@ -632,11 +663,22 @@ class DownloadManager:
                                     # 等待暂停事件
                                     await self.pause_events[video_id].wait()
                                     
+                                    # 只接收本段剩余范围内的字节，超出部分直接丢弃
+                                    bytes_remaining = attempt_bytes_total - bytes_received
+                                    if bytes_remaining <= 0:
+                                        break
+                                    if len(chunk) > bytes_remaining:
+                                        chunk = chunk[:bytes_remaining]
+                                    
                                     buffer.extend(chunk)
+                                    bytes_received += len(chunk)
                                     if len(buffer) >= self.buffer_size:
                                         await f.write(buffer)
                                         segment.downloaded += len(buffer)
                                         buffer.clear()
+                                    
+                                    if bytes_received >= attempt_bytes_total:
+                                        break
                                 
                                 # 写入剩余buffer
                                 if buffer:
@@ -647,12 +689,20 @@ class DownloadManager:
                                 # 处理取消请求
                                 return
                         
+                        # 校验段完整性：收到的字节数必须覆盖整段
+                        segment_total = segment.end - segment.start + 1
+                        if segment.downloaded < segment_total:
+                            raise Exception(
+                                f"段下载不完整: 已下载 {segment.downloaded} 字节, 段大小 {segment_total} 字节"
+                            )
+                        
                         # 段下载完成
                         segment.status = "completed"
                         logger.success(f"视频 {video_id} 段 {segment_index} 下载完成")
                         return
                 except Exception as e:
                     retries += 1
+                    segment.error_message = str(e)
                     # 使用指数退避策略进行重试
                     backoff_time = min(30, backoff_time * 1.5)  # 逐渐增加等待时间，但不超过30秒
                     logger.warning(f"视频 {video_id} 段 {segment_index} 下载失败 (尝试 {retries}/{max_retries}, 等待 {backoff_time:.1f}s): {str(e)}")
@@ -662,27 +712,17 @@ class DownloadManager:
                     await asyncio.sleep(backoff_time)  # 使用指数退避等待
     
     async def simple_download(self, video_id: str, url: str, output_path, total_size: int, resume: bool = False):
-        """使用单线程下载（用于不支持范围请求的服务器），优化性能和稳定性"""
+        """使用单线程下载（用于不支持范围请求的服务器），优化性能和稳定性
+        
+        修复说明 (v3.6.2):
+        1. 按 total_size 封顶：只接收不超过声明大小的字节，超出部分直接丢弃并停止，
+           避免服务器多传数据时文件无限增长（如 400M 视频被下载到 440M 且不停）。
+        2. 每次重试重置已下载计数，避免进度跨重试累积虚高。
+        3. 断点续传时若服务器忽略 Range（返回 200），自动回退为完整下载，
+           避免把从头开始的数据追加到已有文件末尾导致文件损坏/偏大。
+        """
         last_update_time = asyncio.get_event_loop().time()
         start_time = asyncio.get_event_loop().time()
-        last_downloaded = 0
-        downloaded = 0
-        mode = "ab" if resume else "wb"
-        
-        if resume:
-            downloaded = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-            last_downloaded = downloaded
-            
-        await self.broadcast_progress(video_id)
-
-        # 设置下载范围和优化的请求头
-        headers = {
-            "Connection": "keep-alive",
-            "Accept-Encoding": "identity"  # 避免压缩导致的问题
-        }
-        
-        if resume and downloaded > 0:
-            headers["Range"] = f"bytes={downloaded}-"
         
         # 重试机制
         max_retries = self.max_retries
@@ -691,16 +731,76 @@ class DownloadManager:
         
         while retries <= max_retries:
             try:
+                # 每次尝试都重新初始化计数，避免跨重试累积
+                attempt_resume = resume
+                attempt_downloaded = 0
+                if attempt_resume and os.path.exists(output_path):
+                    attempt_downloaded = os.path.getsize(output_path)
+                last_downloaded = attempt_downloaded
+                
+                # 设置下载范围和优化的请求头
+                attempt_headers = {
+                    "Connection": "keep-alive",
+                    "Accept-Encoding": "identity"  # 避免压缩导致的问题
+                }
+                attempt_mode = "ab" if attempt_resume else "wb"
+                if attempt_resume and attempt_downloaded > 0:
+                    attempt_headers["Range"] = f"bytes={attempt_downloaded}-"
+                
+                self.active_downloads[video_id].downloaded = attempt_downloaded
+                await self.broadcast_progress(video_id)
+                
+                # 断点续传时若已有文件大小已达到/超过声明大小：
+                # 截断到声明大小并直接视为完成，避免带着超大的旧文件反复重试
+                if attempt_resume and total_size > 0 and attempt_downloaded >= total_size:
+                    with open(output_path, "r+b") as f:
+                        f.truncate(total_size)
+                    self.active_downloads[video_id].status = DownloadStatus.COMPLETED
+                    self.active_downloads[video_id].downloaded = total_size
+                    completed_at = datetime.now()
+                    await self.update_db(
+                        video_id,
+                        status=DownloadStatus.COMPLETED,
+                        downloaded=total_size,
+                        total_size=total_size,
+                        completed_at=completed_at
+                    )
+                    self.active_downloads[video_id].completed_at = completed_at
+                    await self.broadcast_progress(video_id)
+                    logger.info(f"断点续传时文件已完整(大小 {total_size} 字节)，截断后标记完成: {video_id}")
+                    return
+                
                 # 获取复用的HTTP客户端
                 client = await self.get_http_client(url)
                 
-                async with client.stream("GET", url, headers=headers) as response:
+                async with client.stream("GET", url, headers=attempt_headers) as response:
+                    if response.status_code == 200 and attempt_resume and "Range" in attempt_headers:
+                        # 服务器忽略了 Range 请求：无法续传，改为从头完整下载
+                        logger.warning(f"服务器不支持断点续传，重新完整下载: {video_id}")
+                        attempt_resume = False
+                        attempt_downloaded = 0
+                        last_downloaded = 0
+                        attempt_mode = "wb"
+                    
                     if response.status_code not in [200, 206]:
                         raise Exception(f"服务器返回错误状态码: {response.status_code}")
                     
+                    # 若 GET 响应声明的 Content-Length 比 HEAD 探测值更大，以实际数据源为准，
+                    # 避免因 HEAD 探测值偏小导致反复"下载不完整"重试
+                    if response.status_code == 200:
+                        response_content_length = response.headers.get("content-length", "")
+                        if response_content_length.isdigit() and int(response_content_length) > total_size:
+                            logger.warning(
+                                f"GET响应Content-Length({response_content_length})大于HEAD探测值({total_size}), 以GET为准"
+                            )
+                            total_size = int(response_content_length)
+                            self.active_downloads[video_id].total_size = total_size
+                            await self.update_db(video_id, total_size=total_size)
+                    
                     # 使用异步文件操作提高性能
-                    async with aiofiles.open(output_path, mode) as f:
+                    async with aiofiles.open(output_path, attempt_mode) as f:
                         buffer = bytearray()
+                        bytes_received = 0
                         try:
                             async for chunk in response.aiter_bytes(self.chunk_size):
                                 # 检查是否被取消
@@ -722,16 +822,25 @@ class DownloadManager:
                                 # 等待暂停事件
                                 await self.pause_events[video_id].wait()
                                 
+                                # 按 total_size 封顶：只接收剩余所需字节，超出部分直接丢弃
+                                if total_size > 0:
+                                    bytes_remaining = total_size - attempt_downloaded - bytes_received
+                                    if bytes_remaining <= 0:
+                                        break
+                                    if len(chunk) > bytes_remaining:
+                                        chunk = chunk[:bytes_remaining]
+                                
                                 buffer.extend(chunk)
+                                bytes_received += len(chunk)
                                 if len(buffer) >= self.buffer_size:
                                     await f.write(buffer)
-                                    downloaded += len(buffer)
                                     buffer.clear()
                                 
                                 # 计算下载速度并使用节流更新进度
                                 current_time = asyncio.get_event_loop().time()
                                 time_diff = current_time - last_update_time
                                 if time_diff >= self.progress_update_interval:
+                                    downloaded = attempt_downloaded + bytes_received
                                     speed = (downloaded - last_downloaded) / time_diff
                                     self.active_downloads[video_id].speed = speed
                                     self.active_downloads[video_id].downloaded = downloaded
@@ -745,11 +854,16 @@ class DownloadManager:
                                     last_update_time = current_time
                                     last_downloaded = downloaded
                                     await self.broadcast_progress(video_id)
+                                
+                                # 已收到声明大小的全部字节，立即停止，不再读取多余数据
+                                if total_size > 0 and bytes_received >= total_size - attempt_downloaded:
+                                    break
                             
                             # 写入剩余buffer
                             if buffer:
                                 await f.write(buffer)
-                                downloaded += len(buffer)
+                            
+                            downloaded = attempt_downloaded + bytes_received
 
                             # 最后一次更新进度
                             self.active_downloads[video_id].downloaded = downloaded
@@ -762,6 +876,13 @@ class DownloadManager:
                     # 验证下载是否完整
                     if total_size > 0 and downloaded != total_size:
                         raise Exception(f"下载不完整: 已下载 {downloaded} 字节，总大小 {total_size} 字节")
+                    
+                    # 安全兜底：将文件截断到实际下载大小，丢弃任何多余字节
+                    try:
+                        with open(output_path, "r+b") as f:
+                            f.truncate(downloaded)
+                    except Exception as e:
+                        logger.warning(f"截断文件失败: {e}")
                     
                     # 完成下载
                     self.active_downloads[video_id].status = DownloadStatus.COMPLETED

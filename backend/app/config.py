@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "3.6.1")
+    APP_VERSION: str = os.getenv("APP_VERSION", "3.6.2")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))

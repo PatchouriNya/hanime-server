@@ -20,6 +20,7 @@ class DownloadSegment(BaseModel):
     end: int
     downloaded: int = 0
     status: str = DownloadStatus.PENDING
+    error_message: Optional[str] = None
 
 
 class DownloadRequest(BaseModel):

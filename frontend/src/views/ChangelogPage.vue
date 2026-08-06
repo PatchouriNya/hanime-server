@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v3.6.2</el-tag>
+          <span class="version-date">2026-08-07</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载超出视频实际大小且一直不停止：</strong>下载番剧时进度会超过视频真实大小（如 400M 视频下载到 440M 仍在继续）。根因是下载循环没有按声明大小 <code>total_size</code> 封顶——当服务器多传数据（或该链接无限推流）时，单线程下载和分段下载都会把多余字节一直写入文件；且单线程下载重试时不重置已下载计数，导致进度跨重试持续累积虚高。修复后：单线程/分段下载均按声明大小封顶，超出字节直接丢弃并立即停止；重试时计数重置；断点续传被服务器忽略 Range 时自动回退完整下载；旧文件超大小自动截断；<code>Content-Range</code> 解析逻辑修正。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.6.1</el-tag>
           <span class="version-date">2026-07-31</span>
         </div>
