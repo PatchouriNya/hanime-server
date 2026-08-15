@@ -50,7 +50,6 @@
 <script lang="ts">
 import {defineComponent, ref, onMounted, onUnmounted, nextTick, watch, computed} from 'vue';
 import {StreamUrl} from '../types/video';
-import {VideoApi} from '../api/video';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
 import { useContentSettings } from '../composables/useContentSettings';
@@ -173,12 +172,10 @@ export default defineComponent({
     };
 
     // 获取流式URL
+    // v4.0.1 回退：恢复直接使用源站 CDN URL（不走后端流代理），与 v3.x 行为一致
+    // 流代理（/videos/stream/proxy）在部分网络环境下仍存在兼容问题，保留端点但不再默认使用
     const getStreamUrl = (url: string) => {
-      if (!url) return '';
-      // 本地已下载文件（相对路径，如 /api/downloads/file/:id）直接使用，不经过流代理
-      if (url.startsWith('/')) return url;
-      // v4.0.0: 完整 URL 走后端流代理（/videos/stream/proxy），解决 CDN 直连被墙/失效问题
-      return VideoApi.getStreamUrl(url);
+      return url;
     };
 
     // 初始化Plyr播放器

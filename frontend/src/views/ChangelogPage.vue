@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="warning" size="large">v4.0.2</el-tag>
+          <span class="version-date">2026-08-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">回退</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>在线播放回退为直连：</strong>播放器恢复直接使用源站 CDN 视频 URL（与 v3.x 行为一致），解决流代理在部分网络环境下仍无法播放的问题。流代理端点保留，后续如需可再启用。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v4.0.1</el-tag>
           <span class="version-date">2026-08-16</span>
         </div>

@@ -3,6 +3,31 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 三十五、在线播放回退为直连源站 URL — v4.0.1 → v4.0.2 (2026-08-16)
+
+### 修改原因
+v4.0.1 修复了流代理的客户端生命周期问题（Format error 根因），但用户反馈在线播放仍然失败，要求回退为原来的直连方式。v3.x 时代播放器直接使用源站 CDN 视频 URL，使用正常。
+
+### 根因分析
+v4.0.0 引入的流代理通道在用户的网络环境下仍存在兼容问题（可能涉及源站 CDN 对代理请求的 Referer/Origin/TLS 指纹等校验，或代理链路本身的稳定性），多次修复后仍无法保证播放稳定。考虑到直连方式此前一直使用正常，决定回退。
+
+### 修改内容
+**文件：frontend/src/components/VideoPlayer.vue**
+- `getStreamUrl` 回退为直接返回原始 URL（不再调用 `VideoApi.getStreamUrl` 走 `/videos/stream/proxy`），与 v3.x 行为完全一致。
+- 移除不再使用的 `VideoApi` 导入。
+
+**说明**：后端流代理端点 `/api/videos/stream/proxy` 保留（含 v4.0.1 的生命周期修复），作为可选能力，后续如需启用只需改回前端调用。
+
+**文件：backend/app/config.py**
+- APP_VERSION 4.0.1 → 4.0.2
+
+**文件：CHANGELOG.md / frontend/src/views/ChangelogPage.vue**
+- 新增 v4.0.2 条目
+
+### 验证
+- ✅ 前端 vue-tsc 类型检查 0 错误
+- 播放行为与 v3.x 一致（浏览器直连源站 CDN）
+
 ## 三十四、流代理播放失败修复 — v4.0.0 → v4.0.1 (2026-08-16)
 
 ### 修改原因
