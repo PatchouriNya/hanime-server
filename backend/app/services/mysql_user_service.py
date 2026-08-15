@@ -71,6 +71,151 @@ class MySQLUserService:
             logger.error(f"MySQL 验证用户失败: {e}")
             raise
 
+    # ---- v4.0.0: 用户角色与管理（管理员功能） ----
+
+    async def get_user_type(self, ld_user_id: int) -> Optional[int]:
+        """获取用户角色（10=普通用户, 20=管理员）"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT user_type FROM ld_user WHERE id = %s", (ld_user_id,)
+                    )
+                    row = await cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            logger.error(f"MySQL 获取用户角色失败: {e}")
+            return None
+
+    async def get_user_type_by_username(self, username: str) -> Optional[int]:
+        """按用户名获取用户角色"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT user_type FROM ld_user WHERE username = %s AND is_deleted = 0",
+                        (username,)
+                    )
+                    row = await cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            logger.error(f"MySQL 获取用户角色失败: {e}")
+            return None
+
+    async def list_users(self) -> List[Dict[str, Any]]:
+        """获取所有用户列表（管理员）"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id, username, user_type, status, created_at FROM ld_user WHERE is_deleted = 0 ORDER BY created_at"
+                    )
+                    rows = await cursor.fetchall()
+            return [
+                {"id": r[0], "username": r[1], "user_type": r[2], "status": r[3],
+                 "created_at": r[4].strftime('%Y-%m-%dT%H:%M:%S') if isinstance(r[4], datetime) else str(r[4])}
+                for r in rows
+            ]
+        except Exception as e:
+            logger.error(f"MySQL 获取用户列表失败: {e}")
+            return []
+
+    async def create_user(self, username: str, password: str, user_type: int = 10) -> bool:
+        """创建用户（管理员）"""
+        try:
+            password_hash = pbkdf2_sha256.hash(password)
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO ld_user (username, password_hash, user_type, status) VALUES (%s, %s, %s, 10)",
+                        (username, password_hash, user_type)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 创建用户失败: {e}")
+            return False
+
+    async def delete_user(self, ld_user_id: int) -> bool:
+        """软删除用户（管理员）"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE ld_user SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = %s",
+                        (ld_user_id,)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 删除用户失败: {e}")
+            return False
+
+    async def reset_user_password(self, ld_user_id: int, new_password: str) -> bool:
+        """重置用户密码（管理员）"""
+        try:
+            new_hash = pbkdf2_sha256.hash(new_password)
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE ld_user SET password_hash = %s WHERE id = %s",
+                        (new_hash, ld_user_id)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 重置用户密码失败: {e}")
+            return False
+
+    async def update_user_status(self, ld_user_id: int, user_status: int) -> bool:
+        """更新用户状态（管理员）：10=正常, 20=禁用, 30=封禁"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE ld_user SET status = %s WHERE id = %s",
+                        (user_status, ld_user_id)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 更新用户状态失败: {e}")
+            return False
+
+    async def update_user_type(self, ld_user_id: int, user_type: int) -> bool:
+        """更新用户角色（管理员）：10=普通用户, 20=管理员"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE ld_user SET user_type = %s WHERE id = %s",
+                        (user_type, ld_user_id)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 更新用户角色失败: {e}")
+            return False
+
+    async def get_user_id_by_username(self, username: str) -> Optional[int]:
+        """按用户名获取用户ID"""
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT id FROM ld_user WHERE username = %s AND is_deleted = 0",
+                        (username,)
+                    )
+                    row = await cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            logger.error(f"MySQL 获取用户ID失败: {e}")
+            return None
+
     async def change_password(self, ld_user_id: int, old_password: str, new_password: str) -> bool:
         """修改密码"""
         try:
@@ -543,6 +688,68 @@ class MySQLUserService:
             return True
         except Exception as e:
             logger.error(f"MySQL 保存用户设置失败: {e}")
+            return False
+
+    # ---- 番剧追更订阅（v4.0.0） ----
+
+    async def add_subscription(self, ld_user_id: int, series_name: str) -> bool:
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        """INSERT INTO hanime_user_subscription (ld_user_id, series_name)
+                           VALUES (%s, %s)
+                           ON DUPLICATE KEY UPDATE created_at = CURRENT_TIMESTAMP""",
+                        (ld_user_id, series_name)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 添加订阅失败: {e}")
+            return False
+
+    async def remove_subscription(self, ld_user_id: int, series_name: str) -> bool:
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "DELETE FROM hanime_user_subscription WHERE ld_user_id = %s AND series_name = %s",
+                        (ld_user_id, series_name)
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"MySQL 移除订阅失败: {e}")
+            return False
+
+    async def get_subscriptions(self, ld_user_id: int) -> List[str]:
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT series_name FROM hanime_user_subscription WHERE ld_user_id = %s ORDER BY created_at DESC",
+                        (ld_user_id,)
+                    )
+                    rows = await cursor.fetchall()
+            return [r[0] for r in rows]
+        except Exception as e:
+            logger.error(f"MySQL 获取订阅列表失败: {e}")
+            return []
+
+    async def is_subscribed(self, ld_user_id: int, series_name: str) -> bool:
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT COUNT(*) FROM hanime_user_subscription WHERE ld_user_id = %s AND series_name = %s",
+                        (ld_user_id, series_name)
+                    )
+                    row = await cursor.fetchone()
+            return row[0] > 0
+        except Exception as e:
+            logger.error(f"MySQL 检查订阅状态失败: {e}")
             return False
 
 

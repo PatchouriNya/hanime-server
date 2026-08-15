@@ -31,7 +31,7 @@ class Settings(BaseModel):
     # 基础设置
     APP_NAME: str = os.getenv("APP_NAME", "HanimeViewer")
     APP_DESCRIPTION: str = os.getenv("APP_DESCRIPTION", "HanimeViewer API服务")
-    APP_VERSION: str = os.getenv("APP_VERSION", "3.6.2")
+    APP_VERSION: str = os.getenv("APP_VERSION", "4.0.0")
     RELOAD: bool = os.getenv("RELOAD", "False").lower() in ("true", "1", "t")
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
@@ -69,6 +69,9 @@ class Settings(BaseModel):
     USE_DOWNLOAD_PROXY: bool = os.getenv("USE_DOWNLOAD_PROXY", "False").lower() in ("true", "1", "t")
     DOWNLOAD_PROXY_URL: Optional[str] = os.getenv("DOWNLOAD_PROXY_URL", os.getenv("PROXY_URL"))
 
+    # v4.0.0: 同时下载的最大视频数（超出排队等待，避免打满带宽）
+    MAX_CONCURRENT_DOWNLOADS: int = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
+
     CLOUDFLARE_BYPASS_SERVICE_URL: str = os.getenv("CLOUDFLARE_BYPASS_SERVICE_URL", "")
 
     # 刮削设置（NFO元数据生成，使绿联NAS影视中心能识别）
@@ -95,6 +98,17 @@ class Settings(BaseModel):
     MYSQL_USER: str = os.getenv("MYSQL_USER", "root")
     MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "")
     MYSQL_DATABASE: str = os.getenv("MYSQL_DATABASE", "librarydream")
+
+    # MinIO 对象存储设置（v4.0.0 新增：封面/头像等图片存储）
+    # 默认与 MySQL 同主机，端口 9001，账号密码 minioadmin
+    USE_MINIO: bool = os.getenv("USE_MINIO", "False").lower() in ("true", "1", "t")
+    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9001")
+    MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "hanime")
+    # 封面/头像等图片的 MinIO 对象前缀
+    MINIO_COVER_PREFIX: str = os.getenv("MINIO_COVER_PREFIX", "covers")
+    MINIO_AVATAR_PREFIX: str = os.getenv("MINIO_AVATAR_PREFIX", "avatars")
 
     # 日志设置
     LOG_PATH: Path = Path(os.getenv("LOG_PATH", str(backend_root / "logs")))

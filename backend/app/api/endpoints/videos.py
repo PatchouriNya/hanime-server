@@ -120,7 +120,11 @@ async def stream_video(url: str, request: Request = None):
     range_header = request.headers.get("range")
 
     try:
-        async with httpx.AsyncClient(proxies=proxy) as client:
+        # v4.0.0: 使用 proxy= 参数（httpx 0.26+ 写法，proxies= 在 0.28 已移除）
+        client_kwargs = {}
+        if proxy:
+            client_kwargs["proxy"] = proxy
+        async with httpx.AsyncClient(**client_kwargs) as client:
             # 如果有Range头，则将其转发到目标服务器
             headers = {}
             if range_header:

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends, HTTPException
+from fastapi.responses import FileResponse, Response
 from app.services.download_service import download_manager
 from app.models.download import DownloadRequest, DownloadAction
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.config import settings, logger
-from fastapi import APIRouter, Query, Depends
-from fastapi.responses import FileResponse
 from app.utils.auth import get_current_user, verify_token
 import os
 import re
@@ -25,12 +24,13 @@ def _extract_series_name(title: str) -> str:
         return title
 
     # 去掉常见的编号后缀模式
+    # 注意顺序：Season N 必须排在纯数字之前，否则 "某番剧 Season 2" 会先被 \d+$ 剥成 "某番剧 Season"
     patterns = [
         r'[・\s][赤青黒白紅緑黄紫]$',              # 不潔之星・赤 -> 不潔之星
         r'\s*[第ⅠⅡⅢ]\s*$',                      # 某番剧 第Ⅱ -> 某番剧
+        r'\s*Season\s*\d+$',                      # 某番剧 Season 2 -> 某番剧
         r'\s*\d+$',                               # 某番剧 2 -> 某番剧
         r'\s*第\d+[期章部話]$',                    # 某番剧 第2期 -> 某番剧
-        r'\s*Season\s*\d+$',                      # 某番剧 Season 2 -> 某番剧
         r'[・\-]\s*\d+$',                         # 某番剧・2 -> 某番剧
     ]
 
@@ -138,20 +138,20 @@ async def handle_download_action(action: DownloadAction, user: dict = Depends(ge
     result = {"status": "error", "message": "无效的操作"}
 
     if action_type == "pause":
-        success = await download_manager.pause_download(video_id)
+        success = await download_manager.pause_download(video_id, username=user["username"])
         result = {"status": "success" if success else "error", "message": "暂停操作处理完成" if success else "操作失败"}
     elif action_type == "resume":
-        success = await download_manager.resume_download(video_id)
+        success = await download_manager.resume_download(video_id, username=user["username"])
         result = {"status": "success" if success else "error", "message": "继续操作处理完成" if success else "操作失败"}
     elif action_type == "cancel":
-        success = await download_manager.cancel_download(video_id)
+        success = await download_manager.cancel_download(video_id, username=user["username"])
         result = {"status": "success" if success else "error", "message": "取消操作处理完成" if success else "操作失败"}
     elif action_type == "retry":
         success = await download_manager.retry_download(video_id)
         result = {"status": "success" if success else "error", "message": "重试操作处理完成" if success else "操作失败"}
     elif action_type == "delete":
-        # 支持可选的 delete_files 参数（通过 action 字段传递，格式为 "delete" 或 "delete_no_files"）
-        delete_files = action.delete_files if hasattr(action, 'delete_files') else True
+        # delete_files 控制是否删除源文件（视频 + 刮削文件），默认 True
+        delete_files = action.delete_files
         success = await download_manager.delete_download(video_id, user["username"], delete_files=delete_files)
         result = {"status": "success" if success else "error", "message": "删除操作处理完成" if success else "操作失败"}
     elif action_type == "clear_completed":
@@ -406,6 +406,20 @@ async def download_cover(
                 pass
 
         file_size = len(content)
+
+        # v4.0.0: 封面写入本地后同步上传 MinIO（云存储模式）
+        try:
+            from app.services.minio_service import minio_service
+            if minio_service.enabled:
+                jpg_source = covers_dir / f"{video_id}.jpg"
+                if jpg_source.exists():
+                    await minio_service.upload_file(
+                        settings.MINIO_COVER_PREFIX, f"{video_id}.jpg",
+                        jpg_source, content_type="image/jpeg"
+                    )
+        except Exception as e:
+            logger.warning(f"封面上传 MinIO 失败: {e}")
+
         if is_poster:
             message = f"竖版海报已保存到 {covers_dir}"
             logger.info(f"海报已下载: {video_id}, 大小: {file_size}字节, URL: {cover_url}")
@@ -438,6 +452,16 @@ async def get_cover(video_id: str, token: Optional[str] = Query(None)):
             detail="缺少认证 token，请通过 ?token=xxx 参数提供",
         )
     cover_filename = f"{video_id}.jpg"
+
+    # 0. v4.0.0: 优先从 MinIO 读取封面（云存储模式）
+    try:
+        from app.services.minio_service import minio_service
+        if minio_service.enabled:
+            cover_data = await minio_service.get_object(settings.MINIO_COVER_PREFIX, cover_filename)
+            if cover_data:
+                return Response(content=cover_data, media_type='image/jpeg')
+    except Exception as e:
+        logger.warning(f"从 MinIO 读取封面失败，回退本地: {e}")
 
     # 1. 先在番剧目录中查找（遍历下载目录的子目录）
     for series_dir in settings.DOWNLOAD_PATH.iterdir():

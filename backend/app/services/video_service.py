@@ -11,7 +11,38 @@ import re
 import json
 import asyncio
 import math
+import time
 from datetime import datetime
+from typing import Dict, Tuple
+
+# v4.0.0: 视频详情元数据缓存（服务端）
+# 下载/刮削等直接调用 get_video_detail 时复用缓存，避免对同一视频反复请求源站
+# 端点级缓存（videos.py 的 lru_cache）只覆盖 HTTP 入口，这里覆盖服务内部调用
+_DETAIL_CACHE_TTL_SECONDS = 6 * 3600  # 6 小时
+_DETAIL_CACHE_MAX_ITEMS = 500
+_detail_cache: Dict[str, Tuple[float, "VideoDetail"]] = {}
+
+
+def _cache_get_video_detail(video_id: str):
+    """读取视频详情缓存，命中返回深拷贝（防止调用方修改污染缓存）"""
+    cached = _detail_cache.get(video_id)
+    if cached and time.time() - cached[0] < _DETAIL_CACHE_TTL_SECONDS:
+        return cached[1].model_copy(deep=True)
+    return None
+
+
+def _cache_set_video_detail(video_id: str, detail) -> None:
+    """写入视频详情缓存，带容量上限与过期清理"""
+    _detail_cache[video_id] = (time.time(), detail)
+    if len(_detail_cache) > _DETAIL_CACHE_MAX_ITEMS:
+        now = time.time()
+        expired = [k for k, (ts, _) in _detail_cache.items()
+                   if now - ts >= _DETAIL_CACHE_TTL_SECONDS]
+        for k in expired:
+            del _detail_cache[k]
+        if len(_detail_cache) > _DETAIL_CACHE_MAX_ITEMS:
+            for k in list(_detail_cache)[:len(_detail_cache) - _DETAIL_CACHE_MAX_ITEMS]:
+                del _detail_cache[k]
 
 
 class VideoService:
@@ -708,6 +739,12 @@ class VideoService:
 
     async def get_video_detail(self, video_id: str) -> VideoDetail:
         """获取视频详情"""
+        # v4.0.0: 命中缓存直接返回（深拷贝，避免调用方修改污染缓存）
+        cached_detail = _cache_get_video_detail(video_id)
+        if cached_detail is not None:
+            logger.debug(f"视频详情缓存命中: {video_id}")
+            return cached_detail
+
         try:
             video_url = f"{settings.HANIME_BASE_URL}/watch?v={video_id}"
             page_content = await self.cf_bypasser.get_request(video_url)
@@ -883,6 +920,9 @@ class VideoService:
                 basic_related_videos=basic_related_videos,
                 detailed_related_videos=detailed_related_videos
             )
+
+            # v4.0.0: 写入元数据缓存
+            _cache_set_video_detail(video_id, video_detail)
 
             return video_detail
 

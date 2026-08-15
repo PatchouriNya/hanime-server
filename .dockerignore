@@ -1,13 +1,33 @@
 .git/
-node_modules/
-dist/
-data/
-downloads/
-__pycache__/
-*.pyc
-.env
-.env.local
 .gitignore
 .dockerignore
-README.md
-CHANGELOG*.md
+Dockerfile
+docker-compose*.yml
+.github/
+
+# 前端（node_modules/dist 由构建阶段产生）
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# 后端运行时数据与缓存
+backend/data/
+backend/logs/
+backend/.env
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# 本地环境与文档
+.env
+.env.local
+data/
+downloads/
+logs/
+*.log
+.trae/
+img/
+*.md
+!backend/README.md

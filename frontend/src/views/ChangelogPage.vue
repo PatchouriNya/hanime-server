@@ -8,6 +8,127 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="danger" size="large">v4.0.0</el-tag>
+          <span class="version-date">2026-08-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">新功能</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>MinIO 对象存储：</strong>封面/头像等展示图片可存储到 MinIO（项目专用 bucket，启用时自动创建，连接失败自动降级本地）。刮削生成的 NFO/海报保持本地供 NAS 识别。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>观看历史续播：</strong>播放进度自动上报，观看历史页显示进度条与"继续观看"按钮，点开自动从上次位置续播。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>流代理恢复：</strong>在线视频流走后端代理通道，解决 CDN 直连被墙/失效；本地文件播放不受影响。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>追更订阅：</strong>订阅番剧系列，新页面展示最新集与新集提醒，支持一键下载最新集。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载队列与并发限制：</strong>可配置同时下载数（默认 3），超出排队；播放清单一键全部下载。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>媒体库海报墙：</strong>已下载番剧大封面墙展示，支持本地评分与备注。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>PWA 支持：</strong>可添加到主屏幕，支持离线缓存。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>管理员用户管理：</strong>用户列表、添加/删除、重置密码、禁用/启用、设置管理员角色（本地与云数据库均支持）。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>服务端缓存：</strong>视频元数据与翻译结果缓存，批量刮削大幅提速。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>HLS（m3u8）下载：</strong>自动用 ffmpeg 下载分段并合并为 mp4。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载中心增强：</strong>统计卡新增总速度与预计剩余时间，下载完成弹出通知。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>登录体验：</strong>登录过期后回到原页面；移除"记住密码"明文存储（保留记住账号）。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>包体与首屏：</strong>主要页面统一路由懒加载，首屏更快。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>前端类型错误清零：</strong>修复全部 TypeScript 类型错误，构建检查可通过。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
+          <el-tag type="success" size="large">v3.6.3</el-tag>
+          <span class="version-date">2026-08-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>刮削目录加年份重命名后路径失效：</strong>刮削时番剧目录被重命名为"番剧名 (年份)"后，后续步骤仍使用旧目录路径导致整体误报失败（NFO/图片实际已生成）。修复后重命名步骤返回最终目录，刮削流程使用新路径继续完成封面迁移与清理。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>分段下载取消后状态被覆盖为失败：</strong>分段下载取消后状态会被"部分段下载失败"覆盖成错误（单线程分支则正确保持已取消）。修复后两条路径行为一致：取消即保持"已取消"并清理残缺文件。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>多用户下载同一视频进度互相污染：</strong>下载记录更新按用户名+视频精确定位，不再只按视频ID过滤；单用户使用不受影响。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>WebSocket 进度监听器无法移除：</strong>离开下载页时监听器移除失效会反复累积。修复后保存绑定引用，断开时正确移除。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>下载代理配置兼容 httpx 新版：</strong>适配 httpx 0.26+ 的参数变更，升级依赖后配置下载代理不再报错。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">优化</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>自动刮削复用已有封面并串行化：</strong>下载完成后自动刮削不再每次强制重下整个系列的所有封面（只补缺失），多个下载并发完成时串行刮削，避免任务互相干扰。</span>
+            </li>
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>数据库初始化只执行一次：</strong>消除每次操作重复建表/迁移的开销。</span>
+            </li>
+          </ul>
+          <h3 class="section-title">清理</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>移除死代码与修正代码卫生：</strong>清理未使用的下载配置模型、封面工具方法、重复导入、错误模板语法等。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="success" size="large">v3.6.2</el-tag>
           <span class="version-date">2026-08-07</span>
         </div>

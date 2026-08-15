@@ -55,14 +55,3 @@ class DownloadProgress(BaseModel):
     retry_count: int = 0
     max_retries: int = 3
     segments: Optional[List[DownloadSegment]] = None
-
-
-class DownloadConfig(BaseModel):
-    """下载配置模型"""
-    chunk_size: int = 1024 * 1024 * 16  # 16MB
-    buffer_size: int = 1024 * 1024 * 4  # 4MB
-    max_segments: int = 4
-    min_segment_size: int = 40 * 1024 * 1024  # 40MB
-    max_retries: int = 3
-    timeout: float = 30.0
-    progress_update_interval: float = 0.5 

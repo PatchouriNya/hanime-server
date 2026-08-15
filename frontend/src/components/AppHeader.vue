@@ -61,7 +61,7 @@ export default defineComponent({
     }
   },
   emits: ['toggle-sidebar', 'toggle-theme'],
-  setup(props, { emit }) {
+  setup(_props, { emit }) {
     const router = useRouter();
     const route = useRoute();
     const { prefixedVersion } = useVersion();

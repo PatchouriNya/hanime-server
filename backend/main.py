@@ -60,6 +60,12 @@ async def lifespan(app: FastAPI):
         await mysql_user_service.close()
     except Exception:
         pass
+    # 清理 MinIO 客户端（v4.0.0）
+    try:
+        from app.services.minio_service import minio_service
+        await minio_service.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(

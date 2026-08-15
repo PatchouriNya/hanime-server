@@ -1,8 +1,10 @@
 import {createRouter, createWebHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized} from 'vue-router';
-import HomePage from "../components/HomePage.vue";
-import videoDetailPage from "../components/VideoDetailPage.vue";
-import CalendarPage from "../components/CalendarPage.vue";
-import SearchPage from "../components/SearchPage.vue";
+
+// v4.0.0: 所有页面统一懒加载，减小首屏包体
+const HomePage = () => import("../components/HomePage.vue");
+const VideoDetailPage = () => import("../components/VideoDetailPage.vue");
+const CalendarPage = () => import("../components/CalendarPage.vue");
+const SearchPage = () => import("../components/SearchPage.vue");
 
 
 const routes: Array<RouteRecordRaw> = [
@@ -21,7 +23,7 @@ const routes: Array<RouteRecordRaw> = [
     {
         path: '/video/:id',
         name: 'VideoDetail',
-        component: videoDetailPage,
+        component: VideoDetailPage,
         meta: { requiresAuth: true }
     },
     {
@@ -40,6 +42,18 @@ const routes: Array<RouteRecordRaw> = [
         path: '/downloads',
         name: 'Downloads',
         component: () => import('../views/Downloads.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/subscriptions',
+        name: 'Subscriptions',
+        component: () => import('../views/Subscriptions.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/library',
+        name: 'Library',
+        component: () => import('../views/Library.vue'),
         meta: { requiresAuth: true }
     },
     {
@@ -70,6 +84,12 @@ const routes: Array<RouteRecordRaw> = [
         path: '/settings',
         name: 'Settings',
         component: () => import('../views/Settings.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/users',
+        name: 'Users',
+        component: () => import('../views/Users.vue'),
         meta: { requiresAuth: true }
     },
     {

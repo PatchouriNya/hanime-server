@@ -71,7 +71,9 @@ instance.interceptors.response.use(
                 if (!isRedirecting && !isOnLoginPage) {
                     isRedirecting = true;
                     showErrorMessage('登录已过期，请重新登录');
-                    window.location.href = '/login';
+                    // v4.0.0: 携带 redirect 参数，登录后回到原页面
+                    const currentPath = window.location.pathname + window.location.search;
+                    window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
                 }
                 // 延迟重置 isRedirecting，避免多个并发 401 重复跳转
                 setTimeout(() => { isRedirecting = false; }, 3000);

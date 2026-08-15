@@ -15,7 +15,7 @@ import shutil
 import xml.etree.ElementTree as ET
 from datetime import datetime, date
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Tuple
 from xml.dom import minidom
 
 from app.config import settings, logger
@@ -23,7 +23,6 @@ from app.models.scrape import (
     ScrapeMode, ScrapeResult, ScrapableSeries, NfoPreview
 )
 from app.services.video_service import VideoService
-from app.services.download_service import download_manager
 from app.utils.cloudflare_bypass import cf_bypasser
 
 # NFO XML 声明（对齐绿联NAS识别格式，使用小写 utf-8）
@@ -90,6 +89,9 @@ class ScrapeService:
 
     def __init__(self):
         self.video_service = VideoService()
+        # v3.6.3: 自动刮削互斥锁——多个下载并发完成时，串行执行自动刮削，
+        # 避免多个全量刮削任务同时写同一批 NFO/图片/目录产生竞态
+        self._auto_scrape_lock = asyncio.Lock()
 
     # ==================== 主流程 ====================
 
@@ -135,7 +137,8 @@ class ScrapeService:
         series_name: str,
         scrape_mode: ScrapeMode = ScrapeMode.TV_SHOW,
         is_rename_file: bool = True,
-        is_reorganize_directory: bool = True
+        is_reorganize_directory: bool = True,
+        force_regenerate_covers: bool = True
     ) -> ScrapeResult:
         """
         对一个番剧系列执行刮削
@@ -146,6 +149,10 @@ class ScrapeService:
         3. 从 VideoService 获取元数据
         4. 生成 NFO 文件和图片
         5. 可选：重命名文件和重组目录
+
+        v3.6.3 新增：force_regenerate_covers 控制单集封面是否强制重新下载。
+        - True（默认）：每次刮削都重新下载每集封面（手动/批量刮削保持此行为）
+        - False：已有封面则复用，只补缺失项（自动刮削使用，避免每次下载完都重复拉取所有封面）
         """
         result = ScrapeResult(
             series_name=series_name,
@@ -185,7 +192,8 @@ class ScrapeService:
             if scrape_mode == ScrapeMode.TV_SHOW:
                 nfo_files, image_files = await self._generate_tv_show_files(
                     series_dir, series_name, video_entries,
-                    metadata_list, episode_mapping
+                    metadata_list, episode_mapping,
+                    force_regenerate_covers=force_regenerate_covers
                 )
             else:
                 nfo_files, image_files = await self._generate_movie_files(
@@ -198,13 +206,15 @@ class ScrapeService:
 
             # 5. 可选：重命名和目录重组
             if is_rename_file or is_reorganize_directory:
-                renamed = await self._reorganize_files(
+                renamed, series_dir = await self._reorganize_files(
                     series_dir, series_name, video_entries,
                     episode_mapping, scrape_mode,
                     is_rename_file, is_reorganize_directory,
                     metadata_list=metadata_list
                 )
                 result.renamed_files = renamed
+                # v3.6.3: _reorganize_files 可能已将目录重命名为 "番剧名 (年份)"，
+                # 使用返回的新路径，后续封面迁移/清理才能正确操作实际目录
 
             # 6. 把根目录的 {video_id}.jpg 文件移到中央封面目录（COVER_PATH）
             # 这些文件是下载时保存的封面，会干扰绿联NAS的影视库识别
@@ -279,9 +289,16 @@ class ScrapeService:
         """
         下载完成后自动刮削
 
-        只生成当前视频的单集NFO，
-        如果番剧目录还没有tvshow.nfo则一并生成。
+        v3.6.3 对齐说明：此处对整系列执行全量刮削（简单可靠，且会补全缺失的 NFO），
+        但传入 force_regenerate_covers=False，已有单集封面直接复用，只补缺失项，
+        避免每下载一集都重新拉取整个系列的所有封面。
+        同时通过 _auto_scrape_lock 串行化并发触发的自动刮削，防止竞态。
         """
+        async with self._auto_scrape_lock:
+            await self._auto_scrape_after_download_locked(video_id)
+
+    async def _auto_scrape_after_download_locked(self, video_id: str):
+        """自动刮削的实际逻辑（在互斥锁内执行）"""
         try:
             # 查找该 video_id 对应的下载记录
             # 优先从数据库获取文件路径，再在磁盘上查找
@@ -350,11 +367,13 @@ class ScrapeService:
             scrape_mode = ScrapeMode(settings.SCRAPE_MODE)
 
             # 刮削整个系列（简单可靠，且会补全缺失的NFO）
+            # v3.6.3: force_regenerate_covers=False —— 复用已有单集封面，只补缺失
             result = await self.scrape_series(
                 series_name=series_name,
                 scrape_mode=scrape_mode,
                 is_rename_file=settings.SCRAPE_RENAME_FILE,
-                is_reorganize_directory=settings.SCRAPE_REORGANIZE_DIRECTORY
+                is_reorganize_directory=settings.SCRAPE_REORGANIZE_DIRECTORY,
+                force_regenerate_covers=False
             )
 
             if result.is_success:
@@ -1856,7 +1875,7 @@ class ScrapeService:
         is_rename_file: bool,
         is_reorganize_directory: bool,
         metadata_list: List[Optional[Any]] = None
-    ) -> List[str]:
+    ) -> Tuple[List[str], Path]:
         """
         重命名视频文件并重组目录结构
 
@@ -1871,6 +1890,10 @@ class ScrapeService:
 
         如果番剧目录名尚未包含年份，且能从元数据获取到年份，则重命名目录为 "番剧名 (年份)"。
         多季时文件保留在其所属的 Season 目录中。
+
+        v3.6.3 修复：返回 (重命名列表, 重命名后的最终系列目录)。
+        此前目录被加年份重命名后，调用方仍持有旧路径，导致后续清理/封面迁移
+        对不存在的目录操作而抛 FileNotFoundError，整个刮削被误判为失败。
         """
         renamed_files = []
 
@@ -2037,7 +2060,7 @@ class ScrapeService:
                     except Exception as e:
                         logger.error(f"电影文件重命名失败: {e}")
 
-        return renamed_files
+        return renamed_files, series_dir
 
     # ==================== 扫描和预览 ====================
 
@@ -2166,7 +2189,8 @@ class ScrapeService:
         series_name: str,
         video_entries: List[Dict],
         metadata_list: List[Optional[Any]],
-        episode_mapping: Dict[str, Dict]
+        episode_mapping: Dict[str, Dict],
+        force_regenerate_covers: bool = True
     ) -> tuple:
         """
         生成电视剧模式的NFO和图片文件
@@ -2503,12 +2527,11 @@ class ScrapeService:
             episode_cover_url = ""
             if meta and hasattr(meta, "cover_url") and meta.cover_url:
                 episode_cover_url = meta.cover_url
-            # force_regenerate=True：每次刮削都重新下载每集自己的封面，
-            # 确保使用最新的 cover_url（而不是旧的视频截帧）
+            # v3.6.3: force_regenerate 由调用方控制（自动刮削复用已有封面，手动/批量刮削强制刷新）
             thumb_success = await self.generate_episode_thumb(
                 season_dir, season_number, episode_num, episode_cover_url,
                 series_name=series_name_no_year,
-                force_regenerate=True
+                force_regenerate=force_regenerate_covers
             )
             if thumb_success:
                 image_files.append(str(season_dir / f"{episode_filename}.jpg"))

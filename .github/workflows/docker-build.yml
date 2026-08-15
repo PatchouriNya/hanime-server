@@ -41,5 +41,7 @@ jobs:
         push: true
         tags: ghcr.io/${{ env.REPO_LOWER }}:latest
         platforms: linux/amd64,linux/arm64
+        # 拉取最新基础镜像并复用 Dockerfile 各层缓存，大幅加速增量构建
+        pull: true
         cache-from: type=gha
         cache-to: type=gha,mode=max

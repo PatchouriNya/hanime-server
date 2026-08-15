@@ -46,9 +46,9 @@
         </div>
 
         <!-- 查看回复 -->
-        <div class="view-replies" v-if="comment.reply_count > 0" @click="loadReplies(comment.comment_id)">
+        <div class="view-replies" v-if="(comment.reply_count || 0) > 0" @click="loadReplies(comment.comment_id || '')">
           <span>{{
-              activeRepliesId === comment.comment_id ? '收起回复' : `查看 ${comment.reply_count} 条回复`
+              activeRepliesId === comment.comment_id ? '收起回复' : `查看 ${comment.reply_count || 0} 条回复`
             }}</span>
           <el-icon>
             <component :is="activeRepliesId === comment.comment_id ? 'ArrowUp' : 'ArrowDown'" />

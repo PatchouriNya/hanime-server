@@ -133,6 +133,15 @@
             <div class="stat-value">{{ formatFileSize(totalDownloaded) }}</div>
             <div class="stat-label">已占用</div>
           </div>
+          <!-- v4.0.0: 总下载速度与预计剩余时间 -->
+          <div class="stat-card" v-if="totalSpeed > 0">
+            <div class="stat-value stat-speed">{{ formatSpeed(totalSpeed) }}</div>
+            <div class="stat-label">总速度</div>
+          </div>
+          <div class="stat-card" v-if="totalSpeed > 0 && estimatedTimeRemaining > 0">
+            <div class="stat-value">{{ formatDuration(estimatedTimeRemaining) }}</div>
+            <div class="stat-label">预计剩余</div>
+          </div>
         </div>
       </div>
     </div>
@@ -320,6 +329,11 @@
                 <el-button size="small" text type="primary" @click.stop="handleScrapeSeries(group.series_name)">
                   <el-icon><Film /></el-icon> 重新刮削
                 </el-button>
+                <!-- v4.0.0: 追更订阅 -->
+                <el-button size="small" text :type="subscribedSet.has(group.series_name) ? 'info' : 'warning'" @click.stop="toggleSubscription(group.series_name)">
+                  <el-icon><Bell /></el-icon>
+                  {{ subscribedSet.has(group.series_name) ? '已订阅' : '订阅追更' }}
+                </el-button>
               </div>
             </div>
           </div>
@@ -420,7 +434,6 @@
     <el-dialog
       v-model="batchDeleteDialogVisible"
       title="批量删除确认"
-      width="420px"
       :width="isMobile ? '90%' : '420px'"
     >
       <div class="batch-delete-dialog-content">
@@ -453,7 +466,6 @@
     <el-dialog
       v-model="mergeSeriesDialogVisible"
       title="合并系列"
-      width="80%"
       :width="isMobile ? '95%' : '80%'"
       class="merge-series-dialog"
     >
@@ -540,7 +552,6 @@
     <el-dialog
       v-model="batchScrapeProgress.visible"
       title="批量刮削进度"
-      width="600px"
       :width="isMobile ? '95%' : '600px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
@@ -600,7 +611,6 @@
     <el-dialog
       v-model="fixNfoProgress.visible"
       title="修复 NFO 进度"
-      width="500px"
       :width="isMobile ? '95%' : '500px'"
       :close-on-click-modal="false"
       :close-on-press-escape="false"
@@ -650,10 +660,11 @@ import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
 import DownloadList from '../components/DownloadList.vue';
 import VideoPlayer from '../components/VideoPlayer.vue';
-import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled, Loading, CircleCheck, CircleClose, Picture, ArrowRight } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, Delete, Refresh, List, Grid, FolderOpened, Hide, Film, EditPen, Connection, InfoFilled, Loading, CircleCheck, CircleClose, Picture, ArrowRight, Bell } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { DownloadApi } from '../api/download';
 import { ScrapeApi } from '../api/scrape';
+import { AccountApi } from '../api/account';
 import { useContentSettings } from '../composables/useContentSettings';
 
 const downloadStore = useDownloadStore();
@@ -662,7 +673,35 @@ const {
   completedDownloads,
   allDownloads,
   totalDownloaded,
+  totalDownloadSpeed,
 } = storeToRefs(downloadStore);
+
+// v4.0.0: 总下载速度与预计剩余时间
+const totalSpeed = computed(() => totalDownloadSpeed.value || 0);
+const estimatedTimeRemaining = computed(() => {
+  const speed = totalSpeed.value;
+  if (speed <= 0) return 0;
+  let remainingBytes = 0;
+  activeDownloads.value.forEach(d => {
+    if (d.status === 'downloading' && d.total_size > 0) {
+      remainingBytes += Math.max(0, d.total_size - d.downloaded);
+    }
+  });
+  return Math.ceil(remainingBytes / speed);
+});
+
+const formatSpeed = (bytesPerSecond: number): string => {
+  return DownloadApi.formatSpeed(bytesPerSecond);
+};
+
+const formatDuration = (seconds: number): string => {
+  if (seconds <= 0) return '--';
+  if (seconds < 60) return `${seconds}秒`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}小时${minutes > 0 ? ` ${minutes}分` : ''}`;
+  return `${minutes}分钟`;
+};
 
 const { shouldBlur, mode: blurMode } = useContentSettings();
 
@@ -1346,6 +1385,8 @@ onMounted(async () => {
   await loadGroups();
   downloadStore.startPolling();
   window.addEventListener('resize', handleResize);
+  // v4.0.0: 加载追更订阅状态
+  loadSubscriptions();
 });
 
 onUnmounted(() => {
@@ -1353,6 +1394,36 @@ onUnmounted(() => {
   downloadStore.disconnectWebSocket();
   window.removeEventListener('resize', handleResize);
 });
+
+// ==================== v4.0.0: 追更订阅 ====================
+
+const subscribedSet = ref<Set<string>>(new Set());
+
+const loadSubscriptions = async () => {
+  try {
+    const subs = await AccountApi.getSubscriptions();
+    subscribedSet.value = new Set(subs);
+  } catch (error) {
+    console.error('加载订阅状态失败:', error);
+  }
+};
+
+const toggleSubscription = async (seriesName: string) => {
+  try {
+    if (subscribedSet.value.has(seriesName)) {
+      await AccountApi.removeSubscription(seriesName);
+      subscribedSet.value = new Set([...subscribedSet.value].filter(s => s !== seriesName));
+      ElMessage.success('已取消订阅');
+    } else {
+      await AccountApi.addSubscription(seriesName);
+      subscribedSet.value = new Set([...subscribedSet.value, seriesName]);
+      ElMessage.success('订阅成功，有新集时会提醒');
+    }
+  } catch (error) {
+    console.error('切换订阅失败:', error);
+    ElMessage.error('操作失败，请稍后重试');
+  }
+};
 </script>
 
 <style scoped>

@@ -58,6 +58,18 @@
         <router-link to="/downloads" class="nav-item" @click="closeSidebar">
           <el-icon :size="20"><Download /></el-icon> 下载
         </router-link>
+        <!-- v4.0.0: 媒体库入口 -->
+        <router-link to="/library" class="nav-item" @click="closeSidebar">
+          <el-icon :size="20"><Collection /></el-icon> 媒体库
+        </router-link>
+        <!-- v4.0.0: 追更订阅入口 -->
+        <router-link to="/subscriptions" class="nav-item" @click="closeSidebar">
+          <el-icon :size="20"><Bell /></el-icon> 追更订阅
+        </router-link>
+        <!-- v4.0.0: 用户管理（仅管理员可见） -->
+        <router-link v-if="isAdmin" to="/users" class="nav-item" @click="closeSidebar">
+          <el-icon :size="20"><UserFilled /></el-icon> 用户管理
+        </router-link>
       </nav>
 
       <div class="sidebar-spacer"></div>
@@ -117,7 +129,6 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useContentSettings } from '../composables/useContentSettings';
 import { 
@@ -165,8 +176,7 @@ export default defineComponent({
     }
   },
   emits: ['close', 'toggle-theme', 'logout'],
-  setup(props, { emit }) {
-    const router = useRouter();
+  setup(_props, { emit }) {
     const { shouldBlur, mode: blurMode } = useContentSettings();
     const currentTheme = ref(localStorage.getItem('theme') || 'dark');
     const showAvatarPicker = ref(false);
@@ -181,6 +191,8 @@ export default defineComponent({
     });
 
     const currentUsername = ref(localStorage.getItem('username') || '');
+    // v4.0.0: 管理员角色标志（控制"用户管理"入口）
+    const isAdmin = ref(localStorage.getItem('isAdmin') === '1');
     const avatarLetter = computed(() => {
       return currentUsername.value ? currentUsername.value.charAt(0).toUpperCase() : '?';
     });
@@ -324,6 +336,8 @@ export default defineComponent({
 
     const refreshUsername = () => {
       currentUsername.value = localStorage.getItem('username') || '';
+      // v4.0.0: 管理员角色（控制"用户管理"入口显示）
+      isAdmin.value = localStorage.getItem('isAdmin') === '1';
     };
 
     const handleUserLogout = () => {
@@ -331,6 +345,7 @@ export default defineComponent({
       currentUsername.value = '';
       avatarUrl.value = '';
       selectedCoverId.value = '';
+      isAdmin.value = false; // v4.0.0
     };
 
     onMounted(() => {
@@ -346,6 +361,7 @@ export default defineComponent({
     return {
       currentTheme,
       currentUsername,
+      isAdmin,
       avatarLetter,
       avatarUrl,
       authToken,

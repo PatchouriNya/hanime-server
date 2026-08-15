@@ -63,9 +63,26 @@ const handleLogout = () => {
   localStorage.removeItem('tokenType');
   localStorage.removeItem('username');
   localStorage.removeItem('loginTime');
+  localStorage.removeItem('isAdmin'); // v4.0.0
   // 通知所有组件清除用户状态
   window.dispatchEvent(new Event('user-logout'));
   router.push('/login');
+};
+
+// v4.0.0: 获取当前用户信息（含管理员角色），供侧边栏显示用户管理入口
+const fetchUserInfo = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const response = await request.get('/auth/me');
+    if (response.data?.is_admin) {
+      localStorage.setItem('isAdmin', '1');
+    } else {
+      localStorage.removeItem('isAdmin');
+    }
+  } catch (e) {
+    // 静默失败
+  }
 };
 
 // 应用主题到 HTML 元素
@@ -123,11 +140,15 @@ onMounted(async () => {
   if (localStorage.getItem('token')) {
     downloadStore.initializeDownloads();
   }
+  // v4.0.0: 获取当前用户角色（管理员入口）
+  fetchUserInfo();
 
   // 监听登录事件，登录后刷新主题
   window.addEventListener('user-login', async () => {
     await loadThemeFromServer();
     setTheme();
+    // v4.0.0: 登录后刷新用户角色
+    fetchUserInfo();
   });
 });
 </script>

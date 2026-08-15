@@ -23,12 +23,48 @@ v3.3.9 新增：刮削时自动翻译简介/描述到目标语言
 - 多端点轮询：第一个端点被限流（429）时自动切换下一个
 """
 import asyncio
-from typing import Optional
+import hashlib
+import time
+from typing import Optional, Dict, Tuple
 
 import httpx
 
 from app.config import settings, logger
 from app.utils.cloudflare_bypass import cf_bypasser
+
+
+# v4.0.0: 翻译结果缓存（内存 LRU）
+# 批量刮削时同一段简介会在多个系列间重复出现，缓存避免对 Google 端点重复请求
+_TRANSLATION_CACHE_MAX_ITEMS = 2000
+_TRANSLATION_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 天
+_translation_cache: Dict[str, Tuple[float, str]] = {}
+
+
+def _translation_cache_key(target_lang: str, text: str) -> str:
+    """缓存键：目标语言 + 文本 MD5（避免超长 key）"""
+    return f"{target_lang}:{hashlib.md5(text.encode('utf-8')).hexdigest()}"
+
+
+def _translation_cache_get(target_lang: str, text: str) -> Optional[str]:
+    key = _translation_cache_key(target_lang, text)
+    cached = _translation_cache.get(key)
+    if cached and time.time() - cached[0] < _TRANSLATION_CACHE_TTL_SECONDS:
+        return cached[1]
+    return None
+
+
+def _translation_cache_set(target_lang: str, text: str, translated: str) -> None:
+    key = _translation_cache_key(target_lang, text)
+    _translation_cache[key] = (time.time(), translated)
+    if len(_translation_cache) > _TRANSLATION_CACHE_MAX_ITEMS:
+        now = time.time()
+        expired = [k for k, (ts, _) in _translation_cache.items()
+                   if now - ts >= _TRANSLATION_CACHE_TTL_SECONDS]
+        for k in expired:
+            del _translation_cache[k]
+        if len(_translation_cache) > _TRANSLATION_CACHE_MAX_ITEMS:
+            for k in list(_translation_cache)[:len(_translation_cache) - _TRANSLATION_CACHE_MAX_ITEMS]:
+                del _translation_cache[k]
 
 
 # 多个 Google Translate 公开端点（按优先级排序）
@@ -156,6 +192,12 @@ class TranslationService:
         if target_lang not in SUPPORTED_LANGS or target_lang == "off":
             return text
 
+        # v4.0.0: 命中翻译缓存直接返回
+        cached_result = _translation_cache_get(target_lang, text)
+        if cached_result is not None:
+            logger.debug(f"翻译缓存命中: 文本长度 {len(text)}, 目标 {target_lang}")
+            return cached_result
+
         client = await self._get_client()
         params = {
             "client": "gtx",
@@ -182,6 +224,8 @@ class TranslationService:
             if result is not None:
                 # 缓存当前成功的端点
                 self._endpoint_idx = idx
+                # v4.0.0: 写入翻译缓存
+                _translation_cache_set(target_lang, text, result)
                 return result
 
             # 遇到 429 限流时，等待一段时间再尝试下一个端点

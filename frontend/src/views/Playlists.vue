@@ -113,6 +113,10 @@
             </button>
           </template>
         </div>
+        <!-- v4.0.0: 清单一键全部下载 -->
+        <el-button type="primary" plain size="small" class="download-all-btn" :loading="isDownloadingAll" @click="handleDownloadAll">
+          <el-icon><Download /></el-icon> 全部下载
+        </el-button>
         <el-button type="danger" plain size="small" @click="handleDelete(currentFolder.playlist_id)" class="delete-folder-btn">
           <el-icon><Delete /></el-icon> 删除文件夹
         </el-button>
@@ -216,14 +220,16 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { AccountApi, UserPlaylist } from '../api/account';
+import { useDownloadStore } from '../stores/download';
 import { useContentSettings } from '../composables/useContentSettings';
 import {
   Plus, FolderOpened, Folder, FolderAdd, VideoCamera, Edit,
-  Delete, MoreFilled, Switch, Close, ArrowLeftBold, Loading, WarningFilled
+  Delete, MoreFilled, Switch, Close, ArrowLeftBold, Loading, WarningFilled, Download
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
 const router = useRouter();
+const downloadStore = useDownloadStore();
 const playlists = ref<UserPlaylist[]>([]);
 const loading = ref(true);
 const showCreateDialog = ref(false);
@@ -234,6 +240,7 @@ const deletingId = ref<string | null>(null);
 const movingVideoId = ref<string | null>(null);
 const currentFolder = ref<UserPlaylist | null>(null);
 const isMobile = ref(window.innerWidth <= 480);
+const isDownloadingAll = ref(false);
 const { shouldBlur, mode: blurMode } = useContentSettings();
 
 // 重命名
@@ -265,6 +272,33 @@ const openFolder = (playlist: UserPlaylist) => {
 
 const handleVideoClick = (videoId: string) => {
   router.push(`/video/${videoId}`);
+};
+
+// v4.0.0: 清单一键全部下载（后端有并发限制，超出会排队）
+const handleDownloadAll = async () => {
+  if (!currentFolder.value || currentFolder.value.videos.length === 0) return;
+  isDownloadingAll.value = true;
+  let successCount = 0;
+  let skippedCount = 0;
+  try {
+    for (const video of currentFolder.value.videos) {
+      try {
+        const result = await downloadStore.startDownload(video.video_id);
+        if (result === true) {
+          successCount++;
+        } else if (result && result.status === 'warning') {
+          // 已存在下载，跳过
+          skippedCount++;
+        }
+      } catch (e) {
+        console.error(`下载失败: ${video.title}`, e);
+      }
+    }
+    const msg = `已加入下载 ${successCount} 个`;
+    ElMessage.success(skippedCount > 0 ? `${msg}，${skippedCount} 个已存在` : msg);
+  } finally {
+    isDownloadingAll.value = false;
+  }
 };
 
 const handleCreate = async () => {
@@ -362,12 +396,6 @@ const confirmMove = async (toPlaylistId: string) => {
     currentFolder.value.videos = currentFolder.value.videos.filter(v => v.video_id !== movingVideoId.value);
     const pl = playlists.value.find(p => p.playlist_id === currentFolder.value!.playlist_id);
     if (pl) pl.videos = currentFolder.value.videos;
-    // 添加到目标清单缓存
-    const target = playlists.value.find(p => p.playlist_id === toPlaylistId);
-    if (target) {
-      const video = currentFolder.value.videos.find(v => v.video_id === movingVideoId.value) ||
-        playlists.value.flatMap(p => p.videos).find(v => v.video_id === movingVideoId.value);
-    }
     movingVideoId.value = null;
     // 重新加载以确保数据一致
     await loadPlaylists();

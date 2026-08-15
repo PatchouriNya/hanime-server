@@ -203,9 +203,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDownloadStore } from '../stores/download';
 import { DownloadApi } from '../api/download';
 import type { DownloadProgress } from '../types/download';
-import { VideoPause, VideoPlay, RefreshRight, Close, Delete, InfoFilled, More, View, Hide } from '@element-plus/icons-vue';
+import { VideoPause, VideoPlay, RefreshRight, Close, Delete, InfoFilled, More, Hide } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
-import { useRouter } from 'vue-router';
 import { useContentSettings } from '../composables/useContentSettings';
 
 // 定义props
@@ -404,8 +403,8 @@ const formatDate = (dateStr: string, showTime: boolean = false) => {
       emit('play-video', {
         video_id: props.download.video_id,
         url: url,
-        title: extractFilename(props.download.filename) || props.download.title,
-        cover_url: props.download.cover_url
+        title: extractFilename(props.download.filename) || props.download.title || '',
+        cover_url: props.download.cover_url || ''
       });
     };
     

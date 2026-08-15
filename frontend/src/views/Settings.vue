@@ -277,7 +277,6 @@
     <el-dialog
       v-model="showClearDialog"
       title="清空数据"
-      width="480px"
       :width="isMobile ? '90%' : '480px'"
     >
       <span>确定要清空所有本地数据吗？此操作将清除收藏、稍后观看、播放清单和观看历史，且不可撤销。</span>
@@ -654,10 +653,6 @@ const loadDownloadDir = async () => {
   } catch (error) {
     console.error('加载下载目录设置失败:', error);
   }
-};
-
-const selectDownloadDir = () => {
-  // 不再需要 - 直接在输入框编辑
 };
 
 const openDownloadDir = async () => {

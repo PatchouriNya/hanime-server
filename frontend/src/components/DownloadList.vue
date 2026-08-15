@@ -62,12 +62,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { DownloadApi } from '../api/download';
-import { DownloadActionType, DownloadProgress } from '../types/download';
+import { DownloadProgress } from '../types/download';
 import DownloadItem from './DownloadItem.vue';
 import { useDownloadStore } from '../stores/download';
 import { storeToRefs } from 'pinia';
-import { Document, Search, SortUp, SortDown } from '@element-plus/icons-vue';
+import { Document } from '@element-plus/icons-vue';
 
 // Props定义
 const props = defineProps({
@@ -210,17 +209,6 @@ const compareValues = (valA: any, valB: any, order: string) => {
     : valB - valA;
 };
 
-// 处理下载操作
-const handleAction = async (videoId: string, action: DownloadActionType) => {
-  // 如果是删除操作，直接删除UI上的项
-  if (action === 'delete') {
-    await DownloadApi.handleDownloadAction(videoId, action);
-  } else {
-    // 其他操作由WebSocket更新处理
-    await DownloadApi.handleDownloadAction(videoId, action);
-  }
-};
-
 // 根据过滤类型获取空消息
 const getEmptyMessage = () => {
   switch (props.filter) {
@@ -233,11 +221,6 @@ const getEmptyMessage = () => {
     default:
       return '没有下载任务';
   }
-};
-
-// 重试所有失败的下载
-const retryAllFailed = async () => {
-  await downloadStore.retryAllFailedDownloads();
 };
 
 // 切换标签时清除搜索

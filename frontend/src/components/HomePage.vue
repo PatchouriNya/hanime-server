@@ -30,7 +30,7 @@
     </template>
 
     <!-- 视频区块通用组件 -->
-    <template v-if="!isLoading" v-for="(section, index) in homeData.latest_videos" :key="`latest-${index}`">
+    <template v-if="!isLoading" v-for="section in homeData.latest_videos" :key="section.title">
       <video-section
         :title="section.title"
         :search-suffix="section.search_suffix"

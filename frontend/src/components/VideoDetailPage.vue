@@ -37,8 +37,10 @@
         :cover-url="videoDetail.cover_url"
         :title="videoDetail.title"
         :show-debug-info="showDebugInfo"
+        :initial-time="watchProgress"
         @play-started="handlePlayStarted"
         @play-error="handlePlayError"
+        @progress-update="handleProgressUpdate"
       />
     </div>
 
@@ -62,8 +64,8 @@
                  referrerpolicy="no-referrer" loading="lazy" @error="handleImageError"/>
           </div>
           <div class="author-info">
-            <div class="author-name" @click="goToSearch(videoDetail.studio.query)" :class="{'clickable': !!videoDetail.studio.query}">{{ videoDetail.studio.name }}</div>
-            <div class="author-type" v-if="videoDetail.video_type" @click="goToSearch(videoDetail.video_type.query)" :class="{'clickable': !!videoDetail.video_type.query}">{{ videoDetail.video_type.name }}</div>
+            <div class="author-name" @click="goToSearch(videoDetail.studio.query || '')" :class="{'clickable': !!videoDetail.studio.query}">{{ videoDetail.studio.name }}</div>
+            <div class="author-type" v-if="videoDetail.video_type" @click="goToSearch(videoDetail.video_type.query || '')" :class="{'clickable': !!videoDetail.video_type.query}">{{ videoDetail.video_type.name }}</div>
           </div>
         </div>
 
@@ -78,7 +80,7 @@
             <span>{{ formatViewCount(videoDetail.view_count || 0) }} 次观看</span>
             <span class="meta-separator">|</span>
             <el-icon><Calendar /></el-icon>
-            <span>{{ formatDate(videoDetail.upload_date) }}</span>
+            <span>{{ formatDate(videoDetail.upload_date || '') }}</span>
             <template v-if="videoDetail.like_rate">
               <span class="meta-separator">|</span>
               <el-icon style="color: var(--color-primary);"><Star /></el-icon>
@@ -266,7 +268,7 @@
             </div>
         
         <div class="series-grid">
-          <div v-for="(video, index) in videoDetail.series_videos" 
+          <div v-for="video in videoDetail.series_videos"
                :key="video.video_id" 
                class="series-item"
           >
@@ -333,7 +335,7 @@
               </template>
             </el-table-column>
             <el-table-column label="季号" width="120" align="center">
-              <template #default="{ row, $index }">
+              <template #default="{ $index }">
                 <el-input-number
                   v-model="mergeItems[$index].season_number"
                   :min="1"
@@ -372,7 +374,7 @@
 import {defineComponent, ref, onMounted, onActivated, watch, computed, h} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import {VideoApi} from '../api/video';
-import {VideoDetail, VideoPreview} from '../types/video';
+import {VideoDetail} from '../types/video';
 import VideoCard from '../components/VideoCard.vue';
 import VideoSection from '../components/VideoSection.vue';
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
@@ -455,6 +457,55 @@ export default defineComponent({
       basic_related_videos: [],
       detailed_related_videos: []
     });
+
+    // v4.0.0: 观看历史续播——上次播放位置（秒），从历史记录读取
+    const watchProgress = ref(0);
+    // 进度上报节流（避免频繁调用后端）
+    let lastProgressSave = 0;
+    const PROGRESS_SAVE_INTERVAL = 15000; // 15 秒
+
+    /**
+     * v4.0.0: 记录观看历史（带播放进度）
+     */
+    const recordWatchHistory = (progress: number = 0, duration: string = '') => {
+      if (!videoDetail.value.video_id) return;
+      AccountApi.addWatchHistory(
+        videoDetail.value.video_id,
+        videoDetail.value.title,
+        videoDetail.value.cover_url,
+        progress,
+        duration
+      ).catch((e) => {
+        console.error('记录观看历史失败:', e);
+      });
+    };
+
+    /**
+     * v4.0.0: 从观看历史加载当前视频的上次播放位置（续播）
+     */
+    const loadWatchHistoryProgress = async () => {
+      try {
+        const history = await AccountApi.getWatchHistory();
+        const item = history.find(h => h.video_id === videoDetail.value.video_id);
+        if (item && item.progress > 10) {
+          watchProgress.value = item.progress;
+        }
+      } catch (e) {
+        console.error('加载观看历史进度失败:', e);
+      }
+    };
+
+    /**
+     * v4.0.0: 播放进度上报（节流）
+     */
+    const handleProgressUpdate = (currentTime: number, duration: number) => {
+      const now = Date.now();
+      if (currentTime > 0 && now - lastProgressSave >= PROGRESS_SAVE_INTERVAL) {
+        lastProgressSave = now;
+        watchProgress.value = currentTime;
+        recordWatchHistory(currentTime, String(duration || ''));
+      }
+    };
 
     // 计算是否有系列视频
     const hasSeriesVideos = computed(() => {
@@ -575,30 +626,6 @@ export default defineComponent({
       } finally {
         isDownloading.value = false;
       }
-    };
-
-    // 判断是否为推荐质量
-    const isRecommendedQuality = (url: any): boolean => {
-      if (!url || !videoDetail.value.stream_urls || videoDetail.value.stream_urls.length === 0) {
-        return false;
-      }
-      
-      // 如果只有一个选项，它就是推荐的
-      if (videoDetail.value.stream_urls.length === 1) {
-        return true;
-      }
-      
-      // 如果有多个选项，选择最高质量的作为推荐
-      const sortedUrls = [...videoDetail.value.stream_urls].sort((a, b) => {
-        if (a.size && b.size) {
-          return b.size - a.size;
-        }
-        return 0;
-      });
-      
-      // 选择最高的选项
-      const highestIndex = 0;
-      return url === sortedUrls[highestIndex];
     };
 
     // 更新评论数
@@ -788,7 +815,8 @@ export default defineComponent({
     const handleSelectAllChange = () => {
       if (selectAll.value) {
         // 全选时只选择没有下载过的视频
-        const notDownloadedVideos = videoDetail.value.series_videos
+        const seriesVideos = videoDetail.value.series_videos || [];
+        const notDownloadedVideos = seriesVideos
           .filter(video => !isVideoAlreadyDownloaded(video.video_id))
           .map(video => video.video_id);
         
@@ -811,8 +839,9 @@ export default defineComponent({
       );
       
       // 更新全选状态
-      if (videoDetail.value.series_videos) {
-        const notDownloadedCount = videoDetail.value.series_videos.filter(
+      const seriesVideos = videoDetail.value.series_videos;
+      if (seriesVideos) {
+        const notDownloadedCount = seriesVideos.filter(
           video => !isVideoAlreadyDownloaded(video.video_id)
         ).length;
         
@@ -1066,10 +1095,9 @@ export default defineComponent({
     onMounted(() => {
       fetchVideoDetail().then(() => {
         checkFavoriteAndWatchLaterStatus();
-        // 记录观看历史
-        AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
-          console.error('记录观看历史失败:', e);
-        });
+        // v4.0.0: 记录观看历史 + 加载续播进度
+        recordWatchHistory();
+        loadWatchHistoryProgress();
       });
     });
 
@@ -1079,10 +1107,8 @@ export default defineComponent({
       if (videoId !== videoDetail.value.video_id) {
         fetchVideoDetail().then(() => {
           checkFavoriteAndWatchLaterStatus();
-          // 记录观看历史
-          AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
-            console.error('记录观看历史失败:', e);
-          });
+          recordWatchHistory();
+          loadWatchHistoryProgress();
         });
       }
     });
@@ -1092,10 +1118,8 @@ export default defineComponent({
       if (newId && newId !== videoDetail.value.video_id) {
         fetchVideoDetail().then(() => {
           checkFavoriteAndWatchLaterStatus();
-          // 记录观看历史
-          AccountApi.addWatchHistory(videoDetail.value.video_id, videoDetail.value.title, videoDetail.value.cover_url).catch((e) => {
-            console.error('记录观看历史失败:', e);
-          });
+          recordWatchHistory();
+          loadWatchHistoryProgress();
         });
       }
     });
@@ -1238,6 +1262,9 @@ export default defineComponent({
       addToPlaylist,
       createNewPlaylist,
       handleDownloadCover,
+      // v4.0.0: 观看历史续播
+      watchProgress,
+      handleProgressUpdate,
       // 合并系列
       canMergeSeries,
       mergeDialogVisible,

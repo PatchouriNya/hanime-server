@@ -12,6 +12,11 @@ services:
       - MYSQL_USER=${MYSQL_USER:-root}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-librarydream}
+      - USE_MINIO=${USE_MINIO:-false}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-127.0.0.1:9001}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-hanime}
       - PYTHONOPTIMIZE=2
       - PYTHONDONTWRITEBYTECODE=1
     volumes:

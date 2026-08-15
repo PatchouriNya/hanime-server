@@ -59,6 +59,7 @@ export interface VideoDetail extends VideoPreview {
   tags: VideoTag[];
   upload_date?: string;
   views?: string;
+  comment_count?: number;
   series_videos?: VideoPreview[];
   basic_related_videos?: VideoBase[];
   detailed_related_videos?: VideoPreview[];

@@ -179,33 +179,6 @@ export const DownloadApi = {
   },
 
   /**
-   * 创建WebSocket连接以接收下载进度更新
-   * @param onMessage 消息处理函数
-   */
-  createWebSocket: (onMessage: (data: DownloadProgress) => void): WebSocket => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsPath = `${protocol}//${host}/api/downloads/ws`;
-
-    const ws = new WebSocket(wsPath);
-    
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as DownloadProgress;
-        onMessage(data);
-      } catch (error) {
-        console.error('解析WebSocket消息失败:', error);
-      }
-    };
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket错误:', error);
-    };
-    
-    return ws;
-  },
-  
-  /**
    * 格式化文件大小
    * @param bytes 字节数
    */

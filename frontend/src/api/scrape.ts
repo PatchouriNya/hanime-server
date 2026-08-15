@@ -1,6 +1,7 @@
 import request from '../utils/request';
 
 export type ScrapeMode = 'tv_show' | 'movie';
+export type TranslateTargetLang = 'zh-CN' | 'ja' | 'en' | 'off';
 
 export interface ScrapeConfig {
   scrape_mode: ScrapeMode;
@@ -11,7 +12,9 @@ export interface ScrapeConfig {
   is_generate_fanart: boolean;
   // v3.3.9 新增：翻译设置
   is_translate_plot_enabled: boolean;
-  translate_target_lang: string; // 'zh-CN' | 'ja' | 'en' | 'off'
+  translate_target_lang: TranslateTargetLang;
+  // v3.5.0 新增：合集海报使用最早上传的剧集海报
+  is_poster_use_earliest_episode: boolean;
 }
 
 export interface ScrapeRequest {

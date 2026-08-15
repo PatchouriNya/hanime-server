@@ -7,7 +7,7 @@
           id="player"
           playsinline
           controls
-          data-poster="{{ coverUrl }}"
+          :data-poster="coverUrl"
           class="video-element"
           @error="handleVideoError"
           preload="auto"
@@ -50,6 +50,7 @@
 <script lang="ts">
 import {defineComponent, ref, onMounted, onUnmounted, nextTick, watch, computed} from 'vue';
 import {StreamUrl} from '../types/video';
+import {VideoApi} from '../api/video';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
 import { useContentSettings } from '../composables/useContentSettings';
@@ -91,9 +92,14 @@ export default defineComponent({
     showDebugInfo: {
       type: Boolean,
       default: true
+    },
+    // v4.0.0: 初始播放位置（秒），用于观看历史续播
+    initialTime: {
+      type: Number,
+      default: 0
     }
   },
-  emits: ['play-started', 'play-error'],
+  emits: ['play-started', 'play-error', 'progress-update'],
   setup(props, {emit}) {
     const isPlaying = ref(false);
     const videoPlayer = ref<HTMLVideoElement | null>(null);
@@ -169,8 +175,10 @@ export default defineComponent({
     // 获取流式URL
     const getStreamUrl = (url: string) => {
       if (!url) return '';
-      // return VideoApi.getStreamUrl(url); // 使用API中的方法处理URL
-      return url;
+      // 本地已下载文件（相对路径，如 /api/downloads/file/:id）直接使用，不经过流代理
+      if (url.startsWith('/')) return url;
+      // v4.0.0: 完整 URL 走后端流代理（/videos/stream/proxy），解决 CDN 直连被墙/失效问题
+      return VideoApi.getStreamUrl(url);
     };
 
     // 初始化Plyr播放器
@@ -215,7 +223,7 @@ export default defineComponent({
           controls: controlOptions,
           settings: ['captions', 'quality', 'speed', 'loop'],
           quality: {
-            default: defaultQuality.value,
+            default: defaultQuality.value ?? qualityOptions.value[0] ?? 0,
             options: qualityOptions.value
           },
           speed: {selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]},
@@ -250,11 +258,44 @@ export default defineComponent({
               });
             }
           }, 100);
+
+          // v4.0.0: 从上次观看位置续播
+          if (props.initialTime && props.initialTime > 0 && plyrPlayer.value) {
+            try {
+              plyrPlayer.value.currentTime = props.initialTime;
+              addDebugLog(`已跳转到上次观看位置: ${Math.floor(props.initialTime)}s`);
+            } catch (e) {
+              addDebugLog(`设置初始播放位置失败: ${e}`);
+            }
+          }
         });
 
         plyrPlayer.value.on('play', () => {
           addDebugLog('视频开始播放');
           emit('play-started');
+        });
+
+        // v4.0.0: 播放进度上报（节流：每 10 秒或每次暂停/结束上报一次）
+        let lastProgressReport = 0;
+        const reportProgress = () => {
+          if (!plyrPlayer.value) return;
+          const currentTime = plyrPlayer.value.currentTime || 0;
+          const duration = plyrPlayer.value.duration || 0;
+          emit('progress-update', Math.floor(currentTime), Math.floor(duration));
+        };
+        plyrPlayer.value.on('timeupdate', () => {
+          if (!plyrPlayer.value) return;
+          const currentTime = plyrPlayer.value.currentTime || 0;
+          if (currentTime - lastProgressReport >= 10) {
+            lastProgressReport = currentTime;
+            reportProgress();
+          }
+        });
+        plyrPlayer.value.on('pause', reportProgress);
+        plyrPlayer.value.on('ended', reportProgress);
+        plyrPlayer.value.on('seeking', () => {
+          // 暂停时（seeking）也上报，保证位置尽量新
+          lastProgressReport = 0;
         });
 
         plyrPlayer.value.on('error', (error: any) => {

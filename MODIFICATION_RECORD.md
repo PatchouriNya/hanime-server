@@ -3,6 +3,245 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 三十三、v4.0.0 大版本：14 项优化 + MinIO 对象存储 + 云数据库扩展 (2026-08-16)
+
+### 修改原因
+用户确认实施全部 14 项优化方向（观看历史续播、流代理恢复、登录体验、下载中心增强、包体优化、追更提醒、下载队列/批量下载、媒体库海报墙、PWA、管理员用户管理、服务端缓存、前端 TS 错误清零、m3u8 下载、单元测试），并将封面/头像等图片存储到 MinIO（127.0.0.1:9001，minioadmin），版本号按用户指定变更为 4.0.0。
+
+### 修改内容
+
+#### 1. MinIO 对象存储（新）
+- **backend/app/config.py**：新增 USE_MINIO/MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET/MINIO_COVER_PREFIX/MINIO_AVATAR_PREFIX 配置（默认 127.0.0.1:9001、minioadmin、bucket=hanime）。
+- **backend/app/services/minio_service.py**（新）：MinioService 单例——ensure_bucket（项目专用 bucket 自动创建）、upload_file/upload_bytes/get_object/exists/delete_object（同步 SDK 经 asyncio.to_thread 包装），未启用或失败自动降级。
+- **backend/app/services/download_service.py**：`download_cover` 成功后上传 MinIO（covers 前缀）。
+- **backend/app/api/endpoints/downloads.py**：`GET /downloads/cover/{video_id}` 优先从 MinIO 读取；`POST /cover` 保存后上传 MinIO。
+- **backend/requirements.txt**：新增 minio~=7.2.0；**backend/main.py** 关闭时清理；**docker-compose.yml / .env.example** 增加 MINIO_* 环境变量。
+
+#### 2. 服务端缓存（C11）
+- **backend/app/services/video_service.py**：视频详情元数据缓存（6 小时、500 条上限，返回深拷贝防污染），下载/刮削直接调用复用。
+- **backend/app/services/translation_service.py**：翻译结果缓存（30 天、2000 条上限，key=目标语言+文本 MD5）。
+
+#### 3. 观看历史续播（A1）
+- **frontend VideoPlayer.vue**：新增 initialTime prop（续播位置）与 progress-update 事件（timeupdate 10 秒节流 + 暂停/结束上报）。
+- **frontend VideoDetailPage.vue**：加载历史进度传 initialTime；统一 recordWatchHistory()，进度节流上报（15 秒）。
+- **frontend WatchHistory.vue**：进度按秒/时长换算百分比，新增"继续观看"按钮。
+
+#### 4. 流代理恢复（A2）
+- **frontend VideoPlayer.vue**：getStreamUrl 恢复走 VideoApi.getStreamUrl（相对路径本地文件直用）。
+- **backend videos.py**：stream 端点 httpx proxies= → proxy=（0.28 兼容）。
+
+#### 5. 登录体验（A3）
+- **frontend request.ts**：401 跳转携带 redirect 参数。
+- **frontend LoginPage.vue**：登录成功消费 redirect 回到原页面；移除"记住密码"明文存储（保留记住账号）。
+- 路由守卫的 redirect 机制现已完整闭环。
+
+#### 6. 下载中心增强（A4）
+- **frontend stores/download.ts**：下载完成 ElNotification（会话内去重）。
+- **frontend Downloads.vue**：统计卡新增总速度与预计剩余时间。
+
+#### 7. 包体优化（A5）
+- **frontend router/index.ts**：首页/详情/日历/搜索统一路由懒加载。
+
+#### 8. 追更订阅（B6）
+- **backend user_service.py**：新增 user_subscriptions 表 + 订阅 CRUD（add/remove/get/is_subscribed）。
+- **backend mysql_user_service.py**：新增 hanime_user_subscription 对应方法（云模式）。
+- **backend download_service.py**：新增 count_downloaded_in_series / get_latest_downloaded_episode。
+- **backend accounts.py**：新增 GET/POST/DELETE /subscriptions 与 GET /subscriptions/check（源站搜索最新集 vs 本地已下载集号）。
+- **frontend api/account.ts**：订阅 API；**views/Subscriptions.vue**（新）追更列表页；**Downloads.vue** 番剧卡片订阅按钮；**AppSidebar** 追更入口；**router** /subscriptions。
+
+#### 9. 下载队列/批量下载（B7）
+- **backend config.py**：新增 MAX_CONCURRENT_DOWNLOADS（默认 3）。
+- **backend download_service.py**：download_file 包装层加 asyncio.Semaphore 全局并发限制（排队等待、排队中取消自动跳过）。
+- **frontend Playlists.vue**：文件夹"全部下载"按钮（逐项 startDownload，后端排队）。
+
+#### 10. 媒体库海报墙（B8）
+- **frontend views/Library.vue**（新）：已下载番剧海报墙 + 本地评分（10 分制 el-rate）+ 备注（存用户设置 mediaLibrary 字段）+ 每集播放；**router** /library；**AppSidebar** 媒体库入口。
+
+#### 11. PWA（B9）
+- **frontend/public/manifest.webmanifest**（新）、**sw.js**（新，导航网络优先/静态缓存优先/API 永不缓存）、**pwa-192.png / pwa-512.png**（Pillow 生成）；**index.html** 注册 SW + manifest + theme-color。
+
+#### 12. 管理员用户管理（B10）
+- **backend utils/auth.py**：users 表迁移加 user_type/status 列；默认 admin 提升为管理员；get_current_user 附加 user_type；require_admin 依赖；用户管理函数（create/delete/reset_password/update_status/update_type）；禁用用户不能登录。
+- **backend mysql_user_service.py**：get_user_type/list_users/create_user/delete_user/reset_user_password/update_user_status/update_user_type。
+- **backend endpoints/auth.py**：GET /auth/me（含角色）；GET/POST/DELETE /users、PUT /users/{username}/password|status|role（管理员）。
+- **frontend api/account.ts**：getMe + 用户管理 API；**views/Users.vue**（新）管理页；**AppSidebar** 用户管理入口（isAdmin 控制，App.vue 登录后拉取角色存 localStorage）。
+
+#### 13. 前端 TS 错误清零（C12）
+- 修复全部约 40 处 TypeScript 错误：未使用变量/导入清理、default-avatar.svg 模块声明（新增 src/vite-env.d.ts）、VideoDetail 类型补 comment_count、ScrapeConfig 类型补 is_poster_use_earliest_episode + translate_target_lang 联合类型、Settings/Downloads 弹窗重复 width、Playlists 死代码等。`vue-tsc --noEmit` 0 错误。
+
+#### 14. HLS（m3u8）下载（C13）
+- **backend download_service.py**：URL 含 .m3u8 时用 ffmpeg 下载合并为 mp4（Docker 镜像已内置 ffmpeg），支持下载代理、心跳广播、取消清理、完成后自动刮削；未装 ffmpeg 回退直接下载。
+
+#### 15. 单元测试（C14）
+- **backend/tests/**（新）：test_episode_numbers.py（中文数字/集号提取）、test_video_service.py（观看数解析/评分算法）、test_download_utils.py（文件名清洗/系列名提取）。21 个用例全部通过。
+- 顺带修复 **downloads.py** `_extract_series_name` 的 Season 后缀剥离顺序缺陷（"某番剧 Season 2" 正确提取为 "某番剧"）。
+
+#### 16. 版本号与文档同步
+- **backend/app/config.py**：APP_VERSION 3.6.3 → 4.0.0。
+- **CHANGELOG.md / ChangelogPage.vue**：新增 v4.0.0 条目。
+- **MODIFICATION_RECORD.md**：本文档。
+
+### 验证
+- ✅ 全部后端 Python 文件编译通过
+- ✅ 后端冒烟测试：启动正常，/api/settings/version 返回 4.0.0
+- ✅ 前端 vue-tsc --noEmit 0 错误
+- ✅ 单元测试 21/21 通过
+- ✅ MinIO 模块导入与降级路径验证通过（未启用时 enabled=False，不影响现有流程）
+- 云数据库说明：用户数据（收藏/稍后/清单/历史/设置/订阅/用户管理）均已支持 MySQL 云模式；下载记录保留本地 SQLite（与文件系统强耦合，随数据卷持久化）
+
+
+### 修改原因
+对项目进行深度代码审查后，发现一批高/中/低优先级问题：刮削目录重命名后路径失效导致首次刮削误报失败、分段下载取消后状态被错误覆盖、下载记录更新缺少用户维度隔离、WebSocket 监听器无法移除、自动刮削每次全量重拉封面、httpx 代理参数版本耦合等，同时存在多处死代码与代码卫生问题。
+
+### 修改内容
+
+#### 1. 修复刮削目录重命名后路径失效（高）
+
+**文件：backend/app/services/scrape_service.py**
+- `_reorganize_files` 返回值从 `List[str]` 改为 `Tuple[List[str], Path]`，返回重命名后的最终系列目录（目录被加年份重命名时）。
+- `scrape_series` 接收返回的新目录路径，后续封面迁移、.covers 清理、空目录清理使用实际目录，不再抛 FileNotFoundError 导致整体误报失败。
+- 导入补充 `Tuple`。
+
+#### 2. 修复分段下载取消后状态被 ERROR 覆盖（高）
+
+**文件：backend/app/services/download_service.py**
+- `segmented_download` 收尾分支增加取消检查：用户已取消时保持 `cancelled` 状态并清理残缺文件（与单线程分支行为一致），不再被"部分段下载失败"覆盖。
+
+#### 3. 下载记录更新按用户隔离（高）
+
+**文件：backend/app/services/download_service.py**
+- `update_db` 增加可选 `username` 参数，提供时按 `username + video_id` 定位（主键维度），缺省时保持旧行为向后兼容。
+- `username` 贯穿下载任务链：`download_file` / `segmented_download` / `simple_download` / `update_segmented_progress` / `pause_download` / `resume_download` / `cancel_download` / `retry_download` / `load_downloads` / `start_download` / `delete_download`。
+- `retry_download` 的两处直接 SQL 同步加 `username` 条件。
+
+**文件：backend/app/api/endpoints/downloads.py**
+- `handle_download_action` 的暂停/恢复/取消调用传入 `user["username"]`。
+
+#### 4. 修复前端 WebSocket 监听器无法移除（高）
+
+**文件：frontend/src/stores/download.ts**
+- 模块级新增 `_wsProgressListener` 保存已绑定的进度监听器引用；`connectWebSocket` 注册时复用，`disconnectWebSocket` 用同一引用移除（此前两次 `bind()` 产生不同引用，移除永远失败，监听器累积）。
+
+#### 5. 自动刮削复用封面并串行化（中）
+
+**文件：backend/app/services/scrape_service.py**
+- `scrape_series` 新增 `force_regenerate_covers` 参数（默认 True 保持手动/批量刮削行为）；`_generate_tv_show_files` 透传，控制单集封面是否强制重下。
+- `auto_scrape_after_download` 传 `force_regenerate_covers=False`（已有封面复用，只补缺失）；docstring 对齐实际行为。
+- `ScrapeService` 新增 `_auto_scrape_lock` 互斥锁，并发完成的下载触发自动刮削时串行执行，避免多个全量刮削任务同时写同一批文件产生竞态。
+
+#### 6. 数据库初始化只执行一次（中）
+
+**文件：backend/app/services/download_service.py**
+- `init_db` 增加 `_db_initialized` 标志，已初始化直接返回（此前 12+ 处调用每次都重复建表/迁移）。
+
+#### 7. 死代码清理（中/低）
+
+- **backend/app/models/download.py**：删除未使用的 `DownloadConfig` 模型。
+- **backend/app/services/download_service.py**：删除 `_convert_to_poster_url`、`_get_cover_from_search`（均无调用方）、`delete_download` 中从未初始化的 `speedSmoother` 清理逻辑。
+- **backend/app/services/scrape_service.py**：删除未使用的 `from app.services.download_service import download_manager` 顶层导入（同时消除循环依赖隐患）。
+- **frontend/src/api/download.ts**：删除 `createWebSocket`（已被 store 内 `DownloadWebSocketManager` 取代的死代码）。
+
+#### 8. httpx 代理参数版本兼容（中）
+
+**文件：backend/app/services/download_service.py**
+- `get_http_client` 的 `proxies=` 改为 `proxy=`（httpx 0.26+ 写法，0.28 已移除旧参数）。
+
+#### 9. 代码卫生修正（低）
+
+- **backend/app/api/endpoints/downloads.py**：合并重复的 fastapi 导入；移除 `hasattr(action, 'delete_files')` 冗余判断。
+- **backend/app/services/download_service.py**：`start_download` 返回值缩进修正；`min_segment_size` 注释与实际值（64MB）对齐；裸 `except: pass` 改为 `except Exception`。
+- **frontend/src/components/VideoPlayer.vue**：`data-poster="{{ coverUrl }}"` 错误插值语法改为 `:data-poster="coverUrl"`。
+- **frontend/src/views/Downloads.vue**：批量删除弹窗重复的 `width="420px"` 与 `:width` 绑定，保留响应式绑定。
+
+#### 10. 版本号与日志同步
+
+**文件：backend/app/config.py**
+- APP_VERSION 3.6.2 → 3.6.3
+
+**文件：CHANGELOG.md**
+- 新增 v3.6.3 条目
+
+**文件：frontend/src/views/ChangelogPage.vue**
+- 新增 v3.6.3 更新日志展示区块
+
+### 验证
+- ✅ 全部后端 Python 文件编译通过（py_compile）
+- ✅ 后端冒烟测试：服务正常启动，用户/认证/下载数据库初始化成功，`GET /` 与 `GET /api/settings/version` 均返回 200
+- ✅ 前端 vue-tsc 类型检查确认本轮改动未引入新的类型错误（既有 TS 错误与本次修改文件无关）
+- 未变更：下载核心逻辑（分段/单线程下载、断点续传、进度节流）行为保持不变，单用户部署场景无行为差异
+
+## 三十二、代码问题批量修复与清理 — v3.6.2 → v3.6.3 (2026-08-16)
+
+### 修改原因
+对项目进行深度代码审查后，发现一批高/中/低优先级问题：刮削目录重命名后路径失效导致首次刮削误报失败、分段下载取消后状态被错误覆盖、下载记录更新缺少用户维度隔离、WebSocket 监听器无法移除、自动刮削每次全量重拉封面、httpx 代理参数版本耦合等，同时存在多处死代码与代码卫生问题。
+
+### 修改内容
+
+#### 1. 修复刮削目录重命名后路径失效（高）
+**文件：backend/app/services/scrape_service.py**
+- `_reorganize_files` 返回值从 `List[str]` 改为 `Tuple[List[str], Path]`，返回重命名后的最终系列目录（目录被加年份重命名时）。
+- `scrape_series` 接收返回的新目录路径，后续封面迁移、.covers 清理、空目录清理使用实际目录，不再抛 FileNotFoundError 导致整体误报失败。
+- 导入补充 `Tuple`。
+
+#### 2. 修复分段下载取消后状态被 ERROR 覆盖（高）
+**文件：backend/app/services/download_service.py**
+- `segmented_download` 收尾分支增加取消检查：用户已取消时保持 `cancelled` 状态并清理残缺文件（与单线程分支行为一致），不再被"部分段下载失败"覆盖。
+
+#### 3. 下载记录更新按用户隔离（高）
+**文件：backend/app/services/download_service.py**
+- `update_db` 增加可选 `username` 参数，提供时按 `username + video_id` 定位（主键维度），缺省时保持旧行为向后兼容。
+- `username` 贯穿下载任务链：`download_file` / `segmented_download` / `simple_download` / `update_segmented_progress` / `pause_download` / `resume_download` / `cancel_download` / `retry_download` / `load_downloads` / `start_download` / `delete_download`。
+- `retry_download` 的两处直接 SQL 同步加 `username` 条件。
+
+**文件：backend/app/api/endpoints/downloads.py**
+- `handle_download_action` 的暂停/恢复/取消调用传入 `user["username"]`。
+
+#### 4. 修复前端 WebSocket 监听器无法移除（高）
+**文件：frontend/src/stores/download.ts**
+- 模块级新增 `_wsProgressListener` 保存已绑定的进度监听器引用；`connectWebSocket` 注册时复用，`disconnectWebSocket` 用同一引用移除（此前两次 `bind()` 产生不同引用，移除永远失败，监听器累积）。
+
+#### 5. 自动刮削复用封面并串行化（中）
+**文件：backend/app/services/scrape_service.py**
+- `scrape_series` 新增 `force_regenerate_covers` 参数（默认 True 保持手动/批量刮削行为）；`_generate_tv_show_files` 透传，控制单集封面是否强制重下。
+- `auto_scrape_after_download` 传 `force_regenerate_covers=False`（已有封面复用，只补缺失）；docstring 对齐实际行为。
+- `ScrapeService` 新增 `_auto_scrape_lock` 互斥锁，并发完成的下载触发自动刮削时串行执行，避免多个全量刮削任务同时写同一批文件产生竞态。
+
+#### 6. 数据库初始化只执行一次（中）
+**文件：backend/app/services/download_service.py**
+- `init_db` 增加 `_db_initialized` 标志，已初始化直接返回（此前 12+ 处调用每次都重复建表/迁移）。
+
+#### 7. 死代码清理（中/低）
+- **backend/app/models/download.py**：删除未使用的 `DownloadConfig` 模型。
+- **backend/app/services/download_service.py**：删除 `_convert_to_poster_url`、`_get_cover_from_search`（均无调用方）、`delete_download` 中从未初始化的 `speedSmoother` 清理逻辑。
+- **backend/app/services/scrape_service.py**：删除未使用的 `from app.services.download_service import download_manager` 顶层导入（同时消除循环依赖隐患）。
+- **frontend/src/api/download.ts**：删除 `createWebSocket`（已被 store 内 `DownloadWebSocketManager` 取代的死代码）。
+
+#### 8. httpx 代理参数版本兼容（中）
+**文件：backend/app/services/download_service.py**
+- `get_http_client` 的 `proxies=` 改为 `proxy=`（httpx 0.26+ 写法，0.28 已移除旧参数）。
+
+#### 9. 代码卫生修正（低）
+- **backend/app/api/endpoints/downloads.py**：合并重复的 fastapi 导入；移除 `hasattr(action, 'delete_files')` 冗余判断。
+- **backend/app/services/download_service.py**：`start_download` 返回值缩进修正；`min_segment_size` 注释与实际值（64MB）对齐；裸 `except: pass` 改为 `except Exception`。
+- **frontend/src/components/VideoPlayer.vue**：`data-poster="{{ coverUrl }}"` 错误插值语法改为 `:data-poster="coverUrl"`。
+- **frontend/src/views/Downloads.vue**：批量删除弹窗重复的 `width="420px"` 与 `:width` 绑定，保留响应式绑定。
+
+#### 10. 版本号与日志同步
+**文件：backend/app/config.py**
+- APP_VERSION 3.6.2 → 3.6.3
+
+**文件：CHANGELOG.md**
+- 新增 v3.6.3 条目
+
+**文件：frontend/src/views/ChangelogPage.vue**
+- 新增 v3.6.3 更新日志展示区块
+
+### 验证
+- ✅ 全部后端 Python 文件编译通过（py_compile）
+- ✅ 后端冒烟测试：服务正常启动，用户/认证/下载数据库初始化成功，`GET /` 与 `GET /api/settings/version` 均返回 200
+- ✅ 前端 vue-tsc 类型检查确认本轮改动未引入新的类型错误（既有 TS 错误与本次修改文件无关）
+- 未变更：下载核心逻辑（分段/单线程下载、断点续传、进度节流）行为保持不变，单用户部署场景无行为差异
+
 ## 三十一、下载超出视频实际大小且一直不停止修复 — v3.6.1 → v3.6.2 (2026-08-07)
 
 ### 修改原因

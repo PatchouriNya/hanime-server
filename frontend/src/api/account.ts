@@ -147,4 +147,66 @@ export class AccountApi {
     });
     return response.data;
   }
+
+  // ==================== 番剧追更订阅（v4.0.0） ====================
+
+  static async getSubscriptions(): Promise<string[]> {
+    const response = await request.get('/accounts/me/subscriptions');
+    return response.data.subscriptions || [];
+  }
+
+  static async addSubscription(seriesName: string): Promise<VideoActionResponse> {
+    const response = await request.post('/accounts/me/subscriptions', null, {
+      params: { series_name: seriesName }
+    });
+    return response.data;
+  }
+
+  static async removeSubscription(seriesName: string): Promise<VideoActionResponse> {
+    const response = await request.delete(`/accounts/me/subscriptions/${encodeURIComponent(seriesName)}`);
+    return response.data;
+  }
+
+  // 检查订阅系列是否有新集（返回系列名 + has_new + 最新集信息）
+  static async checkSubscriptions(): Promise<any[]> {
+    const response = await request.get('/accounts/me/subscriptions/check');
+    return response.data.results || [];
+  }
+
+  // ==================== v4.0.0: 用户信息与管理（管理员） ====================
+
+  static async getMe(): Promise<{ username: string; user_type: number; is_admin: boolean; db_type: string }> {
+    const response = await request.get('/auth/me');
+    return response.data;
+  }
+
+  static async listUsers(): Promise<any[]> {
+    const response = await request.get('/users');
+    return response.data.users || [];
+  }
+
+  static async createUser(username: string, password: string, userType: number = 10): Promise<any> {
+    const response = await request.post('/users', { username, password, user_type: userType });
+    return response.data;
+  }
+
+  static async deleteUser(username: string): Promise<any> {
+    const response = await request.delete(`/users/${encodeURIComponent(username)}`);
+    return response.data;
+  }
+
+  static async resetUserPassword(username: string, newPassword: string): Promise<any> {
+    const response = await request.put(`/users/${encodeURIComponent(username)}/password`, { new_password: newPassword });
+    return response.data;
+  }
+
+  static async updateUserStatus(username: string, userStatus: number): Promise<any> {
+    const response = await request.put(`/users/${encodeURIComponent(username)}/status`, { status: userStatus });
+    return response.data;
+  }
+
+  static async updateUserRole(username: string, userType: number): Promise<any> {
+    const response = await request.put(`/users/${encodeURIComponent(username)}/role`, { user_type: userType });
+    return response.data;
+  }
 }

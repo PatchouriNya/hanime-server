@@ -47,8 +47,8 @@ class DownloadManager:
         
         # min_segment_size: 单个下载段的最小大小
         # 用于计算文件应该分成多少段，防止段过小导致性能下降
-        # 文件总大小必须大于min_segment_size*2才会使用分段下载
-        self.min_segment_size = 1024 * 1024 * 64  # 20MB，调小以适应更多文件使用分段下载
+        # 文件总大小必须大于 min_segment_size*2（128MB）才会使用分段下载
+        self.min_segment_size = 1024 * 1024 * 64  # 64MB
         
         # max_retries: 下载失败时的最大重试次数
         # 增加此值可以提高下载成功率，但可能导致长时间卡在失败的下载上
@@ -75,6 +75,14 @@ class DownloadManager:
         
         # 数据库路径
         self.db_path = settings.DB_PATH / "downloads.db"
+        # v3.6.3: 数据库初始化标志，避免每个方法都重复建表/迁移
+        self._db_initialized = False
+
+        # v4.0.0: 全局并发下载限制信号量
+        # 超过 MAX_CONCURRENT_DOWNLOADS 的下载任务在 download_file 入口排队等待
+        self._download_semaphore = asyncio.Semaphore(
+            max(1, settings.MAX_CONCURRENT_DOWNLOADS)
+        )
 
         # 视频文件扩展名集合
         self.VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.ts'}
@@ -89,6 +97,9 @@ class DownloadManager:
 
     async def init_db(self):
         """初始化数据库"""
+        # v3.6.3: 已初始化则直接返回，避免每次操作都重复 CREATE TABLE / ALTER TABLE
+        if self._db_initialized:
+            return
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("""
             CREATE TABLE IF NOT EXISTS downloads (
@@ -120,8 +131,8 @@ class DownloadManager:
             for col_name, col_type in migrations:
                 try:
                     await conn.execute(f"ALTER TABLE downloads ADD COLUMN {col_name} {col_type}")
-                except:
-                    pass  # 列已存在则忽略
+                except Exception:
+                    pass  # 列已存在则忽略（SQLite 不支持 IF NOT EXISTS 加列）
             
             # 系列表：记录多个番剧合并为一个系列的关系
             await conn.execute("""
@@ -138,6 +149,8 @@ class DownloadManager:
             """)
 
             await conn.commit()
+        # v3.6.3: 初始化完成后置位，后续调用直接跳过
+        self._db_initialized = True
     
     async def get_download_history(self, username: str) -> List[Dict[str, Any]]:
         """获取下载历史"""
@@ -201,7 +214,8 @@ class DownloadManager:
                                 video_id,
                                 row['url'],
                                 output_path,
-                                resume=True
+                                resume=True,
+                                username=row['username']
                             )
                         )
 
@@ -244,23 +258,74 @@ class DownloadManager:
         for ws in failed_connections:
             try:
                 self.websocket_connections.remove(ws)
-            except:
-                pass
+            except Exception:
+                pass  # 连接可能已被其他路径移除
 
-    async def update_db(self, video_id: str, **kwargs):
-        """更新数据库中的下载记录"""
+    async def update_db(self, video_id: str, username: Optional[str] = None, **kwargs):
+        """
+        更新数据库中的下载记录
+
+        v3.6.3 修复：表主键是 (username, video_id)，但此前 UPDATE 只按 video_id 过滤，
+        多用户下载同一视频时进度/状态会互相污染。现在支持传入 username 精确定位；
+        不传时维持旧行为（WHERE video_id = ?），保证调用点向后兼容。
+        """
         await self.init_db()
         set_clause = ", ".join(f"{k} = ?" for k in kwargs.keys())
         values = list(kwargs.values())
+        if username is not None:
+            where_clause = "WHERE username = ? AND video_id = ?"
+            values.extend([username, video_id])
+        else:
+            where_clause = "WHERE video_id = ?"
+            values.append(video_id)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                f"UPDATE downloads SET {set_clause} WHERE video_id = ?",
-                [*values, video_id]
+                f"UPDATE downloads SET {set_clause} {where_clause}",
+                values
             )
             await db.commit()
-    
-    async def download_file(self, video_id: str, url: str, output_path, resume: bool = False):
-        """下载文件并更新进度"""
+
+    async def download_file(self, video_id: str, url: str, output_path, resume: bool = False, username: Optional[str] = None):
+        """
+        下载文件并更新进度（入口，带全局并发限制）
+
+        v4.0.0: 通过信号量限制同时下载的视频数，超出上限的任务排队等待；
+        排队期间用户取消的任务会在轮到它时直接置为已取消。
+        """
+        await self._download_semaphore.acquire()
+        try:
+            # 排队期间可能已被用户取消
+            if self.cancel_events.get(video_id):
+                logger.info(f"排队中的下载已被取消，跳过: {video_id}")
+                if video_id in self.active_downloads:
+                    self.active_downloads[video_id].status = DownloadStatus.CANCELLED
+                    await self.update_db(video_id, username=username, status=DownloadStatus.CANCELLED)
+                    await self.broadcast_progress(video_id)
+                return
+            await self._download_file_impl(video_id, url, output_path, resume, username)
+        finally:
+            self._download_semaphore.release()
+
+    async def _download_file_impl(self, video_id: str, url: str, output_path, resume: bool = False, username: Optional[str] = None):
+        """下载文件并更新进度（实际实现）"""
+        if video_id not in self.active_downloads:
+            raise Exception("无效的下载ID")
+
+        # v4.0.0: m3u8（HLS 流）下载——用 ffmpeg 下载所有分段并合并为 mp4
+        # 源站通常提供 mp4 直链，但个别视频只有 HLS 流；此前会直接把 m3u8 索引当文件下载（不可播放）
+        if '.m3u8' in url.lower():
+            if shutil.which("ffmpeg"):
+                logger.info(f"检测到 HLS 流，使用 ffmpeg 下载: {video_id}")
+                await self._download_m3u8_with_ffmpeg(video_id, url, output_path, username)
+            else:
+                logger.warning(f"检测到 m3u8 流但环境未安装 ffmpeg，尝试直接下载（可能不完整）: {video_id}")
+                await self._download_file_impl_direct(video_id, url, output_path, resume, username)
+            return
+
+        await self._download_file_impl_direct(video_id, url, output_path, resume, username)
+
+    async def _download_file_impl_direct(self, video_id: str, url: str, output_path, resume: bool = False, username: Optional[str] = None):
+        """直接下载（mp4 等普通文件，原实现）"""
         if video_id not in self.active_downloads:
             raise Exception("无效的下载ID")
 
@@ -324,6 +389,7 @@ class DownloadManager:
                     self.active_downloads[video_id].total_size = file_size
                     await self.update_db(
                         video_id,
+                        username=username,
                         status=DownloadStatus.COMPLETED,
                         downloaded=file_size,
                         total_size=file_size,
@@ -334,7 +400,7 @@ class DownloadManager:
 
             # 更新数据库中的总大小
             if not resume:
-                await self.update_db(video_id, total_size=total_size)
+                await self.update_db(video_id, username=username, total_size=total_size)
             
             # 初始化或更新进度
             self.active_downloads[video_id].total_size = total_size
@@ -349,10 +415,10 @@ class DownloadManager:
             
             if use_segmented_download:
                 # 分段下载
-                await self.segmented_download(video_id, url, output_path, total_size, resume, optimal_segments)
+                await self.segmented_download(video_id, url, output_path, total_size, resume, optimal_segments, username=username)
             else:
                 # 单线程下载
-                await self.simple_download(video_id, url, output_path, total_size, resume)
+                await self.simple_download(video_id, url, output_path, total_size, resume, username=username)
                 
         except Exception as e:
             error_message = f"下载失败: {str(e)}"
@@ -361,6 +427,7 @@ class DownloadManager:
                 self.active_downloads[video_id].error_message = error_message
                 await self.update_db(
                     video_id,
+                    username=username,
                     status=DownloadStatus.ERROR,
                     error_message=error_message
                 )
@@ -375,7 +442,108 @@ class DownloadManager:
             if video_id in self.active_downloads and not (self.active_downloads[video_id].status == DownloadStatus.PAUSED):
                 self.pause_events.pop(video_id, None)
                 self.cancel_events.pop(video_id, None)
-                
+
+    async def _download_m3u8_with_ffmpeg(self, video_id: str, url: str, output_path, username: Optional[str] = None):
+        """
+        v4.0.0: 用 ffmpeg 下载 HLS（m3u8）流并合并为 mp4
+
+        ffmpeg 直接支持 m3u8 输入（自动下载所有 .ts 分段并合并），
+        Docker 镜像已内置 ffmpeg。下载期间保持 downloading 状态并定期广播心跳。
+        """
+        if video_id not in self.active_downloads:
+            raise Exception("无效的下载ID")
+        try:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            self.active_downloads[video_id].status = DownloadStatus.DOWNLOADING
+            self.active_downloads[video_id].error_message = None
+            await self.update_db(video_id, username=username, status=DownloadStatus.DOWNLOADING, error_message=None)
+            await self.broadcast_progress(video_id)
+
+            cmd = ["ffmpeg", "-y", "-i", url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(output_path)]
+            if settings.USE_DOWNLOAD_PROXY and settings.DOWNLOAD_PROXY_URL:
+                cmd = ["ffmpeg", "-y", "-http_proxy", settings.DOWNLOAD_PROXY_URL,
+                       "-i", url, "-c", "copy", "-bsf:a", "aac_adtstoasc", str(output_path)]
+
+            logger.info(f"ffmpeg 下载 HLS 流: {video_id}")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+
+            # 心跳：ffmpeg 无进度回调，定期广播保持前端状态活跃
+            heartbeat_stop = asyncio.Event()
+
+            async def _heartbeat():
+                while not heartbeat_stop.is_set():
+                    await asyncio.sleep(5)
+                    if self.cancel_events.get(video_id):
+                        proc.kill()
+                        return
+                    if video_id in self.active_downloads:
+                        await self.broadcast_progress(video_id)
+
+            heartbeat_task = asyncio.create_task(_heartbeat())
+            returncode = await proc.wait()
+            heartbeat_stop.set()
+            await heartbeat_task
+
+            if self.cancel_events.get(video_id):
+                # 已取消：删除半成品并标记
+                try:
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                except Exception as e:
+                    logger.warning(f"取消后删除 HLS 半成品失败: {e}")
+                self.active_downloads[video_id].status = DownloadStatus.CANCELLED
+                await self.update_db(video_id, username=username, status=DownloadStatus.CANCELLED)
+                await self.broadcast_progress(video_id)
+                return
+
+            if returncode != 0:
+                raise Exception(f"ffmpeg 下载 HLS 失败 (退出码 {returncode})")
+
+            file_size = os.path.getsize(output_path)
+            completed_at = datetime.now()
+            self.active_downloads[video_id].status = DownloadStatus.COMPLETED
+            self.active_downloads[video_id].downloaded = file_size
+            self.active_downloads[video_id].total_size = file_size
+            self.active_downloads[video_id].completed_at = completed_at
+            await self.update_db(
+                video_id, username=username,
+                status=DownloadStatus.COMPLETED,
+                downloaded=file_size,
+                total_size=file_size,
+                completed_at=completed_at
+            )
+
+            # 下载完成后自动刮削
+            if settings.AUTO_SCRAPE_AFTER_DOWNLOAD:
+                try:
+                    from app.services.scrape_service import scrape_service
+                    asyncio.create_task(scrape_service.auto_scrape_after_download(video_id))
+                except Exception as e:
+                    logger.warning(f"自动刮削触发失败: {e}")
+
+            await self.broadcast_progress(video_id)
+            logger.success(f"HLS 下载完成: {video_id} ({file_size} 字节)")
+        except Exception as e:
+            logger.error(f"HLS 下载失败: {str(e)}")
+            if video_id in self.active_downloads:
+                self.active_downloads[video_id].status = DownloadStatus.ERROR
+                self.active_downloads[video_id].error_message = f"HLS 下载失败: {str(e)}"
+                await self.update_db(
+                    video_id, username=username,
+                    status=DownloadStatus.ERROR,
+                    error_message=f"HLS 下载失败: {str(e)}"
+                )
+                await self.broadcast_progress(video_id)
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except Exception:
+                    pass
+
     def calculate_optimal_segments(self, file_size: int) -> int:
         """
         根据文件大小和历史带宽动态计算最佳分段数
@@ -406,7 +574,7 @@ class DownloadManager:
             
         return base_segments
 
-    async def segmented_download(self, video_id: str, url: str, output_path, total_size: int, resume: bool = False, num_segments: int = None):
+    async def segmented_download(self, video_id: str, url: str, output_path, total_size: int, resume: bool = False, num_segments: int = None, username: Optional[str] = None):
         """使用分段并发下载，支持自适应分段"""
         try:
             # 初始化时间和计数器
@@ -492,7 +660,7 @@ class DownloadManager:
             # 定时更新进度
             update_progress_task = asyncio.create_task(
                 self.update_segmented_progress(
-                    video_id, segments, last_update_time, last_downloaded
+                    video_id, segments, last_update_time, last_downloaded, username=username
                 )
             )
             
@@ -518,6 +686,7 @@ class DownloadManager:
                 completed_at = datetime.now()
                 await self.update_db(
                     video_id,
+                    username=username,
                     status=DownloadStatus.COMPLETED,
                     downloaded=total_downloaded,
                     completed_at=completed_at
@@ -542,6 +711,27 @@ class DownloadManager:
                         logger.warning(f"自动刮削触发失败: {e}")
                 
             else:
+                # v3.6.3 修复：若用户已请求取消，保持 CANCELLED 状态并清理残缺文件，
+                # 不要被下面的 "部分段下载失败" 覆盖（此前分段下载取消后状态会被错误改成 ERROR，
+                # 与单线程分支的行为不一致）
+                if self.cancel_events.get(video_id):
+                    try:
+                        if os.path.exists(output_path):
+                            os.remove(output_path)
+                            logger.info(f"取消下载，已删除残缺文件: {output_path}")
+                    except Exception as e:
+                        logger.warning(f"取消下载后删除残缺文件失败: {e}")
+                    self.active_downloads[video_id].status = DownloadStatus.CANCELLED
+                    self.active_downloads[video_id].error_message = None
+                    await self.update_db(
+                        video_id,
+                        username=username,
+                        status=DownloadStatus.CANCELLED,
+                        error_message=None
+                    )
+                    await self.broadcast_progress(video_id)
+                    return
+
                 # 服务器不支持 Range 请求时（所有段均返回 200 而非 206），
                 # 回退到单线程完整下载，避免文件被撑大或内容错位
                 failed_segments = [seg for seg in segments if seg.status != "completed"]
@@ -553,7 +743,7 @@ class DownloadManager:
                 )
                 if range_unsupported:
                     logger.warning(f"服务器不支持分段下载，回退到单线程下载: {video_id}")
-                    await self.simple_download(video_id, url, output_path, total_size, resume=False)
+                    await self.simple_download(video_id, url, output_path, total_size, resume=False, username=username)
                     return
                 else:
                     # 如果有段下载失败，整体下载失败
@@ -561,6 +751,7 @@ class DownloadManager:
                     self.active_downloads[video_id].error_message = "部分段下载失败"
                     await self.update_db(
                         video_id,
+                        username=username,
                         status=DownloadStatus.ERROR,
                         error_message="部分段下载失败"
                     )
@@ -570,7 +761,7 @@ class DownloadManager:
         except Exception as e:
             raise Exception(f"分段下载失败: {str(e)}")
     
-    async def update_segmented_progress(self, video_id: str, segments: List[DownloadSegment], last_update_time, last_downloaded):
+    async def update_segmented_progress(self, video_id: str, segments: List[DownloadSegment], last_update_time, last_downloaded, username: Optional[str] = None):
         """定期更新分段下载的进度"""
         try:
             while True:
@@ -591,7 +782,7 @@ class DownloadManager:
                     speed = (downloaded - last_downloaded) / time_diff
                     self.active_downloads[video_id].speed = speed
                     self.active_downloads[video_id].downloaded = downloaded
-                    await self.update_db(video_id, downloaded=downloaded)
+                    await self.update_db(video_id, username=username, downloaded=downloaded)
                     last_update_time = current_time
                     last_downloaded = downloaded
                     await self.broadcast_progress(video_id)
@@ -711,7 +902,7 @@ class DownloadManager:
                         return
                     await asyncio.sleep(backoff_time)  # 使用指数退避等待
     
-    async def simple_download(self, video_id: str, url: str, output_path, total_size: int, resume: bool = False):
+    async def simple_download(self, video_id: str, url: str, output_path, total_size: int, resume: bool = False, username: Optional[str] = None):
         """使用单线程下载（用于不支持范围请求的服务器），优化性能和稳定性
         
         修复说明 (v3.6.2):
@@ -760,6 +951,7 @@ class DownloadManager:
                     completed_at = datetime.now()
                     await self.update_db(
                         video_id,
+                        username=username,
                         status=DownloadStatus.COMPLETED,
                         downloaded=total_size,
                         total_size=total_size,
@@ -795,7 +987,7 @@ class DownloadManager:
                             )
                             total_size = int(response_content_length)
                             self.active_downloads[video_id].total_size = total_size
-                            await self.update_db(video_id, total_size=total_size)
+                            await self.update_db(video_id, username=username, total_size=total_size)
                     
                     # 使用异步文件操作提高性能
                     async with aiofiles.open(output_path, attempt_mode) as f:
@@ -811,7 +1003,7 @@ class DownloadManager:
                                     except:
                                         pass
                                     self.active_downloads[video_id].status = DownloadStatus.CANCELLED
-                                    await self.update_db(video_id, status=DownloadStatus.CANCELLED)
+                                    await self.update_db(video_id, username=username, status=DownloadStatus.CANCELLED)
                                     await self.broadcast_progress(video_id)
                                     return
 
@@ -849,7 +1041,7 @@ class DownloadManager:
                                     progress_percent = downloaded / total_size * 100 if total_size > 0 else 0
                                     if progress_percent - (last_downloaded / total_size * 100 if total_size > 0 else 0) >= 1.0:
                                         # 进度变化超过1%才更新数据库
-                                        await self.update_db(video_id, downloaded=downloaded)
+                                        await self.update_db(video_id, username=username, downloaded=downloaded)
                                         
                                     last_update_time = current_time
                                     last_downloaded = downloaded
@@ -867,7 +1059,7 @@ class DownloadManager:
 
                             # 最后一次更新进度
                             self.active_downloads[video_id].downloaded = downloaded
-                            await self.update_db(video_id, downloaded=downloaded)
+                            await self.update_db(video_id, username=username, downloaded=downloaded)
                             await self.broadcast_progress(video_id)
 
                         except Exception as chunk_error:
@@ -890,6 +1082,7 @@ class DownloadManager:
                     completed_at = datetime.now()
                     await self.update_db(
                         video_id,
+                        username=username,
                         status=DownloadStatus.COMPLETED,
                         downloaded=total_size,
                         completed_at=completed_at
@@ -928,22 +1121,22 @@ class DownloadManager:
                 logger.warning(f"视频 {video_id} 下载失败，等待 {backoff_time:.1f}s 后重试 ({retries}/{max_retries}): {str(e)}")
                 await asyncio.sleep(backoff_time)
 
-    async def pause_download(self, video_id: str):
+    async def pause_download(self, video_id: str, username: Optional[str] = None):
         """暂停下载"""
         if video_id in self.pause_events:
             self.pause_events[video_id].clear()
             self.active_downloads[video_id].status = DownloadStatus.PAUSED
-            await self.update_db(video_id, status=DownloadStatus.PAUSED)
+            await self.update_db(video_id, username=username, status=DownloadStatus.PAUSED)
             await self.broadcast_progress(video_id)
             return True
         return False
 
-    async def resume_download(self, video_id: str):
+    async def resume_download(self, video_id: str, username: Optional[str] = None):
         """继续下载"""
         if video_id in self.pause_events:
             self.pause_events[video_id].set()
             self.active_downloads[video_id].status = DownloadStatus.DOWNLOADING
-            await self.update_db(video_id, status=DownloadStatus.DOWNLOADING)
+            await self.update_db(video_id, username=username, status=DownloadStatus.DOWNLOADING)
             await self.broadcast_progress(video_id)
             return True
         return False
@@ -968,8 +1161,8 @@ class DownloadManager:
                 if retry_count > max_retries:
                     # 更新错误信息
                     await db.execute(
-                        "UPDATE downloads SET error_message = ? WHERE video_id = ?",
-                        (f"已达到最大重试次数 ({max_retries})", video_id)
+                        "UPDATE downloads SET error_message = ? WHERE username = ? AND video_id = ?",
+                        (f"已达到最大重试次数 ({max_retries})", download["username"], video_id)
                     )
                     await db.commit()
                     if video_id in self.active_downloads:
@@ -979,8 +1172,8 @@ class DownloadManager:
                     
                 # 更新下载状态为 downloading 并增加重试计数
                 await db.execute(
-                    "UPDATE downloads SET status = ?, error_message = NULL, retry_count = ? WHERE video_id = ?",
-                    (DownloadStatus.DOWNLOADING, retry_count, video_id)
+                    "UPDATE downloads SET status = ?, error_message = NULL, retry_count = ? WHERE username = ? AND video_id = ?",
+                    (DownloadStatus.DOWNLOADING, retry_count, download["username"], video_id)
                 )
                 await db.commit()
                 
@@ -1022,14 +1215,15 @@ class DownloadManager:
                         video_id,
                         download["url"],
                         output_path,
-                        resume=True
+                        resume=True,
+                        username=download["username"]
                     )
                 )
                 
                 await self.broadcast_progress(video_id)
                 return True
 
-    async def cancel_download(self, video_id: str):
+    async def cancel_download(self, video_id: str, username: Optional[str] = None):
         """取消下载"""
         # 设置取消标志
         self.cancel_events[video_id] = True
@@ -1039,7 +1233,7 @@ class DownloadManager:
             self.pause_events[video_id].set()
             
         # 更新数据库中的状态
-        await self.update_db(video_id, status=DownloadStatus.CANCELLED)
+        await self.update_db(video_id, username=username, status=DownloadStatus.CANCELLED)
         
         # 更新内存中的状态
         if video_id in self.active_downloads:
@@ -1088,7 +1282,7 @@ class DownloadManager:
             # 先检查下载是否处于活跃状态，如果是，先尝试取消
             if video_id in self.active_downloads and self.active_downloads[video_id].status in ['downloading', 'paused', 'pending']:
                 logger.info(f"删除前自动取消下载: {video_id}")
-                await self.cancel_download(video_id)
+                await self.cancel_download(video_id, username=username)
                 # 等待一会儿确保取消操作完成
                 await asyncio.sleep(1)
 
@@ -1122,9 +1316,6 @@ class DownloadManager:
                     del self.pause_events[video_id]
                 if video_id in self.cancel_events:
                     del self.cancel_events[video_id]
-                # 清理速度计算数据
-                if hasattr(self, 'speedSmoother') and self.speedSmoother:
-                    self.speedSmoother.clearHistory(video_id)
 
                 return True
         except Exception as e:
@@ -1546,11 +1737,11 @@ class DownloadManager:
         existing_download = await self.check_existing_download(video_id, username)
         
         if existing_download and not force:
-                return {
-                    "status": "warning",
+            return {
+                "status": "warning",
                 "message": "视频已在下载列表中",
-                    "existing_download": existing_download
-                }
+                "existing_download": existing_download
+            }
         elif existing_download and force:
             # 删除现有下载
             await self.delete_download(video_id, username)
@@ -1767,7 +1958,7 @@ class DownloadManager:
             await self.broadcast_progress(video_id)
             
             # 启动下载任务
-            asyncio.create_task(self.download_file(video_id, best_url, file_path))
+            asyncio.create_task(self.download_file(video_id, best_url, file_path, username=username))
             
             return {"status": "success", "message": "已开始下载"}
         except Exception as e:
@@ -2421,43 +2612,6 @@ class DownloadManager:
             
         return filename
 
-    @staticmethod
-    def _convert_to_poster_url(cover_url: str) -> str:
-        """
-        将缩略图URL转换为首页海报URL（仅用于URL格式推断，实际下载可能因secure token不匹配而403）
-        优先使用 get_video_detail 返回的 cover 格式URL
-        """
-        if not cover_url:
-            return cover_url
-        # /image/thumbnail/407019l.jpg → /image/cover/407019.jpg
-        # /image/thumbnail/407019h.jpg → /image/cover/407019.jpg
-        import re
-        converted = re.sub(
-            r'/image/thumbnail/(\w+)[lh]\.jpg',
-            r'/image/cover/\1.jpg',
-            cover_url
-        )
-        return converted
-
-    async def _get_cover_from_search(self, video_id: str, title: str) -> str:
-        """
-        通过视频详情页获取首页展示的海报封面URL（cover格式，竖版海报）
-        不再使用搜索接口（搜索结果返回的是 thumbnail 格式，secure token 与 cover 格式不通用）
-        :param video_id: 视频ID
-        :param title: 视频标题（未使用，保留接口兼容）
-        :return: cover 格式封面URL，失败时返回空字符串
-        """
-        try:
-            video_detail = await self.video_service.get_video_detail(video_id)
-            if video_detail and video_detail.cover_url and '/image/cover/' in video_detail.cover_url:
-                logger.info(f"从视频详情页获取到 cover 海报: {video_detail.cover_url}")
-                return video_detail.cover_url
-            logger.warning(f"视频详情页未返回 cover 格式URL: {video_detail.cover_url if video_detail else 'N/A'}")
-            return ""
-        except Exception as e:
-            logger.warning(f"通过视频详情页获取封面失败: {e}")
-            return ""
-
     async def download_cover(self, video_id: str, cover_url: str, series_dir=None, filename: str = None) -> bool:
         """
         下载封面图片到番剧目录
@@ -2475,6 +2629,17 @@ class DownloadManager:
             cover_name = filename or video_id
             cover_filename = f"{cover_name}.jpg"
 
+            # v4.0.0: MinIO 同步——封面写入本地后上传对象存储（covers 前缀）
+            async def _upload_to_minio():
+                from app.services.minio_service import minio_service
+                if not minio_service.enabled:
+                    return
+                if not await minio_service.exists(settings.MINIO_COVER_PREFIX, cover_filename):
+                    await minio_service.upload_file(
+                        settings.MINIO_COVER_PREFIX, cover_filename,
+                        cover_path, content_type="image/jpeg"
+                    )
+
             # 优先保存到番剧目录
             if series_dir:
                 cover_path = series_dir / cover_filename
@@ -2486,6 +2651,7 @@ class DownloadManager:
             # 如果封面已存在，跳过下载
             if cover_path.exists():
                 logger.info(f"封面已存在: {cover_path}")
+                await _upload_to_minio()
                 return True
 
             # 确保目录存在
@@ -2509,6 +2675,7 @@ class DownloadManager:
                                 async with aiofiles.open(cover_path, "wb") as f:
                                     await f.write(content)
                                 logger.success(f"通过 cf_bypasser 封面下载成功: {cover_path}")
+                                await _upload_to_minio()
                                 return True
                             else:
                                 logger.error(f"cf_bypasser 下载封面也失败: HTTP {cf_response.status_code if cf_response else 'N/A'}")
@@ -2524,6 +2691,7 @@ class DownloadManager:
                         await f.write(chunk)
 
             logger.success(f"封面下载成功: {cover_path}")
+            await _upload_to_minio()
             return True
 
         except Exception as e:
@@ -2552,8 +2720,10 @@ class DownloadManager:
         }
         
         # 设置代理
+        # v3.6.3: 使用 proxy= 参数（httpx>=0.26 的写法）。此前用 proxies= 是 httpx<0.26 的旧 API，
+        # 在 httpx 0.26+ 中已弃用、0.28 中已移除，升级 httpx 后配置 USE_DOWNLOAD_PROXY 会直接报错。
         if settings.USE_DOWNLOAD_PROXY and settings.DOWNLOAD_PROXY_URL:
-            client_options['proxies'] = settings.DOWNLOAD_PROXY_URL
+            client_options['proxy'] = settings.DOWNLOAD_PROXY_URL
             
         # 创建新的客户端
         client = httpx.AsyncClient(**client_options)
@@ -2794,6 +2964,41 @@ class DownloadManager:
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def count_downloaded_in_series(self, username: str, series_name: str) -> int:
+        """
+        v4.0.0: 统计某系列已下载完成的视频数量（追更订阅用）
+
+        通过 filename 前缀匹配（filename 为 "系列名/..." 或 "系列名 - S01E01..."）。
+        """
+        await self.init_db()
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM downloads WHERE username = ? AND status = 'completed' AND (filename LIKE ? OR title LIKE ?)",
+                (username, f"{series_name}%", f"%{series_name}%")
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+
+    async def get_latest_downloaded_episode(self, username: str, series_name: str) -> Optional[int]:
+        """
+        v4.0.0: 获取某系列已下载的最新集号（从 filename 中的 SxxExx 提取）
+        """
+        await self.init_db()
+        max_episode = None
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT filename FROM downloads WHERE username = ? AND status = 'completed' AND filename LIKE ?",
+                (username, f"{series_name}%")
+            ) as cursor:
+                rows = await cursor.fetchall()
+        for (fn,) in rows:
+            m = re.search(r'S\d+E(\d+)', fn or "", re.IGNORECASE)
+            if m:
+                ep = int(m.group(1))
+                if max_episode is None or ep > max_episode:
+                    max_episode = ep
+        return max_episode
 
     async def clear_completed_downloads(self, username: str) -> int:
         """清除所有已完成的下载记录（不删除文件）"""

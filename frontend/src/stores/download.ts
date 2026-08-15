@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { DownloadApi } from '../api/download';
 import type { DownloadProgress } from '../types/download';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElNotification } from 'element-plus';
 
 /**
  * WebSocket管理类 - 单例模式
@@ -231,6 +231,28 @@ let _pollTimer: ReturnType<typeof setInterval> | null = null;
 // 速度平滑处理器（模块级单例，避免放入响应式 state 导致类型推断失败）
 const _speedSmoother = DownloadSpeedSmoother.getInstance();
 
+// v3.6.3 修复：保存已绑定的 WS 进度监听器引用。
+// 此前 connectWebSocket 用 addListener(this.updateDownloadProgress.bind(this)) 注册，
+// disconnectWebSocket 却用 removeListener(this.updateDownloadProgress.bind(this)) 移除——
+// 两次 bind 产生不同函数引用，removeListener 永远匹配不上，监听器随连接/断开反复累积。
+// 现在连接时保存绑定引用，断开时用同一引用移除。
+let _wsProgressListener: ((data: any) => void) | null = null;
+
+// v4.0.0: 下载完成通知去重（每次会话内同一视频只通知一次，避免轮询/WS 重复触发）
+const _notifiedCompletedIds = new Set<string>();
+
+const _notifyDownloadCompleted = (progress: DownloadProgress) => {
+  if (_notifiedCompletedIds.has(progress.video_id)) return;
+  _notifiedCompletedIds.add(progress.video_id);
+  ElNotification({
+    title: '下载完成',
+    message: progress.title || progress.filename || progress.video_id,
+    type: 'success',
+    duration: 5000,
+    position: 'bottom-right'
+  });
+};
+
 /**
  * 下载状态Store
  */
@@ -423,7 +445,11 @@ export const useDownloadStore = defineStore('download', {
       }
 
       const wsManager = DownloadWebSocketManager.getInstance();
-      wsManager.addListener(this.updateDownloadProgress.bind(this));
+      // 复用已绑定的监听器引用，保证 disconnect 时能正确移除
+      if (!_wsProgressListener) {
+        _wsProgressListener = this.updateDownloadProgress.bind(this);
+      }
+      wsManager.addListener(_wsProgressListener);
       wsManager.connect();
       this.wsConnected = true;
     },
@@ -433,7 +459,10 @@ export const useDownloadStore = defineStore('download', {
      */
     disconnectWebSocket() {
       const wsManager = DownloadWebSocketManager.getInstance();
-      wsManager.removeListener(this.updateDownloadProgress.bind(this));
+      if (_wsProgressListener) {
+        wsManager.removeListener(_wsProgressListener);
+        _wsProgressListener = null;
+      }
       wsManager.close();
       this.wsConnected = false;
     },
@@ -470,6 +499,8 @@ export const useDownloadStore = defineStore('download', {
         if (progress.status === 'completed' && existingDownload.status === 'downloading') {
           // 下载刚完成，记录最终速度为0
           progress.speed = 0;
+          // v4.0.0: 下载完成通知（每次会话只通知一次）
+          _notifyDownloadCompleted(progress);
         }
       }
       

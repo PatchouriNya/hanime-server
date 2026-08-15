@@ -86,6 +86,16 @@ class UserService:
                 settings TEXT DEFAULT '{}'
             )
             """)
+
+            # v4.0.0: 番剧追更订阅表
+            await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_subscriptions (
+                username TEXT NOT NULL,
+                series_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (username, series_name)
+            )
+            """)
             
             # 数据库迁移：为旧表添加 username 列
             await self._migrate_tables(conn)
@@ -574,6 +584,72 @@ class UserService:
             return True
         except Exception as e:
             logger.error(f"保存用户设置失败: {e}")
+            return False
+
+    # ==================== 番剧追更订阅（v4.0.0） ====================
+
+    async def add_subscription(self, username: str, series_name: str, db_type: str = "local", db_user_id: int = None) -> bool:
+        """订阅番剧系列（追更）"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().add_subscription(db_user_id, series_name)
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                INSERT OR REPLACE INTO user_subscriptions (username, series_name, created_at)
+                VALUES (?, ?, ?)
+                """, (username, series_name, datetime.now().isoformat()))
+                await conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"添加订阅失败: {e}")
+            return False
+
+    async def remove_subscription(self, username: str, series_name: str, db_type: str = "local", db_user_id: int = None) -> bool:
+        """取消订阅番剧系列"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().remove_subscription(db_user_id, series_name)
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute(
+                    "DELETE FROM user_subscriptions WHERE username = ? AND series_name = ?",
+                    (username, series_name)
+                )
+                await conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"移除订阅失败: {e}")
+            return False
+
+    async def get_subscriptions(self, username: str, db_type: str = "local", db_user_id: int = None) -> List[str]:
+        """获取订阅的番剧系列列表"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().get_subscriptions(db_user_id)
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute(
+                    "SELECT series_name FROM user_subscriptions WHERE username = ? ORDER BY created_at DESC",
+                    (username,)
+                )
+                rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+        except Exception as e:
+            logger.error(f"获取订阅列表失败: {e}")
+            return []
+
+    async def is_subscribed(self, username: str, series_name: str, db_type: str = "local", db_user_id: int = None) -> bool:
+        """检查是否已订阅某系列"""
+        if db_type == "cloud" and db_user_id:
+            return await self._get_mysql_service().is_subscribed(db_user_id, series_name)
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute(
+                    "SELECT COUNT(*) FROM user_subscriptions WHERE username = ? AND series_name = ?",
+                    (username, series_name)
+                )
+                row = await cursor.fetchone()
+            return row[0] > 0
+        except Exception as e:
+            logger.error(f"检查订阅状态失败: {e}")
             return False
 
 

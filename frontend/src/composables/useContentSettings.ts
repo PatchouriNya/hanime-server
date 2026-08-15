@@ -65,18 +65,18 @@ const debouncedSave = () => {
   saveTimer = setTimeout(saveSettings, 300);
 };
 
-watch(enableBlur, (newVal, oldVal) => {
+watch(enableBlur, (_newVal, oldVal) => {
   if (oldVal === null) return; // 初始化赋值时不保存
   debouncedSave();
 });
 
-watch(blurMode, (newVal, oldVal) => {
+watch(blurMode, (_newVal, oldVal) => {
   if (oldVal === null) return;
   debouncedSave();
 });
 
 // v3.5.3: showStudio 变化时自动保存
-watch(showStudio, (newVal, oldVal) => {
+watch(showStudio, (_newVal, oldVal) => {
   if (oldVal === null) return;
   debouncedSave();
 });

@@ -81,7 +81,6 @@
       <div class="login-footer">
         <div class="remember-row">
           <el-checkbox v-model="rememberUsername" class="remember-checkbox">记住账号</el-checkbox>
-          <el-checkbox v-model="rememberPassword" class="remember-checkbox">记住密码</el-checkbox>
         </div>
       </div>
 
@@ -97,10 +96,11 @@
 import { reactive, ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Star, User, Lock, ArrowRight, CircleClose, Monitor, Cloudy } from '@element-plus/icons-vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import request from '../utils/request';
 
 const router = useRouter();
+const route = useRoute();
 
 const loginFormRef = ref();
 
@@ -112,7 +112,7 @@ const loginForm = reactive({
 const loading = ref(false);
 const errorMessage = ref('');
 const rememberUsername = ref(false);
-const rememberPassword = ref(false);
+// v4.0.0: 移除"记住密码"（明文存 localStorage 有安全风险），只保留记住账号
 const dbType = ref('local');  // 本地数据库 or 云数据库
 
 const rules = {
@@ -128,17 +128,9 @@ const rules = {
 
 onMounted(() => {
   const savedUsername = localStorage.getItem('rememberedUsername');
-  const savedPassword = localStorage.getItem('rememberedPassword');
   if (savedUsername) {
     loginForm.username = savedUsername;
     rememberUsername.value = true;
-  }
-  if (savedPassword) {
-    loginForm.password = savedPassword;
-    rememberPassword.value = true;
-    if (savedUsername) {
-      rememberUsername.value = true;
-    }
   }
 });
 
@@ -165,20 +157,19 @@ const handleArrowRight = async () => {
         localStorage.setItem('loginTime', Date.now().toString());
         window.dispatchEvent(new Event('user-login'));
         
-        // 记住账号密码
+        // 记住账号（v4.0.0: 不再明文记住密码，避免 localStorage 泄露）
         if (rememberUsername.value) {
           localStorage.setItem('rememberedUsername', loginForm.username);
         } else {
           localStorage.removeItem('rememberedUsername');
         }
-        if (rememberPassword.value) {
-          localStorage.setItem('rememberedPassword', loginForm.password);
-        } else {
-          localStorage.removeItem('rememberedPassword');
-        }
+        // 清理旧的明文密码缓存
+        localStorage.removeItem('rememberedPassword');
         
         ElMessage.success('登录成功');
-        router.push('/');
+        // v4.0.0: 登录后回到跳转前的页面（路由守卫/401 拦截器携带的 redirect）
+        const redirectPath = (route.query.redirect as string) || '/';
+        router.push(redirectPath);
       }
     } catch (error: any) {
       console.error('登录失败:', error);

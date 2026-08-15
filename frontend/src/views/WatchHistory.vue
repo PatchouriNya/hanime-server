@@ -33,13 +33,23 @@
           thumbnail-class="portrait"
           show-play-icon
         />
-        <div v-if="item.progress > 0" class="progress-bar-container">
+        <div v-if="getProgressPercent(item) > 0" class="progress-bar-container">
           <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: `${item.progress}%` }"></div>
+            <div class="progress-fill" :style="{ width: `${getProgressPercent(item)}%` }"></div>
           </div>
-          <span class="progress-text">已观看 {{ item.progress }}%</span>
+          <span class="progress-text">{{ getProgressText(item) }}</span>
         </div>
         <div class="history-actions">
+          <!-- v4.0.0: 续播按钮（详情页会自动从上次位置继续播放） -->
+          <el-button
+            v-if="getProgressPercent(item) > 0"
+            size="small"
+            type="primary"
+            plain
+            @click.stop="handleContinue(item.video_id)"
+          >
+            <el-icon><VideoPlay /></el-icon> 继续观看
+          </el-button>
           <el-button
             icon="Delete"
             size="small"
@@ -74,7 +84,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { AccountApi, WatchHistoryItem } from '../api/account';
 import VideoCard from '../components/VideoCard.vue';
-import { Clock, Delete } from '@element-plus/icons-vue';
+import { Clock, Delete, VideoPlay } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
 const router = useRouter();
@@ -95,6 +105,32 @@ const loadHistory = async () => {
 };
 
 const handleVideoClick = (videoId: string) => {
+  router.push(`/video/${videoId}`);
+};
+
+// v4.0.0: 观看历史进度（秒）→ 百分比。duration 为总秒数字符串
+const getProgressPercent = (item: WatchHistoryItem): number => {
+  if (!item.progress || item.progress <= 0) return 0;
+  const durationSec = parseInt(item.duration || '0', 10);
+  if (durationSec > 0) {
+    return Math.min(100, Math.round((item.progress / durationSec) * 100));
+  }
+  // 没有时长信息时粗略展示（按 30 分钟上限）
+  return Math.min(100, Math.round((item.progress / 1800) * 100));
+};
+
+const getProgressText = (item: WatchHistoryItem): string => {
+  if (!item.progress || item.progress <= 0) return '';
+  const durationSec = parseInt(item.duration || '0', 10);
+  if (durationSec > 0) {
+    return `已观看 ${getProgressPercent(item)}%`;
+  }
+  const minutes = Math.max(1, Math.round(item.progress / 60));
+  return `已观看 ${minutes} 分钟`;
+};
+
+// v4.0.0: 续播——跳转详情页，详情页会自动从上次位置继续播放
+const handleContinue = (videoId: string) => {
   router.push(`/video/${videoId}`);
 };
 
