@@ -1,5 +1,11 @@
 # 更新日志
 
+## v4.0.1 (2026-08-16)
+
+### 修复
+
+1. **视频播放报错"加载失败(4): MEDIA_ELEMENT_ERROR: Format error"**：v4.0.0 启用流代理后播放失败。根因是 `/api/videos/stream/proxy` 端点在 `async with httpx.AsyncClient(...)` 块内返回 `StreamingResponse`——该响应是惰性的，实际视频流发送发生在响应返回之后，而那时 httpx 客户端已被关闭，迭代已断开的连接导致流中断，浏览器收到损坏数据报格式错误。修复后通过 `background=BackgroundTask(client.aclose)` 将客户端生命周期延长到视频流发送完成后再关闭，同时为代理请求携带浏览器 User-Agent（避免源站 CDN 拒绝 python-httpx 默认 UA）。已验证：Range 请求正确返回 206 + 指定字节，完整请求返回 200 + 完整视频流。
+
 ## v4.0.0 (2026-08-16)
 
 ### 新功能

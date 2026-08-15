@@ -3,6 +3,34 @@
 ## 概述
 本文档记录了本次对话中所有的修改内容，包括bug修复和新功能添加。
 
+## 三十四、流代理播放失败修复 — v4.0.0 → v4.0.1 (2026-08-16)
+
+### 修改原因
+v4.0.0 启用流代理后，用户反馈视频播放报错"加载失败(4): MEDIA_ELEMENT_ERROR: Format error"。该错误为 HTML5 视频源格式错误，视频流未正确到达浏览器。
+
+### 根因分析
+`backend/app/api/endpoints/videos.py` 的 `/api/videos/stream/proxy` 端点在 `async with httpx.AsyncClient(...) as client:` 块内 `return StreamingResponse(...)`。`StreamingResponse` 是惰性响应——真正向客户端发送视频流发生在 FastAPI 返回响应之后，而那时 `async with` 已退出、httpx 客户端已被关闭。`response.aiter_bytes()` 迭代已断开连接的响应导致流中断/抛错，浏览器收到损坏数据报 MEDIA_ERR_SRC_NOT_SUPPORTED。
+
+该 bug 自 v1.x 起潜伏（v3.x 及以前前端直接使用源站 URL 播放，未走代理通道），v4.0.0 恢复流代理后立即暴露。
+
+### 修改内容
+**文件：backend/app/api/endpoints/videos.py**
+- `stream_video` 改为手动创建 httpx.AsyncClient，通过 `StreamingResponse(..., background=BackgroundTask(client.aclose))` 将客户端生命周期延长到视频流发送完成后再关闭。
+- 异常路径手动 `client.aclose()` 防止连接泄漏。
+- 代理请求携带浏览器 `User-Agent`（`settings.USER_AGENT`），避免源站 CDN 拒绝 python-httpx 默认 UA。
+- 导入修正：`BackgroundTask` 从 `starlette.background` 导入。
+
+**文件：backend/app/config.py**
+- APP_VERSION 4.0.0 → 4.0.1
+
+**文件：CHANGELOG.md / frontend/src/views/ChangelogPage.vue**
+- 新增 v4.0.1 条目
+
+### 验证
+- ✅ Range 请求：`curl -H "Range: bytes=0-1023"` → HTTP 206 + `video/mp4` + 1024 字节（断点语义正确）
+- ✅ 完整请求：HTTP 200 + 完整视频流（788KB 测试视频全量送达）
+- ✅ 登录鉴权正常（流代理仍需 Bearer token）
+
 ## 三十三、v4.0.0 大版本：14 项优化 + MinIO 对象存储 + 云数据库扩展 (2026-08-16)
 
 ### 修改原因

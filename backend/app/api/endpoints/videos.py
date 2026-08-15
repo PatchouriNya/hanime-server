@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from app.models.video import *
 from app.models.video import CalendarData
 from app.services.video_service import VideoService
@@ -104,8 +105,14 @@ async def load_replies(comment_id: str):
 @router.get("/stream/proxy")
 async def stream_video(url: str, request: Request = None):
     """视频流式传输
-    
+
     为前端提供视频流，通过后端代理访问原始视频URL
+
+    v4.0.0 修复：此前在 `async with httpx.AsyncClient(...)` 块内 return StreamingResponse，
+    StreamingResponse 是惰性的——实际流发送发生在响应返回之后，而那时 client 已被关闭，
+    迭代已断开的连接导致流中断，浏览器收到损坏数据报 Format error (MEDIA_ERR_SRC_NOT_SUPPORTED)。
+    现在通过 background=BackgroundTask(client.aclose) 把 client 生命周期延长到流发送完成后，
+    并携带浏览器 User-Agent（源站 CDN 可能拒绝 python-httpx 默认 UA）。
     """
 
     if not url:
@@ -124,37 +131,49 @@ async def stream_video(url: str, request: Request = None):
         client_kwargs = {}
         if proxy:
             client_kwargs["proxy"] = proxy
-        async with httpx.AsyncClient(**client_kwargs) as client:
-            # 如果有Range头，则将其转发到目标服务器
-            headers = {}
-            if range_header:
-                headers["range"] = range_header
+        client = httpx.AsyncClient(**client_kwargs)
 
-            # 发送请求到目标URL，包含可能的Range头
-            response = await client.get(url, headers=headers, follow_redirects=True)
+        # 如果有Range头，则将其转发到目标服务器
+        headers = {
+            # 携带浏览器 UA，避免源站 CDN 拒绝默认 python-httpx UA
+            "user-agent": settings.USER_AGENT,
+        }
+        if range_header:
+            headers["range"] = range_header
 
-            # 准备响应头
-            media_type = response.headers.get("content-type", "video/mp4")
-            resp_headers = {
-                "content-type": media_type,
-                "accept-ranges": "bytes"
-            }
+        # 发送请求到目标URL，包含可能的Range头
+        response = await client.get(url, headers=headers, follow_redirects=True)
 
-            # 如果是范围请求，复制原始响应的Content-Range头
-            status_code = 200
-            if "content-range" in response.headers:
-                resp_headers["content-range"] = response.headers["content-range"]
-                status_code = 206  # Partial Content
+        # 准备响应头
+        media_type = response.headers.get("content-type", "video/mp4")
+        resp_headers = {
+            "content-type": media_type,
+            "accept-ranges": "bytes"
+        }
 
-            if "content-length" in response.headers:
-                resp_headers["content-length"] = response.headers["content-length"]
+        # 如果是范围请求，复制原始响应的Content-Range头
+        status_code = 200
+        if "content-range" in response.headers:
+            resp_headers["content-range"] = response.headers["content-range"]
+            status_code = 206  # Partial Content
 
-            # 返回流式响应
-            return StreamingResponse(
-                response.aiter_bytes(),
-                headers=resp_headers,
-                status_code=status_code,
-                media_type=media_type
-            )
+        if "content-length" in response.headers:
+            resp_headers["content-length"] = response.headers["content-length"]
+
+        # 返回流式响应
+        # v4.0.0: background 在流发送完成后才关闭 client，保证 aiter_bytes 期间连接存活
+        return StreamingResponse(
+            response.aiter_bytes(),
+            headers=resp_headers,
+            status_code=status_code,
+            media_type=media_type,
+            background=BackgroundTask(client.aclose)
+        )
     except Exception as e:
+        # 异常路径也要关闭 client，避免连接泄漏
+        try:
+            if 'client' in locals():
+                await client.aclose()
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"视频流获取失败: {str(e)}")

@@ -8,6 +8,22 @@
     <div class="changelog-container">
       <div class="changelog-section animate-fade-in-up">
         <div class="section-header">
+          <el-tag type="success" size="large">v4.0.1</el-tag>
+          <span class="version-date">2026-08-16</span>
+        </div>
+        <div class="section-content">
+          <h3 class="section-title">修复</h3>
+          <ul class="update-list">
+            <li class="update-item">
+              <el-icon class="update-icon"><CircleCheck /></el-icon>
+              <span><strong>视频播放报错"加载失败(4)"：</strong>v4.0.0 启用流代理后播放失败。根因是流代理端点在 httpx 客户端关闭后才发送视频流，导致流中断、浏览器收到损坏数据报格式错误。修复后客户端生命周期延长到视频流发送完成，并携带浏览器 UA 请求源站。已验证 Range 断点与完整流均正常。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="changelog-section animate-fade-in-up">
+        <div class="section-header">
           <el-tag type="danger" size="large">v4.0.0</el-tag>
           <span class="version-date">2026-08-16</span>
         </div>
